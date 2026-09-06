@@ -253,12 +253,12 @@ flowchart TD
   - [x] Transmission requests (1 message, 7-day expiration)
   - [x] Affiliation requests with note transmission
   - [x] User, message, and beacon block system
-- [ ] **Phase 6: Subspace Vault (Storage) & Cloud Integrations** ([phase-06-subspace-vault-storage.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-06-subspace-vault-storage.md))
-  - [ ] `apps/file-service` (MinIO S3 presigned URL engine)
-  - [ ] Quarantine disclaimer compliance modal
-  - [ ] Subspace Vault drive UI & quota management
-  - [ ] OneDrive, Google Drive, Dropbox OAuth2 picker
-  - [ ] Transmission unfurler metadata previewer
+- [x] **Phase 6: Subspace Vault (Storage) & Cloud Integrations** ([phase-06-subspace-vault-storage.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-06-subspace-vault-storage.md))
+  - [x] `apps/file-service` (MinIO S3 presigned URL engine)
+  - [x] Quarantine disclaimer compliance modal
+  - [x] Subspace Vault drive UI & quota management
+  - [x] OneDrive, Google Drive, Dropbox OAuth2 picker
+  - [x] Transmission unfurler metadata previewer
 - [ ] **Phase 7: Comm-Link Audio, Video & Holo-Cast** ([phase-07-comm-link-holocast.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-07-comm-link-holocast.md))
   - [ ] `docker/livekit.yaml` + SFU server setup
   - [ ] Comm-Link token generation & room management

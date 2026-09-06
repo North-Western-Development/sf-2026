@@ -94,6 +94,9 @@ export async function buildApp() {
   const { blacklistRoutes } = await import('./modules/blacklist/blacklist.routes.js');
   await app.register(blacklistRoutes, { prefix: '/api/v1/blacklist' });
 
+  const { unfurlRoutes } = await import('./modules/unfurl/unfurl.js');
+  await app.register(unfurlRoutes, { prefix: '/api/v1' });
+
   // Health check endpoint
   app.get('/health', async () => {
     return {
