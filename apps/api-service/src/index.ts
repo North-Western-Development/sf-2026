@@ -100,6 +100,15 @@ export async function buildApp() {
   const { commLinkRoutes } = await import('./modules/media/comm-link.routes.js');
   await app.register(commLinkRoutes, { prefix: '/api/v1/relays/:relayId/comm-link' });
 
+  const { archivalRoutes } = await import('./modules/archival/archival.routes.js');
+  await app.register(archivalRoutes, { prefix: '/api/v1/relays/:relayId/archival' });
+
+  const { visualRoutes } = await import('./modules/visual/visual.routes.js');
+  await app.register(visualRoutes, { prefix: '/api/v1/relays/:relayId/visual' });
+
+  const { searchRoutes } = await import('./modules/search/search.routes.js');
+  await app.register(searchRoutes, { prefix: '/api/v1/search' });
+
   // Health check endpoint
   app.get('/health', async () => {
     return {

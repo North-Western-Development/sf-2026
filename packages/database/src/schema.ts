@@ -215,11 +215,42 @@ export const signalBlacklist = pgTable('signal_blacklist', {
 });
 
 /**
+ * Archival Threads (Forum topics in an Archival Relay)
+ */
+export const archivalThreads = pgTable('archival_threads', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  relayId: uuid('relay_id').references(() => relays.id, { onDelete: 'cascade' }).notNull(),
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  title: text('title').notNull(),
+  tags: jsonb('tags').$type<string[]>().default([]).notNull(),
+  isPinned: boolean('is_pinned').default(false).notNull(),
+  isLocked: boolean('is_locked').default(false).notNull(),
+  rootTransmissionId: uuid('root_transmission_id'),
+  transmissionCount: integer('transmission_count').default(0).notNull(),
+  lastTransmissionAt: timestamp('last_transmission_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Transmitter Relay Preferences (Hideable Relays custom filter)
+ */
+export const transmitterRelayPreferences = pgTable('transmitter_relay_preferences', {
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  relayId: uuid('relay_id').references(() => relays.id, { onDelete: 'cascade' }).notNull(),
+  isHidden: boolean('is_hidden').default(false).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.transmitterId, table.relayId] }),
+]);
+
+/**
  * Transmissions (Messages)
  */
 export const transmissions = pgTable('transmissions', {
   id: uuid('id').defaultRandom().primaryKey(),
   relayId: uuid('relay_id').references(() => relays.id, { onDelete: 'cascade' }),
+  threadId: uuid('thread_id').references(() => archivalThreads.id, { onDelete: 'cascade' }),
   p2pLinkId: uuid('p2p_link_id').references(() => pointToPointLinks.id, { onDelete: 'cascade' }),
   meshId: uuid('mesh_id').references(() => subspaceMeshes.id, { onDelete: 'cascade' }),
   transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),

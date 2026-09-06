@@ -163,7 +163,7 @@ flowchart TD
   - **Embedded Text Subchannel**: Integrated text chat accessible without joining the voice room
 - **Verification**: Multi-participant voice session joins, token issuance, and voice text subchannel transmission tests.
 
-### Phase 8: Archival, Visual Relays & Subspace Search
+### Phase 8: Archival, Visual Relays & Subspace Search [COMPLETED]
 - **Focus**: Specialized relay types, channel management, and full-text search.
 - **Deliverables**:
   - Archival Relays (Forum): Structured thread discussions, tags, and pinned root posts
