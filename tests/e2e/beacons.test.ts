@@ -86,28 +86,7 @@ describe('Beacons, Beacon Clusters & Clearances E2E Suite', () => {
     everyoneRoleId = body.everyoneClearance.id;
   });
 
-  it('rejects deleting or moving the @everyone role', async () => {
-    // 1. Attempt to delete @everyone -> 400 CANNOT_DELETE_BASE_CLEARANCE
-    const delRes = await app.inject({
-      method: 'DELETE',
-      url: `/api/v1/beacons/${createdBeaconId}/clearances/${everyoneRoleId}`,
-      headers: { authorization: `Bearer ${ownerToken}` },
-    });
-    expect(delRes.statusCode).toBe(400);
-    expect(JSON.parse(delRes.payload).code).toBe('CANNOT_DELETE_BASE_CLEARANCE');
-
-    // 2. Attempt to move @everyone position to 5 -> 400 CANNOT_REORDER_BASE_CLEARANCE
-    const moveRes = await app.inject({
-      method: 'PATCH',
-      url: `/api/v1/beacons/${createdBeaconId}/clearances/${everyoneRoleId}`,
-      headers: { authorization: `Bearer ${ownerToken}` },
-      payload: { position: 5 },
-    });
-    expect(moveRes.statusCode).toBe(400);
-    expect(JSON.parse(moveRes.payload).code).toBe('CANNOT_REORDER_BASE_CLEARANCE');
-  });
-
-  it('allows modifying permissions on the @everyone role', async () => {
+  it('confirms that permissions on @everyone CAN be modified', async () => {
     const updatedBits = (PERMISSIONS.VIEW_RELAY | PERMISSIONS.SEND_TRANSMISSIONS).toString();
     const updateRes = await app.inject({
       method: 'PATCH',
@@ -120,21 +99,66 @@ describe('Beacons, Beacon Clusters & Clearances E2E Suite', () => {
     expect(body.clearance.permissions).toBe(updatedBits);
   });
 
-  it('creates custom clearances and rejects custom clearances with position <= 0', async () => {
-    // Attempt position 0 for custom role -> rejected
-    const invalidRes = await app.inject({
+  it('confirms that @everyone CANNOT be deleted', async () => {
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/beacons/${createdBeaconId}/clearances/${everyoneRoleId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(delRes.statusCode).toBe(400);
+    expect(JSON.parse(delRes.payload).code).toBe('CANNOT_DELETE_BASE_CLEARANCE');
+  });
+
+  it('confirms that @everyone CANNOT be moved above any other roles (position cannot change from 0)', async () => {
+    // Attempt moving @everyone to position 1
+    const moveRes1 = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/beacons/${createdBeaconId}/clearances/${everyoneRoleId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { position: 1 },
+    });
+    expect(moveRes1.statusCode).toBe(400);
+    expect(JSON.parse(moveRes1.payload).code).toBe('CANNOT_REORDER_BASE_CLEARANCE');
+
+    // Attempt moving @everyone to position 50
+    const moveRes50 = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/beacons/${createdBeaconId}/clearances/${everyoneRoleId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { position: 50 },
+    });
+    expect(moveRes50.statusCode).toBe(400);
+    expect(JSON.parse(moveRes50.payload).code).toBe('CANNOT_REORDER_BASE_CLEARANCE');
+  });
+
+  it('confirms that NO other roles can be created or moved below or at @everyone (position <= 0)', async () => {
+    // 1. Attempt creating a role at position 0 (at @everyone level) -> rejected
+    const createPos0 = await app.inject({
       method: 'POST',
       url: `/api/v1/beacons/${createdBeaconId}/clearances`,
       headers: { authorization: `Bearer ${ownerToken}` },
       payload: {
-        name: 'Invalid Role',
+        name: 'Below Everyone Role',
         position: 0,
       },
     });
-    expect(invalidRes.statusCode).toBe(400);
-    expect(JSON.parse(invalidRes.payload).code).toBe('CANNOT_PLACE_BELOW_BASE_CLEARANCE');
+    expect(createPos0.statusCode).toBe(400);
+    expect(JSON.parse(createPos0.payload).code).toBe('CANNOT_PLACE_BELOW_BASE_CLEARANCE');
 
-    // Valid officer role creation at position 10
+    // 2. Attempt creating a role at position -1 (below @everyone) -> rejected
+    const createNegative = await app.inject({
+      method: 'POST',
+      url: `/api/v1/beacons/${createdBeaconId}/clearances`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {
+        name: 'Sub-Zero Role',
+        position: -1,
+      },
+    });
+    expect(createNegative.statusCode).toBe(400);
+    expect(JSON.parse(createNegative.payload).code).toBe('CANNOT_PLACE_BELOW_BASE_CLEARANCE');
+
+    // 3. Create a valid role at position 10
     const officerBits = (
       PERMISSIONS.VIEW_RELAY |
       PERMISSIONS.SEND_TRANSMISSIONS |
@@ -142,7 +166,7 @@ describe('Beacons, Beacon Clusters & Clearances E2E Suite', () => {
       PERMISSIONS.KICK_MEMBERS
     ).toString();
 
-    const createRes = await app.inject({
+    const createValid = await app.inject({
       method: 'POST',
       url: `/api/v1/beacons/${createdBeaconId}/clearances`,
       headers: { authorization: `Bearer ${ownerToken}` },
@@ -154,11 +178,31 @@ describe('Beacons, Beacon Clusters & Clearances E2E Suite', () => {
         allowDelegation: false,
       },
     });
-    expect(createRes.statusCode).toBe(201);
-    const body = JSON.parse(createRes.payload);
+    expect(createValid.statusCode).toBe(201);
+    const body = JSON.parse(createValid.payload);
     expect(body.clearance.name).toBe('Command Officer');
     expect(body.clearance.position).toBe(10);
     officerRoleId = body.clearance.id;
+
+    // 4. Attempt moving the valid role to position 0 (down to @everyone level) -> rejected
+    const moveDownTo0 = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/beacons/${createdBeaconId}/clearances/${officerRoleId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { position: 0 },
+    });
+    expect(moveDownTo0.statusCode).toBe(400);
+    expect(JSON.parse(moveDownTo0.payload).code).toBe('CANNOT_PLACE_BELOW_BASE_CLEARANCE');
+
+    // 5. Attempt moving the valid role to position -5 (below @everyone) -> rejected
+    const moveDownNegative = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/beacons/${createdBeaconId}/clearances/${officerRoleId}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { position: -5 },
+    });
+    expect(moveDownNegative.statusCode).toBe(400);
+    expect(JSON.parse(moveDownNegative.payload).code).toBe('CANNOT_PLACE_BELOW_BASE_CLEARANCE');
   });
 
   it('handles member joining and onboarding state machine', async () => {
