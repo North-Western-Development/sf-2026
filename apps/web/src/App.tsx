@@ -54,6 +54,8 @@ import {
   UserProfile
 } from '@subspace/ui';
 import { usePlatformEnvironment } from './usePlatformEnvironment';
+import { api, ApiBeacon, ApiRelay } from './services/api';
+import { gateway } from './services/gateway';
 
 // Data Interfaces
 interface Beacon {
@@ -123,126 +125,71 @@ interface FriendItem {
   customActivity?: string;
 }
 
-// Multi-Server Channels Mapping
-const SERVER_DATA: Record<string, { name: string; categories: ChannelCategory[] }> = {
-  'beacon-aegis': {
-    name: 'Aegis Command Station',
-    categories: [
-      {
-        id: 'cat-priority',
-        name: 'Priority Broadcasts',
-        channels: [
-          { id: 'chan-announcements', name: 'orbital-bulletins', type: 'announcement', description: 'Official fleet announcements from High Command.' },
-          { id: 'chan-rules', name: 'protocol-directives', type: 'text', description: 'Rules of engagement and standard operating procedures.' },
-        ],
-      },
-      {
-        id: 'cat-relays',
-        name: 'Transmission Relays',
-        channels: [
-          { id: 'chan-quantum', name: 'quantum-transmissions', type: 'text', description: 'General fleet comms and subspace chatter.' },
-          { id: 'chan-recon', name: 'telemetry-recon-gallery', type: 'gallery', description: 'Deep space sensor photos and planetary scans.' },
-          { id: 'chan-archives', name: 'flight-logs-archive', type: 'archive', description: 'Archived mission flight debriefs and blackbox transcripts.' },
-        ],
-      },
-      {
-        id: 'cat-comms',
-        name: 'Voice Comm-Links',
-        channels: [
-          { id: 'chan-bridge', name: 'Bridge Comm-Link [Alpha]', type: 'voice', description: 'Primary bridge audio frequency.' },
-          { id: 'chan-squadron', name: 'Squadron Tactical [LiveKit]', type: 'voice', description: 'Low-latency tactical strike communications.' },
-        ],
-      },
-    ],
-  },
-  'beacon-vanguard': {
-    name: 'Vanguard Squadron',
-    categories: [
-      {
-        id: 'cat-flight-ops',
-        name: 'Flight Operations',
-        channels: [
-          { id: 'chan-briefings', name: 'flight-briefings', type: 'announcement', description: 'Pre-flight tactical briefs and waypoints.' },
-          { id: 'chan-scout', name: 'scout-recon', type: 'text', description: 'Forward reconnaissance reports from scout wings.' },
-          { id: 'chan-orders', name: 'tactical-orders', type: 'text', description: 'Live combat directives from squadron leaders.' },
-        ],
-      },
-      {
-        id: 'cat-wing-comms',
-        name: 'Flight Wings (Audio)',
-        channels: [
-          { id: 'chan-alpha-wing', name: 'Alpha Wing Comms', type: 'voice', description: 'Alpha interceptor squadron comms channel.' },
-          { id: 'chan-interceptor', name: 'Interceptor Strike', type: 'voice', description: 'Dogfight tactical voice frequency.' },
-        ],
-      },
-      {
-        id: 'cat-vanguard-media',
-        name: 'Combat Media',
-        channels: [
-          { id: 'chan-combat-recordings', name: 'combat-footage', type: 'gallery', description: 'Gun-camera and telemetry video captures.' },
-          { id: 'chan-after-action', name: 'after-action-reports', type: 'archive', description: 'Mission debriefs and combat damage assessment.' },
-        ],
-      },
-    ],
-  },
-  'beacon-rim': {
-    name: 'Outer Rim Coalition',
-    categories: [
-      {
-        id: 'cat-coalition-hub',
-        name: 'Coalition Hub',
-        channels: [
-          { id: 'chan-treaty', name: 'treaty-bulletins', type: 'announcement', description: 'Interstellar trade pacts and faction treaties.' },
-          { id: 'chan-rim-chat', name: 'outer-rim-chat', type: 'text', description: 'Independent pilot and trader general frequency.' },
-        ],
-      },
-      {
-        id: 'cat-logistics',
-        name: 'Logistics & Cargo',
-        channels: [
-          { id: 'chan-convoy', name: 'convoy-routing', type: 'text', description: 'Safe jump routes through asteroid belts and piracy zones.' },
-          { id: 'chan-manifests', name: 'cargo-manifests', type: 'archive', description: 'Subspace cargo manifests and freight ledgers.' },
-        ],
-      },
-      {
-        id: 'cat-rim-voice',
-        name: 'Relay Frequencies',
-        channels: [
-          { id: 'chan-deep-relay', name: 'Deep Space Relay', type: 'voice', description: 'Long-range open relay voice channel.' },
-          { id: 'chan-traders-haven', name: 'Traders Comm-Grid', type: 'voice', description: 'Trading post bar & lounge audio.' },
-        ],
-      },
-    ],
-  },
-  'beacon-sol': {
-    name: 'Solaris Research Facility',
-    categories: [
-      {
-        id: 'cat-sol-science',
-        name: 'Scientific Observatories',
-        channels: [
-          { id: 'chan-flare-alerts', name: 'solar-flare-alerts', type: 'announcement', description: 'Coronal mass ejection warnings and radiation forecasts.' },
-          { id: 'chan-astrophysics', name: 'astrophysics-lab', type: 'text', description: 'Gravitational wave analytics and dark matter telemetry.' },
-          { id: 'chan-quantum-theory', name: 'quantum-resonance', type: 'text', description: 'Subspace particle entanglement experiments.' },
-        ],
-      },
-      {
-        id: 'cat-sol-media',
-        name: 'Sensor Data',
-        channels: [
-          { id: 'chan-spectrometry', name: 'spectrometry-scans', type: 'gallery', description: 'High-energy gamma ray and spectrometry captures.' },
-        ],
-      },
-      {
-        id: 'cat-sol-audio',
-        name: 'Lab Intercoms',
-        channels: [
-          { id: 'chan-sol-intercom', name: 'Research Deck Audio', type: 'voice', description: 'Solaris lab main microphone relay.' },
-        ],
-      },
-    ],
-  },
-};
+// Helper functions for dynamic Beacon styling and Relay categorization
+const GRADIENTS = [
+  'linear-gradient(135deg, #00f0ff, #5865f2)',
+  'linear-gradient(135deg, #7928ca, #ff0080)',
+  'linear-gradient(135deg, #23a55a, #00f0ff)',
+  'linear-gradient(135deg, #f0b232, #f23f43)',
+  'linear-gradient(135deg, #eb459e, #5865f2)',
+];
+
+function getBeaconGradient(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash + id.charCodeAt(i)) % GRADIENTS.length;
+  }
+  return GRADIENTS[hash];
+}
+
+function getBeaconInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
+
+function categorizeRelays(relays: ApiRelay[]): ChannelCategory[] {
+  const textRelays: Channel[] = [];
+  const voiceRelays: Channel[] = [];
+  const mediaRelays: Channel[] = [];
+
+  relays.forEach((r) => {
+    let chanType: Channel['type'] = 'text';
+    if (r.type === 'voice') chanType = 'voice';
+    else if (r.type === 'announcement') chanType = 'announcement';
+    else if (r.type === 'archival' || r.type === 'archive') chanType = 'archive';
+    else if (r.type === 'visual' || r.type === 'gallery') chanType = 'gallery';
+
+    const ch: Channel = {
+      id: r.id,
+      name: r.name,
+      type: chanType,
+      description: r.topic || undefined,
+    };
+
+    if (chanType === 'voice') {
+      voiceRelays.push(ch);
+    } else if (chanType === 'archive' || chanType === 'gallery') {
+      mediaRelays.push(ch);
+    } else {
+      textRelays.push(ch);
+    }
+  });
+
+  const categories: ChannelCategory[] = [];
+  if (textRelays.length > 0) {
+    categories.push({ id: 'cat-text', name: 'Text Relays', channels: textRelays });
+  }
+  if (voiceRelays.length > 0) {
+    categories.push({ id: 'cat-voice', name: 'Voice Comm-Links', channels: voiceRelays });
+  }
+  if (mediaRelays.length > 0) {
+    categories.push({ id: 'cat-media', name: 'Archival & Media', channels: mediaRelays });
+  }
+  return categories;
+}
 
 export const AppContent: React.FC = () => {
   const platform = usePlatformEnvironment();
@@ -305,30 +252,13 @@ export const AppContent: React.FC = () => {
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  // Beacons / Servers List
-  const [beacons, setBeacons] = useState<Beacon[]>([
-    { id: 'beacon-aegis', name: 'Aegis Command Station', unreadCount: 3, iconText: 'AC', gradient: 'linear-gradient(135deg, #00f0ff, #5865f2)' },
-    { id: 'beacon-vanguard', name: 'Vanguard Squadron', iconText: 'VS', gradient: 'linear-gradient(135deg, #7928ca, #ff0080)' },
-    { id: 'beacon-rim', name: 'Outer Rim Coalition', unreadCount: 1, iconText: 'OR', gradient: 'linear-gradient(135deg, #23a55a, #00f0ff)' },
-    { id: 'beacon-sol', name: 'Solaris Research Facility', iconText: 'SR', gradient: 'linear-gradient(135deg, #f0b232, #f23f43)' },
-  ]);
+  // Beacons / Servers List (dynamic from real backend)
+  const [beacons, setBeacons] = useState<Beacon[]>([]);
+  const [serverData, setServerData] = useState<Record<string, { name: string; categories: ChannelCategory[] }>>({});
+  const [discoverableBeacons, setDiscoverableBeacons] = useState<ApiBeacon[]>([]);
 
-  // Voice Channel Inhabitant Directory
-  const [voiceUsers, setVoiceUsers] = useState<Record<string, VoiceUser[]>>({
-    'chan-bridge': [
-      { id: 'u1', name: 'Fleet Admiral Vance', avatar: '👨‍🚀', isSpeaking: true },
-      { id: 'u3', name: 'Echo-4 Specialist', avatar: '🛰️', isMuted: true },
-    ],
-    'chan-squadron': [
-      { id: 'u4', name: 'Nova Pilot', avatar: '🛸', isSpeaking: false },
-    ],
-    'chan-alpha-wing': [
-      { id: 'u4', name: 'Nova Pilot', avatar: '🛸', isSpeaking: true },
-    ],
-    'chan-deep-relay': [
-      { id: 'u5', name: 'Dr. Aris Thorne', avatar: '🔬', isMuted: false },
-    ],
-  });
+  // Voice Channel Inhabitant Directory (dynamic from real gateway)
+  const [voiceUsers, setVoiceUsers] = useState<Record<string, VoiceUser[]>>({});
 
   // Direct Message Conversations
   const [directConversations] = useState<DirectConversation[]>([
@@ -555,60 +485,186 @@ export const AppContent: React.FC = () => {
     ],
   });
 
-  // Transmitters / Members of Current Server
-  const members: UserProfile[] = [
-    {
-      id: 'u1',
-      name: 'Fleet Admiral Vance',
-      callsign: 'adm_vance',
-      avatar: '👨‍🚀',
-      status: 'online',
-      statusText: 'Directing orbital fleet arrays',
-      staffRank: 3,
-      roles: ['High Command', 'Fleet Admiral', 'Quantum L5'],
-      bio: 'Commander of Allied Subspace Expeditions since cycle 2021.',
-      memberSince: 'Oct 18, 2021',
-      quantumKeyFingerprint: 'SF-QKD-9981-FA23',
-    },
-    currentUser,
-    {
-      id: 'u3',
-      name: 'Echo-4 Specialist',
-      callsign: 'echo_four',
-      avatar: '🛰️',
-      status: 'idle',
-      statusText: 'Listening to radio telemetry',
-      staffRank: 1,
-      roles: ['Recon Specialist', 'Sensor Tech'],
-      bio: 'Deep space telemetry archivist.',
-      memberSince: 'Aug 01, 2024',
-      quantumKeyFingerprint: 'SF-QKD-1102-EC44',
-    },
-    {
-      id: 'u4',
-      name: 'Nova Pilot',
-      callsign: 'nova_star',
-      avatar: '🛸',
-      status: 'online',
-      statusText: 'FTL Jump in progress...',
-      roles: ['Vanguard Scout'],
-      bio: 'Reconnaissance flyer charting subspace wormholes.',
-      memberSince: 'Feb 18, 2025',
-      quantumKeyFingerprint: 'SF-QKD-8831-NV11',
-    },
-    {
-      id: 'u5',
-      name: 'Dr. Aris Thorne',
-      callsign: 'dr_thorne',
-      avatar: '🔬',
-      status: 'ghost',
-      statusText: 'Calibrating quantum spectrometers',
-      roles: ['Chief Scientist'],
-      bio: 'Solaris Senior Research Fellow.',
-      memberSince: 'Mar 12, 2022',
-      quantumKeyFingerprint: 'SF-QKD-5590-SL18',
-    },
-  ];
+  // Transmitters / Members of Current Server (dynamic from real backend)
+  const [members, setMembers] = useState<UserProfile[]>([]);
+
+  // 1. Initial Authentication, Gateway Connection, & Beacons Bootstrap
+  useEffect(() => {
+    let mounted = true;
+
+    async function init() {
+      try {
+        const user = await api.ensureAuthenticated();
+        if (!mounted) return;
+
+        setCurrentUser({
+          id: user.id,
+          name: user.displayName || user.username,
+          callsign: user.username,
+          avatar: user.avatarUrl || '⚡',
+          status: 'online',
+          statusText: 'Subspace Frequency Terminal Online',
+          staffRank: user.staffRank || 0,
+          roles: user.roles || (user.staffRank && user.staffRank >= 2 ? ['Command Staff'] : ['Transmitter']),
+          bio: user.bio || 'Subspace Network Operator',
+          memberSince: 'Sep 2026',
+          quantumKeyFingerprint: `SF-QKD-${user.id.slice(0, 4).toUpperCase()}`,
+          isSelf: true,
+        });
+
+        // Connect real gateway WebSocket
+        gateway.connect();
+
+        // Fetch real beacons from database
+        const joined = await api.getJoinedBeacons();
+        if (!mounted) return;
+
+        const mappedBeacons: Beacon[] = joined.map(b => ({
+          id: b.id,
+          name: b.name,
+          iconText: getBeaconInitials(b.name),
+          gradient: getBeaconGradient(b.id),
+        }));
+        setBeacons(mappedBeacons);
+
+        if (mappedBeacons.length > 0) {
+          setSelectedBeaconId(mappedBeacons[0].id);
+        }
+
+        // Fetch discoverable beacons
+        const disc = await api.getDiscoverableBeacons();
+        if (mounted) setDiscoverableBeacons(disc);
+      } catch (err: any) {
+        console.warn('Real backend connection warning:', err);
+      }
+    }
+
+    init();
+
+    // Subscribe to live voice state updates from Gateway
+    const unsubVoice = gateway.onVoiceState((evt) => {
+      setVoiceUsers((prev) => {
+        const next = { ...prev };
+        // Remove transmitter from any other channel
+        Object.keys(next).forEach((cId) => {
+          next[cId] = (next[cId] || []).filter((u) => u.id !== evt.transmitter_id);
+        });
+        // Add to new channel if currently connected
+        if (evt.relay_id) {
+          const list = next[evt.relay_id] || [];
+          next[evt.relay_id] = [
+            ...list,
+            {
+              id: evt.transmitter_id,
+              name: evt.username,
+              avatar: '👨‍🚀',
+              isSpeaking: evt.is_speaking,
+              isMuted: evt.is_muted,
+              isDeafened: evt.is_deafened,
+            },
+          ];
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      mounted = false;
+      unsubVoice();
+    };
+  }, []);
+
+  // 2. Fetch real Relays & Members whenever a Beacon is selected
+  useEffect(() => {
+    if (selectedBeaconId === 'home' || !selectedBeaconId) return;
+    let mounted = true;
+
+    async function loadBeaconData() {
+      try {
+        const [relays, membersList] = await Promise.all([
+          api.getBeaconRelays(selectedBeaconId),
+          api.getBeaconMembers(selectedBeaconId),
+        ]);
+        if (!mounted) return;
+
+        const cats = categorizeRelays(relays);
+        const beaconObj = beacons.find(b => b.id === selectedBeaconId);
+        setServerData(prev => ({
+          ...prev,
+          [selectedBeaconId]: {
+            name: beaconObj?.name || 'Beacon',
+            categories: cats,
+          },
+        }));
+
+        // Map real members from database
+        const mappedMembers: UserProfile[] = membersList.map(m => ({
+          id: m.transmitterId,
+          name: m.displayName || m.username,
+          callsign: m.username,
+          avatar: m.avatarUrl || '👨‍🚀',
+          status: (m.presence as any) || 'online',
+          statusText: m.isOwner ? 'Beacon Commander' : 'Active Transmitter',
+          staffRank: m.isOwner ? 3 : (m.staffRank || 0),
+          roles: m.isOwner ? ['Beacon Owner', 'Command Staff'] : ['Transmitter'],
+          bio: 'Subspace Beacon Member',
+          memberSince: 'Sep 2026',
+          quantumKeyFingerprint: `SF-QKD-${m.transmitterId.slice(0, 4).toUpperCase()}`,
+          isSelf: m.transmitterId === currentUser.id,
+        }));
+        setMembers(mappedMembers);
+
+        // Automatically select the first channel if none or current channel not in this beacon
+        const allChans = cats.flatMap(c => c.channels);
+        if (allChans.length > 0) {
+          if (!selectedChannelId || !allChans.some(c => c.id === selectedChannelId)) {
+            setSelectedChannelId(allChans[0].id);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Failed to load real beacon relays/members:', err);
+      }
+    }
+
+    loadBeaconData();
+    return () => { mounted = false; };
+  }, [selectedBeaconId, beacons]);
+
+  // 3. Fetch real Transmissions whenever a Channel is selected
+  useEffect(() => {
+    if (selectedBeaconId === 'home' || !selectedChannelId || selectedChannelId === 'browse-channels') return;
+    let mounted = true;
+
+    async function loadTransmissions() {
+      try {
+        const txs = await api.getTransmissions(selectedChannelId);
+        if (!mounted) return;
+
+        const mapped: Message[] = txs.map(tx => ({
+          id: tx.id,
+          author: tx.author?.displayName || tx.author?.username || 'Transmitter',
+          callsign: tx.author?.username || 'transmitter',
+          avatar: tx.author?.avatarUrl || '⚡',
+          content: tx.content,
+          timestamp: new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          roleColor: tx.author?.displayColor || '#00f0ff',
+          staffRank: tx.author?.staffRank || 0,
+          roleBadge: tx.author?.staffRank && tx.author?.staffRank >= 2 ? 'COMMAND STAFF' : undefined,
+          isPinned: tx.isPinned,
+        }));
+
+        setChannelMessages(prev => ({
+          ...prev,
+          [selectedChannelId]: mapped,
+        }));
+      } catch (err: any) {
+        console.warn('Failed to load real transmissions:', err);
+      }
+    }
+
+    loadTransmissions();
+    return () => { mounted = false; };
+  }, [selectedChannelId, selectedBeaconId]);
 
   // Quick Scan Hotkey & Click-outside listener
   useEffect(() => {
@@ -627,8 +683,11 @@ export const AppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // When switching servers, automatically pick the first channel in that server if current channel not found
-  const currentServer = SERVER_DATA[selectedBeaconId] || SERVER_DATA['beacon-aegis'];
+  // When switching servers, automatically pick the first channel in that server
+  const currentServer = serverData[selectedBeaconId] || {
+    name: beacons.find(b => b.id === selectedBeaconId)?.name || 'Loading Beacon...',
+    categories: [],
+  };
   const currentCategories = currentServer.categories;
   
   // Find current channel object
@@ -637,7 +696,7 @@ export const AppContent: React.FC = () => {
     id: 'chan-default',
     name: 'general',
     type: 'text' as const,
-    description: 'General transmissions',
+    description: 'Subspace transmissions',
   };
 
   // Switch server handler
@@ -646,7 +705,7 @@ export const AppContent: React.FC = () => {
     if (beaconId === 'home') {
       setSelectedDmId('friends');
     } else {
-      const targetServer = SERVER_DATA[beaconId];
+      const targetServer = serverData[beaconId];
       if (targetServer && targetServer.categories.length > 0) {
         const firstChan = targetServer.categories[0].channels[0];
         if (firstChan) {
@@ -656,61 +715,74 @@ export const AppContent: React.FC = () => {
     }
   };
 
-  // Join / Leave voice channel
+  // Join / Leave voice channel with real Gateway integration
   const handleVoiceChannelClick = (channelId: string) => {
     if (inVoiceRoom === channelId) {
       setSelectedChannelId(channelId);
     } else {
       setInVoiceRoom(channelId);
       setSelectedChannelId(channelId);
-      setVoiceUsers(prev => ({
-        ...prev,
-        [channelId]: [
-          ...(prev[channelId] || []).filter(u => u.id !== currentUser.id),
-          { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar, isSpeaking: false },
-        ],
-      }));
-      showToast(`Connected to voice frequency`);
+      gateway.updateVoiceState(channelId, isMuted, isDeafened, false);
+      showToast(`Connected to real voice channel`);
     }
   };
 
   const handleDisconnectVoice = () => {
     if (inVoiceRoom) {
-      const room = inVoiceRoom;
-      setVoiceUsers(prev => ({
-        ...prev,
-        [room]: (prev[room] || []).filter(u => u.id !== currentUser.id),
-      }));
+      gateway.updateVoiceState(null, false, false, false);
       setInVoiceRoom(null);
-      showToast('Voice disconnected');
+      showToast('Voice channel disconnected');
     }
   };
 
-  // Send message to active channel or active DM
-  const handleSendMessage = (e: React.FormEvent) => {
+  // Send message to active channel or active DM (Real API POST)
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageInput.trim()) return;
 
-    const targetKey = selectedBeaconId === 'home' ? selectedDmId : selectedChannelId;
-
-    const newMsg: Message = {
-      id: `m-${Date.now()}`,
-      author: currentUser.name,
-      callsign: currentUser.callsign,
-      avatar: currentUser.avatar,
-      content: messageInput,
-      timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      roleColor: '#00f0ff',
-      staffRank: currentUser.staffRank,
-      roleBadge: selectedBeaconId === 'home' ? undefined : 'COMMAND STAFF',
-    };
-
-    setChannelMessages(prev => ({
-      ...prev,
-      [targetKey]: [...(prev[targetKey] || []), newMsg],
-    }));
-
+    const content = messageInput.trim();
     setMessageInput('');
+
+    if (selectedBeaconId === 'home') {
+      // Local DM simulation with E2EE double-ratchet indicator
+      const newMsg: Message = {
+        id: `dm-${Date.now()}`,
+        author: currentUser.name,
+        callsign: currentUser.callsign,
+        avatar: currentUser.avatar,
+        content,
+        timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        roleColor: '#00f0ff',
+        staffRank: currentUser.staffRank,
+      };
+      setChannelMessages(prev => ({
+        ...prev,
+        [selectedDmId]: [...(prev[selectedDmId] || []), newMsg],
+      }));
+      return;
+    }
+
+    // Real API dispatch for server channels
+    try {
+      const tx = await api.sendTransmission(selectedChannelId, content);
+      const newMsg: Message = {
+        id: tx.id,
+        author: currentUser.name,
+        callsign: currentUser.callsign,
+        avatar: currentUser.avatar,
+        content: tx.content,
+        timestamp: 'Today at ' + new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        roleColor: (currentUser as any).displayColor || '#00f0ff',
+        staffRank: currentUser.staffRank,
+        roleBadge: currentUser.staffRank && currentUser.staffRank >= 2 ? 'COMMAND STAFF' : undefined,
+      };
+      setChannelMessages(prev => ({
+        ...prev,
+        [selectedChannelId]: [...(prev[selectedChannelId] || []), newMsg],
+      }));
+    } catch (err: any) {
+      showToast(`Failed to dispatch transmission: ${err.message}`);
+    }
   };
 
   const handleAddReaction = (messageId: string, emoji: string) => {
@@ -1060,10 +1132,16 @@ export const AppContent: React.FC = () => {
             </div>
 
             <div className="relative flex items-center justify-center w-full group">
-              <span className="absolute left-0 w-1 bg-white rounded-r-full h-0 group-hover:h-5 transition-all" />
+              <span className={`absolute left-0 w-1 bg-white rounded-r-full transition-all duration-200 ${
+                selectedBeaconId === 'explore' ? 'h-10' : 'h-0 group-hover:h-5'
+              }`} />
               <button
-                onClick={() => showToast('Explore Public Beacons')}
-                className="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center transition-all duration-200"
+                onClick={() => setSelectedBeaconId('explore')}
+                className={`w-12 h-12 flex items-center justify-center transition-all duration-200 ${
+                  selectedBeaconId === 'explore'
+                    ? 'rounded-[16px] bg-[#23a55a] text-white shadow-lg'
+                    : 'rounded-[24px] hover:rounded-[16px] bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white'
+                }`}
                 title="Explore Discoverable Servers"
               >
                 <Compass className="w-5 h-5" />
@@ -1106,11 +1184,14 @@ export const AppContent: React.FC = () => {
             <div className="flex-1 overflow-y-auto px-2 py-2">
               <div className="flex items-center justify-between text-[11px] font-bold tracking-wider text-[#949ba4] uppercase px-2 py-1.5 group">
                 <span>Direct Messages</span>
-                <Plus 
-                  className="w-3.5 h-3.5 hover:text-white cursor-pointer" 
+                <button 
+                  type="button"
+                  className="hover:text-white cursor-pointer" 
                   title="Create DM" 
                   onClick={() => showToast('Start a new direct conversation')}
-                />
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               <div className="space-y-0.5 mt-1">
@@ -1137,7 +1218,7 @@ export const AppContent: React.FC = () => {
                         <div className="min-w-0">
                           <div className="text-sm font-medium truncate flex items-center gap-1.5">
                             <span>{dm.user.name}</span>
-                            <Lock className="w-3 h-3 text-[#23a55a] shrink-0" title="Quantum E2EE" />
+                            <span title="Quantum E2EE"><Lock className="w-3 h-3 text-[#23a55a] shrink-0" /></span>
                           </div>
                           <div className="text-[11px] text-[#949ba4] truncate">
                             {dm.lastMessage || dm.user.statusText}
@@ -1436,7 +1517,86 @@ export const AppContent: React.FC = () => {
         )}
 
         {/* 4. Main Viewport Area */}
-        {selectedBeaconId === 'home' && selectedDmId === 'friends' ? (
+        {selectedBeaconId === 'explore' ? (
+          /* Explore Public Beacons View */
+          <div className="flex-1 flex flex-col min-w-0 bg-[#313338] h-full overflow-y-auto p-8">
+            <div className="max-w-4xl mx-auto w-full space-y-6">
+              <div>
+                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Compass className="w-7 h-7 text-[#00f0ff]" />
+                  <span>Discover Subspace Beacons</span>
+                </h1>
+                <p className="text-sm text-[#949ba4] mt-1">
+                  Connect to public beacons and orbital outposts across the galaxy.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {discoverableBeacons.map((b) => {
+                  const isJoined = beacons.some((jb) => jb.id === b.id);
+                  return (
+                    <div
+                      key={b.id}
+                      className="p-5 rounded-[12px] bg-[#2b2d31] border border-[#1f2023] hover:border-[#00f0ff]/50 transition-all flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <div
+                            style={{ background: getBeaconGradient(b.id) }}
+                            className="w-10 h-10 rounded-[12px] flex items-center justify-center font-bold text-white text-sm"
+                          >
+                            {getBeaconInitials(b.name)}
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-white">{b.name}</h3>
+                            <span className="text-[11px] text-[#00f0ff] font-mono">Public Outpost</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-[#949ba4] line-clamp-2">
+                          {b.description || 'No description provided.'}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-[#1f2023] flex items-center justify-between">
+                        <span className="text-[11px] font-mono text-[#80848e]">{b.id.slice(0, 8)}</span>
+                        {isJoined ? (
+                          <button
+                            onClick={() => setSelectedBeaconId(b.id)}
+                            className="bg-[#35373c] text-white px-3 py-1.5 rounded-[4px] text-xs font-semibold hover:bg-[#404249] transition-colors"
+                          >
+                            Enter Beacon
+                          </button>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await api.joinBeacon(b.id);
+                                const joined = await api.getJoinedBeacons();
+                                setBeacons(joined.map(jb => ({
+                                  id: jb.id,
+                                  name: jb.name,
+                                  iconText: getBeaconInitials(jb.name),
+                                  gradient: getBeaconGradient(jb.id),
+                                })));
+                                setSelectedBeaconId(b.id);
+                                showToast(`Joined ${b.name}!`);
+                              } catch (err: any) {
+                                showToast(`Failed to join: ${err.message}`);
+                              }
+                            }}
+                            className="bg-[#23a55a] text-white px-3 py-1.5 rounded-[4px] text-xs font-semibold hover:bg-[#1f934f] transition-colors"
+                          >
+                            Join Beacon
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : selectedBeaconId === 'home' && selectedDmId === 'friends' ? (
           /* A. Friends List View */
           <div className="flex-1 flex flex-col min-w-0 bg-[#313338] h-full">
             {/* Top Friends Header Bar */}
@@ -2244,7 +2404,7 @@ export const AppContent: React.FC = () => {
 
           <div className="space-y-1 mt-2 max-h-72 overflow-y-auto">
             <div className="text-[11px] font-bold uppercase text-[#949ba4] px-1">Channels across servers</div>
-            {Object.entries(SERVER_DATA).flatMap(([bId, srv]) => 
+            {Object.entries(serverData).flatMap(([bId, srv]) => 
               srv.categories.flatMap(c => c.channels.map(chan => ({ ...chan, beaconId: bId, serverName: srv.name })))
             )
             .filter(c => c.name.toLowerCase().includes(quickScanQuery.toLowerCase()))

@@ -1,0 +1,184 @@
+// Real Subspace Frequency Gateway WebSocket Client
+import { api } from './api';
+
+export interface VoiceStateEvent {
+  transmitter_id: string;
+  username: string;
+  relay_id: string | null;
+  is_muted: boolean;
+  is_deafened: boolean;
+  is_speaking: boolean;
+  timestamp: string;
+}
+
+export interface PresenceEvent {
+  transmitter_id: string;
+  presence: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline';
+  timestamp: string;
+}
+
+type EventListener<T> = (data: T) => void;
+
+class SubspaceGatewayClient {
+  private ws: WebSocket | null = null;
+  private heartbeatInterval: number = 30000;
+  private heartbeatTimer: any = null;
+  private isConnecting: boolean = false;
+  private voiceListeners: Set<EventListener<VoiceStateEvent>> = new Set();
+  private presenceListeners: Set<EventListener<PresenceEvent>> = new Set();
+  private readyListeners: Set<EventListener<{ transmitter: any; voice_states: any[] }>> = new Set();
+  private cachedVoiceStates: Map<string, VoiceStateEvent> = new Map();
+
+  public connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    if (this.isConnecting) return;
+    this.isConnecting = true;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/gateway`;
+
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onopen = () => {
+      this.isConnecting = false;
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        this.handlePayload(payload);
+      } catch (err) {
+        console.warn('[Gateway] Malformed event payload:', err);
+      }
+    };
+
+    this.ws.onclose = () => {
+      this.isConnecting = false;
+      this.stopHeartbeat();
+      // Auto reconnect after 3 seconds
+      setTimeout(() => this.connect(), 3000);
+    };
+
+    this.ws.onerror = (err) => {
+      console.warn('[Gateway] WebSocket connection warning:', err);
+      this.ws?.close();
+    };
+  }
+
+  private handlePayload(payload: any) {
+    // 10: HELLO -> Send IDENTIFY
+    if (payload.op === 10) {
+      this.heartbeatInterval = payload.d?.heartbeat_interval || 30000;
+      this.startHeartbeat();
+
+      const token = api.getToken();
+      if (token && this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(
+          JSON.stringify({
+            op: 2, // IDENTIFY
+            d: {
+              token,
+              presence: 'online',
+            },
+          })
+        );
+      }
+      return;
+    }
+
+    // 11: HEARTBEAT_ACK
+    if (payload.op === 11) {
+      return;
+    }
+
+    // 0: DISPATCH
+    if (payload.op === 0) {
+      if (payload.t === 'READY') {
+        const voiceStates = payload.d?.voice_states || [];
+        voiceStates.forEach((vs: any) => {
+          if (vs.relay_id) {
+            this.cachedVoiceStates.set(vs.transmitter_id, {
+              transmitter_id: vs.transmitter_id,
+              username: vs.username,
+              relay_id: vs.relay_id,
+              is_muted: !!vs.is_muted,
+              is_deafened: !!vs.is_deafened,
+              is_speaking: !!vs.is_speaking,
+              timestamp: new Date().toISOString(),
+            });
+          }
+        });
+        this.readyListeners.forEach((fn) => fn(payload.d));
+      } else if (payload.t === 'VOICE_STATE_UPDATE') {
+        const evt: VoiceStateEvent = payload.d;
+        if (evt.relay_id) {
+          this.cachedVoiceStates.set(evt.transmitter_id, evt);
+        } else {
+          this.cachedVoiceStates.delete(evt.transmitter_id);
+        }
+        this.voiceListeners.forEach((fn) => fn(evt));
+      } else if (payload.t === 'PRESENCE_UPDATE') {
+        this.presenceListeners.forEach((fn) => fn(payload.d));
+      }
+    }
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ op: 1 })); // HEARTBEAT
+      }
+    }, this.heartbeatInterval);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  public updateVoiceState(relayId: string | null, isMuted = false, isDeafened = false, isSpeaking = false) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(
+        JSON.stringify({
+          op: 4, // VOICE_STATE_UPDATE
+          d: {
+            relay_id: relayId,
+            is_muted: isMuted,
+            is_deafened: isDeafened,
+            is_speaking: isSpeaking,
+          },
+        })
+      );
+    }
+  }
+
+  public getCachedVoiceUsersForRelay(relayId: string): VoiceStateEvent[] {
+    const list: VoiceStateEvent[] = [];
+    this.cachedVoiceStates.forEach((val) => {
+      if (val.relay_id === relayId) list.push(val);
+    });
+    return list;
+  }
+
+  public onVoiceState(fn: EventListener<VoiceStateEvent>) {
+    this.voiceListeners.add(fn);
+    return () => this.voiceListeners.delete(fn);
+  }
+
+  public onPresence(fn: EventListener<PresenceEvent>) {
+    this.presenceListeners.add(fn);
+    return () => this.presenceListeners.delete(fn);
+  }
+
+  public onReady(fn: EventListener<{ transmitter: any; voice_states: any[] }>) {
+    this.readyListeners.add(fn);
+    return () => this.readyListeners.delete(fn);
+  }
+}
+
+export const gateway = new SubspaceGatewayClient();
