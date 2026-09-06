@@ -79,7 +79,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, x, y, onClose }
     <div
       ref={menuRef}
       role="menu"
-      className="fixed z-[9999] min-w-[210px] bg-[#0E1118] border border-[#232936] rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.85)] p-1.5 backdrop-blur-md animate-in fade-in zoom-in-95 duration-100 select-none text-left"
+      className="fixed z-[9999] min-w-[200px] bg-[#111214] border border-[#1e1f22] rounded-[4px] shadow-[0_8px_16px_rgba(0,0,0,0.6)] p-1.5 select-none text-left"
       style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -91,7 +91,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, x, y, onClose }
           return (
             <div
               key={item.id || `sep-${index}`}
-              className="h-[1px] bg-[#232936] my-1 mx-1.5"
+              className="h-[1px] bg-[#232428] my-1 mx-1"
             />
           );
         }
@@ -127,14 +127,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, x, y, onClose }
                   onClose();
                 }
               }}
-              className={`w-full flex items-center justify-between gap-3 px-3 py-1.5 rounded-lg text-xs font-medium transition-all group ${
+              className={`w-full flex items-center justify-between gap-3 px-2 py-1.5 rounded-[2px] text-xs font-medium transition-colors group ${
                 item.disabled
-                  ? 'opacity-40 cursor-not-allowed text-[#64748B]'
+                  ? 'opacity-40 cursor-not-allowed text-[#80848e]'
                   : item.danger
-                  ? 'text-[#FF3366] hover:bg-[#FF3366]/15 hover:text-[#FF4D7D]'
+                  ? 'text-[#fa777c] hover:bg-[#da373c] hover:text-white'
                   : isSubmenuOpen
-                  ? 'bg-[#1F2533] text-[#F0F4F8]'
-                  : 'text-[#94A3B8] hover:text-[#F0F4F8] hover:bg-[#1A202C]'
+                  ? 'bg-[#5865f2] text-white'
+                  : 'text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
@@ -200,7 +200,7 @@ const Submenu: React.FC<{ items: ContextMenuItem[]; onClose: () => void }> = ({
   return (
     <div
       ref={submenuRef}
-      className={`absolute top-0 min-w-[200px] bg-[#0E1118] border border-[#232936] rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.9)] p-1.5 backdrop-blur-md animate-in fade-in duration-100 select-none z-50 ${
+      className={`absolute top-0 min-w-[190px] bg-[#111214] border border-[#1e1f22] rounded-[4px] shadow-[0_8px_16px_rgba(0,0,0,0.6)] p-1.5 select-none z-50 ${
         placementLeft ? 'right-full mr-1' : 'left-full ml-1'
       }`}
     >
@@ -209,7 +209,7 @@ const Submenu: React.FC<{ items: ContextMenuItem[]; onClose: () => void }> = ({
           return (
             <div
               key={sub.id || `sub-sep-${idx}`}
-              className="h-[1px] bg-[#232936] my-1 mx-1.5"
+              className="h-[1px] bg-[#232428] my-1 mx-1"
             />
           );
         }
@@ -226,12 +226,12 @@ const Submenu: React.FC<{ items: ContextMenuItem[]; onClose: () => void }> = ({
                 onClose();
               }
             }}
-            className={`w-full flex items-center justify-between gap-3 px-3 py-1.5 rounded-lg text-xs font-medium transition-all group ${
+            className={`w-full flex items-center justify-between gap-3 px-2 py-1.5 rounded-[2px] text-xs font-medium transition-colors group ${
               sub.disabled
-                ? 'opacity-40 cursor-not-allowed text-[#64748B]'
+                ? 'opacity-40 cursor-not-allowed text-[#80848e]'
                 : sub.danger
-                ? 'text-[#FF3366] hover:bg-[#FF3366]/15 hover:text-[#FF4D7D]'
-                : 'text-[#94A3B8] hover:text-[#F0F4F8] hover:bg-[#1A202C]'
+                ? 'text-[#fa777c] hover:bg-[#da373c] hover:text-white'
+                : 'text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
             }`}
           >
             <div className="flex items-center gap-2.5 min-w-0">
@@ -296,10 +296,17 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({
     y: 0,
   });
 
+  const handledInCycleRef = useRef(false);
+
   const openContextMenu = (
     event: React.MouseEvent | { clientX: number; clientY: number },
     items: ContextMenuItem[]
   ) => {
+    handledInCycleRef.current = true;
+    setTimeout(() => {
+      handledInCycleRef.current = false;
+    }, 100);
+
     if ('preventDefault' in event && typeof event.preventDefault === 'function') {
       event.preventDefault();
       event.stopPropagation();
@@ -331,9 +338,9 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({
   useEffect(() => {
     const handleGlobalContextMenu = (e: MouseEvent) => {
       e.preventDefault();
-      // If a specific element already triggered openContextMenu, menuState will be updated.
-      // If no element triggered a custom menu (e.g. user clicked background/blank space),
-      // we show the fallbackItems if available, otherwise just suppress.
+      if (handledInCycleRef.current) {
+        return;
+      }
       if (fallbackItems && fallbackItems.length > 0) {
         setMenuState({
           isOpen: true,

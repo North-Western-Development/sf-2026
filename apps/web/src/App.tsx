@@ -3,13 +3,11 @@ import {
   Radio, 
   Hash, 
   Volume2, 
-  Folder, 
-  FolderOpen, 
   Search, 
   Settings, 
   Shield, 
   Send, 
-  Paperclip, 
+  Plus, 
   Mic, 
   MicOff, 
   Headphones, 
@@ -25,11 +23,19 @@ import {
   Trash2,
   MessageSquare,
   Sparkles,
-  Key
+  Key,
+  ChevronDown,
+  ChevronRight,
+  Smile,
+  Compass,
+  Gift,
+  HelpCircle,
+  PhoneOff,
+  Monitor,
+  Video
 } from 'lucide-react';
 import { 
   Modal, 
-  Button, 
   Input, 
   ColorWheel, 
   FontSelector, 
@@ -44,25 +50,26 @@ import {
 } from '@subspace/ui';
 import { usePlatformEnvironment } from './usePlatformEnvironment';
 
-// Interfaces
+// Data Interfaces
 interface Beacon {
   id: string;
   name: string;
-  clusterId?: string;
-  icon?: string;
   unreadCount?: number;
+  iconText: string;
+  gradient: string;
 }
 
-interface Cluster {
+interface ChannelCategory {
   id: string;
   name: string;
-  beaconIds: string[];
+  collapsed?: boolean;
+  channels: Channel[];
 }
 
 interface Channel {
   id: string;
   name: string;
-  type: 'TEXT_RELAY' | 'COMM_LINK' | 'ARCHIVAL_RELAY' | 'VISUAL_RELAY';
+  type: 'text' | 'voice' | 'announcement' | 'archive' | 'gallery';
   unread?: boolean;
 }
 
@@ -79,7 +86,9 @@ interface Message {
   avatar: string;
   content: string;
   timestamp: string;
+  roleColor?: string;
   staffRank?: number;
+  roleBadge?: string;
   isPinned?: boolean;
   reactions?: MessageReaction[];
 }
@@ -88,80 +97,123 @@ export const AppContent: React.FC = () => {
   const platform = usePlatformEnvironment();
   const { openContextMenu } = useContextMenu();
 
-  // State
-  const [selectedBeaconId, setSelectedBeaconId] = useState('beacon-prime');
-  const [selectedChannelId, setSelectedChannelId] = useState('relay-general');
-  const [expandedClusters, setExpandedClusters] = useState<Record<string, boolean>>({ 'cluster-ops': true });
-  
-  // Panels & Modals
+  // Navigation & Active Selections
+  const [selectedBeaconId, setSelectedBeaconId] = useState('beacon-aegis');
+  const [selectedChannelId, setSelectedChannelId] = useState('chan-quantum');
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+
+  // Modals & Panels
   const [isQuickScanOpen, setIsQuickScanOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMemberPanelOpen, setIsMemberPanelOpen] = useState(true);
   const [isPinnedDrawerOpen, setIsPinnedDrawerOpen] = useState(false);
-  const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [quickScanQuery, setQuickScanQuery] = useState('');
+  const [isUserPopoutOpen, setIsUserPopoutOpen] = useState(false);
+  const [inspectedUser, setInspectedUser] = useState<UserProfile | null>(null);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'profile' | 'appearance' | 'voice' | 'badges'>('appearance');
+
+  // Audio / RTC Comm-Link State
+  const [inVoiceRoom, setInVoiceRoom] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isDeafened, setIsDeafened] = useState(false);
 
   // Settings State
   const [accentColor, setAccentColor] = useState('#00F0FF');
   const [selectedFont, setSelectedFont] = useState('default');
   const [messageInput, setMessageInput] = useState('');
+  const [quickScanQuery, setQuickScanQuery] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Audio / Comm-Link state
-  const [isMuted, setIsMuted] = useState(false);
-  const [isDeafened, setIsDeafened] = useState(false);
-  const [inVoiceRoom, setInVoiceRoom] = useState(false);
+  // User Self Identity
+  const [currentUser, setCurrentUser] = useState<UserProfile>({
+    id: 'u-self',
+    name: 'Command Officer (You)',
+    callsign: 'cmdr_you',
+    avatar: '⚡',
+    status: 'online',
+    statusText: 'Quantum double-ratchet synchronized',
+    staffRank: 2,
+    roles: ['Command Staff', 'Sysop', 'Level 4 Clearance'],
+    bio: 'Chief Tactical Communications Officer aboard Aegis Command Station.',
+    memberSince: 'Jan 15, 2023',
+    quantumKeyFingerprint: 'SF-QKD-4412-BB09',
+    isSelf: true,
+  });
 
-  // Toast Helper
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 2500);
   };
 
-  // Clusters & Beacons
-  const [clusters] = useState<Cluster[]>([
-    { id: 'cluster-ops', name: 'Fleet Operations', beaconIds: ['beacon-prime', 'beacon-tactical'] }
-  ]);
-
+  // Beacons / Servers List
   const [beacons, setBeacons] = useState<Beacon[]>([
-    { id: 'beacon-prime', name: 'Aegis Command Station', unreadCount: 3 },
-    { id: 'beacon-tactical', name: 'Vanguard Squadron' },
-    { id: 'beacon-deep', name: 'Outer Rim Science Vessel' },
+    { id: 'beacon-aegis', name: 'Aegis Command Station', unreadCount: 3, iconText: 'AC', gradient: 'linear-gradient(135deg, #00f0ff, #5865f2)' },
+    { id: 'beacon-vanguard', name: 'Vanguard Squadron', iconText: 'VS', gradient: 'linear-gradient(135deg, #7928ca, #ff0080)' },
+    { id: 'beacon-rim', name: 'Outer Rim Coalition', iconText: 'OR', gradient: 'linear-gradient(135deg, #23a55a, #00f0ff)' },
+    { id: 'beacon-sol', name: 'Solaris Research Facility', iconText: 'SR', gradient: 'linear-gradient(135deg, #f0b232, #f23f43)' },
   ]);
 
-  const [channels, setChannels] = useState<Channel[]>([
-    { id: 'relay-announcements', name: 'high-priority-broadcasts', type: 'TEXT_RELAY' },
-    { id: 'relay-general', name: 'quantum-transmissions', type: 'TEXT_RELAY' },
-    { id: 'relay-archives', name: 'mission-flight-logs', type: 'ARCHIVAL_RELAY' },
-    { id: 'relay-visuals', name: 'telemetry-recon-gallery', type: 'VISUAL_RELAY' },
-    { id: 'comm-bridge', name: 'Bridge Comm-Link [Alpha]', type: 'COMM_LINK' },
-  ]);
+  // Channel Categories
+  const categories: ChannelCategory[] = [
+    {
+      id: 'cat-priority',
+      name: 'Priority Broadcasts',
+      channels: [
+        { id: 'chan-announcements', name: 'orbital-bulletins', type: 'announcement' },
+        { id: 'chan-rules', name: 'protocol-directives', type: 'text' },
+      ],
+    },
+    {
+      id: 'cat-relays',
+      name: 'Transmission Relays',
+      channels: [
+        { id: 'chan-quantum', name: 'quantum-transmissions', type: 'text' },
+        { id: 'chan-recon', name: 'telemetry-recon-gallery', type: 'gallery' },
+        { id: 'chan-archives', name: 'flight-logs-archive', type: 'archive' },
+      ],
+    },
+    {
+      id: 'cat-comms',
+      name: 'Voice Comm-Links',
+      channels: [
+        { id: 'chan-bridge', name: 'Bridge Comm-Link [Alpha]', type: 'voice' },
+        { id: 'chan-squadron', name: 'Squadron Tactical [LiveKit]', type: 'voice' },
+      ],
+    },
+  ];
 
+  // Active Messages
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'm1',
       author: 'Fleet Admiral Vance',
       callsign: 'adm_vance',
       avatar: '👨‍🚀',
-      content: 'All subspace arrays report nominal frequency resonance across orbital sector 7.',
-      timestamp: '14:22 UTC',
+      content: 'All subspace arrays report nominal frequency resonance across orbital sector 7. Key ratchet exchange complete.',
+      timestamp: 'Today at 2:22 PM',
+      roleColor: '#00f0ff',
       staffRank: 3,
+      roleBadge: 'ROOT STAFF',
       isPinned: true,
-      reactions: [{ emoji: '⚡', count: 4, users: ['Echo-4', 'Nova'] }, { emoji: '👍', count: 2, users: ['Orion'] }]
+      reactions: [
+        { emoji: '⚡', count: 4, users: ['Echo-4', 'Nova'] },
+        { emoji: '👍', count: 2, users: ['You'] },
+      ],
     },
     {
       id: 'm2',
       author: 'Echo-4 Specialist',
       callsign: 'echo_four',
       avatar: '🛰️',
-      content: 'Acknowledged. Quantum bitfield clearances synchronized. Vault disclaimer confirmed.',
-      timestamp: '14:25 UTC',
+      content: 'Acknowledged Admiral. Telemetry synchronized with quantum bitfield. Vault S3 presigned gateway active.',
+      timestamp: 'Today at 2:25 PM',
+      roleColor: '#23a55a',
       staffRank: 1,
-      reactions: [{ emoji: '🚀', count: 3, users: ['Vance'] }]
+      roleBadge: 'MODERATOR',
+      reactions: [{ emoji: '🚀', count: 3, users: ['Vance'] }],
     },
   ]);
 
-  // Transmitters / Members Mock
+  // Transmitters / Members
   const members: UserProfile[] = [
     {
       id: 'u1',
@@ -169,37 +221,25 @@ export const AppContent: React.FC = () => {
       callsign: 'adm_vance',
       avatar: '👨‍🚀',
       status: 'online',
-      statusText: 'Directing orbital fleet tactical arrays',
+      statusText: 'Directing orbital fleet arrays',
       staffRank: 3,
-      roles: ['High Command', 'Fleet Admiral', 'Quantum Level 5'],
-      bio: 'Leading tactical subspace maneuvers for the Outer Rim Coalition since cycle 2021.',
-      memberSince: '2021-04-12',
+      roles: ['High Command', 'Fleet Admiral', 'Quantum L5'],
+      bio: 'Commander of Allied Subspace Expeditions since cycle 2021.',
+      memberSince: 'Oct 18, 2021',
       quantumKeyFingerprint: 'SF-QKD-9981-FA23',
     },
-    {
-      id: 'u2',
-      name: 'Command Officer (You)',
-      callsign: 'cmdr_you',
-      avatar: '⚡',
-      status: 'online',
-      statusText: 'Ghost Mode (Incognito)',
-      staffRank: 2,
-      roles: ['Command Staff', 'Sysop'],
-      bio: 'Station Commander aboard Aegis Prime Subspace Hub.',
-      memberSince: '2023-01-15',
-      quantumKeyFingerprint: 'SF-QKD-4412-BB09',
-    },
+    currentUser,
     {
       id: 'u3',
       name: 'Echo-4 Specialist',
       callsign: 'echo_four',
       avatar: '🛰️',
       status: 'idle',
-      statusText: 'Analyzing deep space radio telemetry',
+      statusText: 'Listening to radio telemetry',
       staffRank: 1,
-      roles: ['Recon Specialist', 'Orbital Sensor Tech'],
-      bio: 'Telemetry data archivist and frequency alignment operator.',
-      memberSince: '2024-08-01',
+      roles: ['Recon Specialist', 'Sensor Tech'],
+      bio: 'Deep space telemetry archivist.',
+      memberSince: 'Aug 01, 2024',
       quantumKeyFingerprint: 'SF-QKD-1102-EC44',
     },
     {
@@ -209,9 +249,9 @@ export const AppContent: React.FC = () => {
       avatar: '🛸',
       status: 'online',
       statusText: 'FTL Jump in progress...',
-      roles: ['Vanguard Pilot'],
-      bio: 'Long-range scout pilot traversing uncharted subspace corridors.',
-      memberSince: '2025-02-18',
+      roles: ['Vanguard Scout'],
+      bio: 'Reconnaissance flyer charting subspace wormholes.',
+      memberSince: 'Feb 18, 2025',
       quantumKeyFingerprint: 'SF-QKD-8831-NV11',
     },
   ];
@@ -221,7 +261,11 @@ export const AppContent: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        setIsQuickScanOpen((prev) => !prev);
+        setIsQuickScanOpen(prev => !prev);
+      }
+      if (e.key === 'Escape') {
+        setIsUserPopoutOpen(false);
+        setIsSettingsOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -231,95 +275,95 @@ export const AppContent: React.FC = () => {
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageInput.trim()) return;
-    setMessages((prev) => [
+    setMessages(prev => [
       ...prev,
       {
         id: `m-${Date.now()}`,
-        author: 'Command Officer (You)',
-        callsign: 'cmdr_you',
-        avatar: '⚡',
+        author: currentUser.name,
+        callsign: currentUser.callsign,
+        avatar: currentUser.avatar,
         content: messageInput,
-        timestamp: 'Just now',
-        staffRank: 2,
+        timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        roleColor: '#00f0ff',
+        staffRank: currentUser.staffRank,
+        roleBadge: 'COMMAND STAFF',
       },
     ]);
     setMessageInput('');
   };
 
   const handleAddReaction = (messageId: string, emoji: string) => {
-    setMessages((prev) =>
-      prev.map((m) => {
+    setMessages(prev =>
+      prev.map(m => {
         if (m.id !== messageId) return m;
-        const currentReactions = m.reactions || [];
-        const existing = currentReactions.find((r) => r.emoji === emoji);
+        const cur = m.reactions || [];
+        const existing = cur.find(r => r.emoji === emoji);
         if (existing) {
           return {
             ...m,
-            reactions: currentReactions.map((r) =>
-              r.emoji === emoji ? { ...r, count: r.count + 1 } : r
-            ),
+            reactions: cur.map(r => r.emoji === emoji ? { ...r, count: r.count + 1 } : r),
           };
         } else {
           return {
             ...m,
-            reactions: [...currentReactions, { emoji, count: 1, users: ['You'] }],
+            reactions: [...cur, { emoji, count: 1, users: ['You'] }],
           };
         }
       })
     );
-    showToast(`Added reaction ${emoji}`);
+    showToast(`Reacted with ${emoji}`);
   };
 
   const handleTogglePin = (messageId: string) => {
-    setMessages((prev) =>
-      prev.map((m) => {
+    setMessages(prev =>
+      prev.map(m => {
         if (m.id !== messageId) return m;
         const newPinned = !m.isPinned;
-        showToast(newPinned ? 'Pinned transmission to band' : 'Unpinned transmission');
+        showToast(newPinned ? 'Pinned transmission' : 'Unpinned transmission');
         return { ...m, isPinned: newPinned };
       })
     );
   };
 
   const handleDeleteMessage = (messageId: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    setMessages(prev => prev.filter(m => m.id !== messageId));
     showToast('Transmission deleted');
   };
 
-  // Context Menu Builders
+  // Context Menus
   const getBeaconContextMenu = (beacon: Beacon): ContextMenuItem[] => [
     {
       label: 'Mark As Read',
-      icon: <CheckCircle2 className="w-3.5 h-3.5 text-[#00FF88]" />,
+      icon: <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" />,
       onClick: () => {
         setBeacons(prev => prev.map(b => b.id === beacon.id ? { ...b, unreadCount: 0 } : b));
         showToast(`Marked ${beacon.name} as read`);
       },
     },
     {
-      label: 'Invite Transmitters',
-      icon: <Users className="w-3.5 h-3.5 text-[#00F0FF]" />,
+      label: 'Invite People',
+      icon: <Users className="w-3.5 h-3.5" />,
       onClick: () => showToast(`Invite link copied for ${beacon.name}`),
     },
     {
-      label: 'Mute Beacon',
-      icon: <Bell className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Mute Server',
+      icon: <Bell className="w-3.5 h-3.5" />,
       children: [
-        { label: 'For 15 Minutes', onClick: () => showToast(`Muted ${beacon.name} for 15m`) },
-        { label: 'For 1 Hour', onClick: () => showToast(`Muted ${beacon.name} for 1h`) },
-        { label: 'For 8 Hours', onClick: () => showToast(`Muted ${beacon.name} for 8h`) },
-        { label: 'For 24 Hours', onClick: () => showToast(`Muted ${beacon.name} for 24h`) },
-        { label: 'Until I turn it back on', onClick: () => showToast(`Muted ${beacon.name} indefinitely`) },
+        { label: 'For 15 Minutes', onClick: () => showToast(`Muted for 15m`) },
+        { label: 'For 1 Hour', onClick: () => showToast(`Muted for 1h`) },
+        { label: 'For 8 Hours', onClick: () => showToast(`Muted for 8h`) },
+        { label: 'For 24 Hours', onClick: () => showToast(`Muted for 24h`) },
+        { label: 'Until I turn it back on', onClick: () => showToast(`Muted indefinitely`) },
       ],
     },
     {
-      label: 'Beacon Settings',
-      icon: <Settings className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Server Settings',
+      icon: <Settings className="w-3.5 h-3.5" />,
       onClick: () => setIsSettingsOpen(true),
     },
     {
-      label: 'Copy Beacon ID',
-      icon: <Copy className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Copy Server ID',
+      icon: <Copy className="w-3.5 h-3.5" />,
       shortcut: 'Ctrl+C',
       onClick: () => {
         navigator.clipboard?.writeText(beacon.id);
@@ -328,9 +372,9 @@ export const AppContent: React.FC = () => {
     },
     { separator: true },
     {
-      label: 'Leave Beacon Network',
+      label: 'Leave Server',
       danger: true,
-      icon: <Trash2 className="w-3.5 h-3.5 text-[#FF3366]" />,
+      icon: <Trash2 className="w-3.5 h-3.5" />,
       onClick: () => showToast(`Left ${beacon.name}`),
     },
   ];
@@ -338,26 +382,26 @@ export const AppContent: React.FC = () => {
   const getChannelContextMenu = (channel: Channel): ContextMenuItem[] => [
     {
       label: 'Mark As Read',
-      icon: <CheckCircle2 className="w-3.5 h-3.5 text-[#00FF88]" />,
+      icon: <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" />,
       onClick: () => showToast(`Marked #${channel.name} as read`),
     },
     {
-      label: 'Edit Frequency Band',
-      icon: <Settings className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Edit Channel',
+      icon: <Settings className="w-3.5 h-3.5" />,
       onClick: () => showToast(`Editing channel #${channel.name}`),
     },
     {
-      label: 'Mute Band',
-      icon: <Bell className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Mute Channel',
+      icon: <Bell className="w-3.5 h-3.5" />,
       children: [
-        { label: 'For 15 Minutes', onClick: () => showToast(`Muted #${channel.name} for 15m`) },
-        { label: 'For 1 Hour', onClick: () => showToast(`Muted #${channel.name} for 1h`) },
-        { label: 'Until I turn it back on', onClick: () => showToast(`Muted #${channel.name} indefinitely`) },
+        { label: 'For 15 Minutes', onClick: () => showToast(`Muted for 15m`) },
+        { label: 'For 1 Hour', onClick: () => showToast(`Muted for 1h`) },
+        { label: 'Until I turn it back on', onClick: () => showToast(`Muted indefinitely`) },
       ],
     },
     {
-      label: 'Copy Band ID',
-      icon: <Copy className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Copy Channel ID',
+      icon: <Copy className="w-3.5 h-3.5" />,
       onClick: () => {
         navigator.clipboard?.writeText(channel.id);
         showToast(`Copied #${channel.id}`);
@@ -365,74 +409,70 @@ export const AppContent: React.FC = () => {
     },
     { separator: true },
     {
-      label: 'Delete Frequency Band',
+      label: 'Delete Channel',
       danger: true,
-      icon: <Trash2 className="w-3.5 h-3.5 text-[#FF3366]" />,
-      onClick: () => {
-        setChannels(prev => prev.filter(c => c.id !== channel.id));
-        showToast(`Deleted #${channel.name}`);
-      },
+      icon: <Trash2 className="w-3.5 h-3.5" />,
+      onClick: () => showToast(`Deleted #${channel.name}`),
     },
   ];
 
   const getMessageContextMenu = (message: Message): ContextMenuItem[] => [
     {
       label: 'Add Reaction',
-      icon: <Sparkles className="w-3.5 h-3.5 text-[#00F0FF]" />,
+      icon: <Sparkles className="w-3.5 h-3.5 text-[#5865f2]" />,
       children: [
         { label: '👍 Thumbs Up', onClick: () => handleAddReaction(message.id, '👍') },
-        { label: '🚀 Ascent', onClick: () => handleAddReaction(message.id, '🚀') },
-        { label: '⚡ Subspace Pulse', onClick: () => handleAddReaction(message.id, '⚡') },
-        { label: '❤️ Heart Resonance', onClick: () => handleAddReaction(message.id, '❤️') },
-        { label: '🛸 Unidentified Object', onClick: () => handleAddReaction(message.id, '🛸') },
+        { label: '🚀 Rocket', onClick: () => handleAddReaction(message.id, '🚀') },
+        { label: '⚡ Pulse', onClick: () => handleAddReaction(message.id, '⚡') },
+        { label: '❤️ Heart', onClick: () => handleAddReaction(message.id, '❤️') },
       ],
     },
     {
-      label: 'Reply to Transmission',
-      icon: <MessageSquare className="w-3.5 h-3.5 text-[#00F0FF]" />,
+      label: 'Reply',
+      icon: <MessageSquare className="w-3.5 h-3.5" />,
       onClick: () => setMessageInput(`> ${message.content}\n@${message.author} `),
     },
     {
-      label: message.isPinned ? 'Unpin Transmission' : 'Pin Transmission',
-      icon: <Pin className="w-3.5 h-3.5 text-[#00F0FF]" />,
+      label: message.isPinned ? 'Unpin Message' : 'Pin Message',
+      icon: <Pin className="w-3.5 h-3.5" />,
       onClick: () => handleTogglePin(message.id),
     },
     {
-      label: 'Copy Transmission Content',
-      icon: <Copy className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Copy Text',
+      icon: <Copy className="w-3.5 h-3.5" />,
       onClick: () => {
         navigator.clipboard?.writeText(message.content);
-        showToast('Transmission text copied');
+        showToast('Message text copied');
       },
     },
     { separator: true },
     {
-      label: 'Delete Transmission',
+      label: 'Delete Message',
       danger: true,
-      icon: <Trash2 className="w-3.5 h-3.5 text-[#FF3366]" />,
+      icon: <Trash2 className="w-3.5 h-3.5" />,
       onClick: () => handleDeleteMessage(message.id),
     },
   ];
 
   const getUserContextMenu = (user: UserProfile): ContextMenuItem[] => [
     {
-      label: 'View Tactical Dossier',
-      icon: <Shield className="w-3.5 h-3.5 text-[#00F0FF]" />,
-      onClick: () => setSelectedUserProfile(user),
+      label: 'Profile',
+      icon: <Shield className="w-3.5 h-3.5" />,
+      onClick: () => setInspectedUser(user),
     },
     {
-      label: 'Direct Quantum Transmission',
-      icon: <MessageSquare className="w-3.5 h-3.5 text-[#00F0FF]" />,
-      onClick: () => showToast(`Opening direct channel to ${user.name}`),
+      label: 'Direct Message',
+      icon: <MessageSquare className="w-3.5 h-3.5" />,
+      onClick: () => showToast(`Opening DM with ${user.name}`),
     },
     {
-      label: 'Mute Transmitter',
-      icon: <Bell className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Mute User',
+      icon: <Bell className="w-3.5 h-3.5" />,
       onClick: () => showToast(`Muted @${user.callsign}`),
     },
     {
-      label: 'Copy Subspace ID',
-      icon: <Copy className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      label: 'Copy User ID',
+      icon: <Copy className="w-3.5 h-3.5" />,
       onClick: () => {
         navigator.clipboard?.writeText(user.id);
         showToast(`Copied ID for @${user.callsign}`);
@@ -440,41 +480,51 @@ export const AppContent: React.FC = () => {
     },
     { separator: true },
     {
-      label: 'Report Rogue Frequency',
+      label: 'Block',
       danger: true,
-      icon: <Trash2 className="w-3.5 h-3.5 text-[#FF3366]" />,
-      onClick: () => showToast(`Reported @${user.callsign} to High Command`),
+      icon: <Trash2 className="w-3.5 h-3.5" />,
+      onClick: () => showToast(`Blocked @${user.callsign}`),
     },
   ];
 
   const handleAttachmentMenu = (e: React.MouseEvent) => {
     openContextMenu(e, [
       {
-        label: 'Upload File (Vault Presigned Gate)',
-        icon: <Paperclip className="w-3.5 h-3.5 text-[#00F0FF]" />,
+        label: 'Upload a File',
+        icon: <Plus className="w-3.5 h-3.5" />,
         onClick: () => showToast('Vault S3 upload gate triggered'),
       },
       {
-        label: 'Create Archival Flight Thread',
-        icon: <Archive className="w-3.5 h-3.5 text-[#7928CA]" />,
-        onClick: () => showToast('Opened Archival Thread builder'),
+        label: 'Create Archival Thread',
+        icon: <Archive className="w-3.5 h-3.5" />,
+        onClick: () => showToast('Opening Thread builder'),
       },
       {
-        label: 'Quantum Key Handshake (E2EE)',
-        icon: <Key className="w-3.5 h-3.5 text-[#00FF88]" />,
-        onClick: () => showToast('Initiating Double Ratchet key rotation'),
+        label: 'Quantum Key Exchange (E2EE)',
+        icon: <Key className="w-3.5 h-3.5 text-[#23a55a]" />,
+        onClick: () => showToast('Initiated Double Ratchet handshake'),
       },
     ]);
   };
 
   const getChannelIcon = (type: Channel['type']) => {
     switch (type) {
-      case 'COMM_LINK': return <Volume2 className="w-4 h-4 text-[#00F0FF]" />;
-      case 'ARCHIVAL_RELAY': return <Archive className="w-4 h-4 text-[#7928CA]" />;
-      case 'VISUAL_RELAY': return <ImageIcon className="w-4 h-4 text-[#FFB800]" />;
-      case 'TEXT_RELAY':
+      case 'voice': return <Volume2 className="w-4 h-4 text-[#80848e]" />;
+      case 'announcement': return <Activity className="w-4 h-4 text-[#80848e]" />;
+      case 'archive': return <Archive className="w-4 h-4 text-[#80848e]" />;
+      case 'gallery': return <ImageIcon className="w-4 h-4 text-[#80848e]" />;
+      case 'text':
       default:
-        return <Hash className="w-4 h-4 text-[#94A3B8]" />;
+        return <Hash className="w-4 h-4 text-[#80848e]" />;
+    }
+  };
+
+  const getStatusColor = (status: UserProfile['status']) => {
+    switch (status) {
+      case 'online': return 'bg-[#23a55a]';
+      case 'idle': return 'bg-[#f0b232]';
+      case 'dnd': return 'bg-[#f23f43]';
+      case 'ghost': return 'bg-[#80848e]';
     }
   };
 
@@ -482,671 +532,839 @@ export const AppContent: React.FC = () => {
 
   return (
     <div 
-      className="flex h-screen w-screen bg-[#07090E] text-[#F0F4F8] select-none overflow-hidden"
+      className="flex flex-col h-screen w-screen bg-[#1e1f22] text-[#dbdee1] select-none overflow-hidden"
       style={{ fontFamily: currentFontFamily }}
     >
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-4 right-4 z-[99999] bg-[#0E1118] border border-[#00F0FF]/40 text-[#F0F4F8] px-4 py-2.5 rounded-xl shadow-[0_10px_30px_rgba(0,240,255,0.2)] text-xs font-mono flex items-center gap-2 animate-in slide-in-from-top-2">
-          <span className="w-2 h-2 rounded-full bg-[#00F0FF] animate-ping" />
+        <div className="fixed top-3 right-4 z-[99999] bg-[#111214] border border-[#35363c] text-white px-3.5 py-2 rounded-[4px] shadow-2xl text-xs flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#00f0ff] animate-pulse" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* 1. Beacon Strip (Far Left) */}
-      <div className="w-[72px] bg-[#07090E] flex flex-col items-center py-3 gap-2 border-r border-[#232936] shrink-0 z-20">
-        <button
-          onClick={() => setSelectedBeaconId('home')}
-          onContextMenu={(e) => {
-            openContextMenu(e, [
-              { label: 'Subspace Gateway', icon: <Radio className="w-3.5 h-3.5 text-[#00F0FF]" />, onClick: () => setSelectedBeaconId('home') },
-              { label: 'Direct Transmissions', icon: <MessageSquare className="w-3.5 h-3.5 text-[#00F0FF]" />, onClick: () => showToast('Direct transmissions active') },
-              { separator: true },
-              { label: 'Interface Settings', icon: <Settings className="w-3.5 h-3.5 text-[#94A3B8]" />, onClick: () => setIsSettingsOpen(true) },
-            ]);
-          }}
-          className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-200 group relative ${
-            selectedBeaconId === 'home' ? 'bg-[#00F0FF] text-[#07090E]' : 'bg-[#151922] text-[#00F0FF] hover:bg-[#00F0FF]/20'
-          }`}
-          title="Subspace Gateway"
-        >
-          <Radio className="w-6 h-6" />
-          <span className="absolute left-full ml-3 px-2 py-1 bg-[#151922] border border-[#232936] text-xs rounded shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap">
-            Direct Transmissions
+      {/* Titlebar Window Frame */}
+      <div className="h-6 bg-[#1e1f22] border-b border-[#111214] flex items-center justify-between px-3 text-[11px] text-[#949ba4] font-medium shrink-0">
+        <div className="flex items-center gap-2">
+          <Radio className="w-3.5 h-3.5 text-[#00f0ff]" />
+          <span>Subspace Frequency — Aegis Command Station</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono uppercase text-[#00f0ff] bg-[#00f0ff]/10 px-1.5 py-0.5 rounded">
+            {platform.platformName}
           </span>
-        </button>
-
-        <div className="w-8 h-[2px] bg-[#232936] rounded-full my-1" />
-
-        {/* Cluster / Beacons List */}
-        <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto overflow-x-hidden">
-          {/* Cluster Folder */}
-          {clusters.map((cluster) => {
-            const isExpanded = expandedClusters[cluster.id];
-            return (
-              <div key={cluster.id} className="flex flex-col items-center gap-1 w-full">
-                <button
-                  onClick={() => setExpandedClusters(p => ({ ...p, [cluster.id]: !p[cluster.id] }))}
-                  onContextMenu={(e) => {
-                    openContextMenu(e, [
-                      { label: `Cluster: ${cluster.name}`, disabled: true },
-                      { separator: true },
-                      { label: isExpanded ? 'Collapse Cluster' : 'Expand Cluster', onClick: () => setExpandedClusters(p => ({ ...p, [cluster.id]: !p[cluster.id] })) },
-                      { label: 'Cluster Settings', icon: <Settings className="w-3.5 h-3.5 text-[#94A3B8]" />, onClick: () => showToast(`Settings for ${cluster.name}`) },
-                      { separator: true },
-                      { label: 'Disband Cluster', danger: true, icon: <Trash2 className="w-3.5 h-3.5 text-[#FF3366]" />, onClick: () => showToast(`Disbanded ${cluster.name}`) },
-                    ]);
-                  }}
-                  className="w-12 h-10 rounded-xl bg-[#151922]/70 hover:bg-[#1C222E] flex items-center justify-center text-[#94A3B8] transition-all"
-                  title={`Cluster: ${cluster.name}`}
-                >
-                  {isExpanded ? <FolderOpen className="w-5 h-5 text-[#00F0FF]" /> : <Folder className="w-5 h-5" />}
-                </button>
-                {isExpanded && cluster.beaconIds.map((bId) => {
-                  const beacon = beacons.find(b => b.id === bId);
-                  if (!beacon) return null;
-                  const isSelected = selectedBeaconId === beacon.id;
-                  return (
-                    <button
-                      key={beacon.id}
-                      onClick={() => setSelectedBeaconId(beacon.id)}
-                      onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
-                      className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-sm transition-all duration-200 relative group ${
-                        isSelected 
-                          ? 'bg-[#00F0FF] text-[#07090E] rounded-xl shadow-[0_0_15px_rgba(0,240,255,0.4)]' 
-                          : 'bg-[#151922] text-[#94A3B8] hover:text-[#F0F4F8] hover:rounded-xl hover:bg-[#1C222E]'
-                      }`}
-                    >
-                      {beacon.name.substring(0, 2).toUpperCase()}
-                      {beacon.unreadCount && beacon.unreadCount > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-[#FF3366] text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-mono border-2 border-[#07090E]">
-                          {beacon.unreadCount}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })}
-
-          {/* Standalone Beacon */}
-          {beacons.filter(b => !clusters.some(c => c.beaconIds.includes(b.id))).map((beacon) => {
-            const isSelected = selectedBeaconId === beacon.id;
-            return (
-              <button
-                key={beacon.id}
-                onClick={() => setSelectedBeaconId(beacon.id)}
-                onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
-                className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-sm transition-all duration-200 relative ${
-                  isSelected 
-                    ? 'bg-[#00F0FF] text-[#07090E] rounded-xl shadow-[0_0_15px_rgba(0,240,255,0.4)]' 
-                    : 'bg-[#151922] text-[#94A3B8] hover:text-[#F0F4F8] hover:rounded-xl hover:bg-[#1C222E]'
-                }`}
-              >
-                {beacon.name.substring(0, 2).toUpperCase()}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Discovery & Settings */}
-        <div className="flex flex-col items-center gap-2 pt-2 border-t border-[#232936]">
-          <button 
-            onClick={() => setIsSettingsOpen(true)}
-            className="w-12 h-12 rounded-2xl bg-[#151922] hover:bg-[#1C222E] flex items-center justify-center text-[#94A3B8] hover:text-[#00F0FF] transition-all"
-            title="Interface & Quantum Settings"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
-      {/* 2. Channels / Frequency Bands Sidebar */}
-      <div className="w-60 bg-[#0B0E14] flex flex-col border-r border-[#232936] shrink-0">
-        {/* Beacon Header */}
-        <div 
-          className="h-14 px-4 border-b border-[#232936] flex items-center justify-between font-semibold tracking-wide text-[#F0F4F8] cursor-pointer hover:bg-[#151922]/50 transition-colors"
-          onClick={(e) => {
-            const currentBeacon = beacons.find(b => b.id === selectedBeaconId) || beacons[0];
-            openContextMenu(e, getBeaconContextMenu(currentBeacon));
-          }}
-          onContextMenu={(e) => {
-            const currentBeacon = beacons.find(b => b.id === selectedBeaconId) || beacons[0];
-            openContextMenu(e, getBeaconContextMenu(currentBeacon));
-          }}
-        >
-          <span className="truncate">
-            {beacons.find(b => b.id === selectedBeaconId)?.name || 'Aegis Command Station'}
-          </span>
-          <span className="w-2 h-2 rounded-full bg-[#00FF88] shadow-[0_0_8px_#00FF88]" title="Beacon Online" />
-        </div>
-
-        {/* Channels List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B] px-2 py-1 flex items-center justify-between">
-            <span>Frequency Bands</span>
-            <Activity className="w-3 h-3 text-[#00F0FF]" />
-          </div>
-
-          {channels.map((chan) => {
-            const isSelected = selectedChannelId === chan.id;
-            return (
-              <button
-                key={chan.id}
-                onClick={() => {
-                  setSelectedChannelId(chan.id);
-                  if (chan.type === 'COMM_LINK') {
-                    setInVoiceRoom(true);
-                  }
-                }}
-                onContextMenu={(e) => openContextMenu(e, getChannelContextMenu(chan))}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-                  isSelected
-                    ? 'bg-[#151922] text-[#00F0FF] border border-[#00F0FF]/30 shadow-sm'
-                    : 'text-[#94A3B8] hover:text-[#F0F4F8] hover:bg-[#151922]/60'
-                }`}
-              >
-                {getChannelIcon(chan.type)}
-                <span className="truncate">{chan.name}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* User Identity / Audio Controls Footer */}
-        <div className="p-3 bg-[#07090E] border-t border-[#232936] flex items-center justify-between">
-          <div 
-            className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
-            onClick={() => setSelectedUserProfile(members[1])}
-            onContextMenu={(e) => openContextMenu(e, getUserContextMenu(members[1]))}
-          >
-            <div className="w-8 h-8 rounded-lg bg-[#151922] border border-[#232936] flex items-center justify-center text-sm font-bold text-[#00F0FF]">
-              ⚡
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-[#F0F4F8] truncate flex items-center gap-1">
-                Cmdr Vance
-                <Shield className="w-3 h-3 text-[#00F0FF]" />
-              </div>
-              <div className="text-[10px] text-[#00FF88] font-mono">Ghost Mode (Incognito)</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 text-[#94A3B8]">
-            <button
-              onClick={() => setIsMuted(p => !p)}
-              className={`p-1.5 rounded-lg hover:bg-[#151922] transition-colors ${isMuted ? 'text-[#FF3366]' : 'hover:text-[#F0F4F8]'}`}
-              title={isMuted ? 'Unmute Mic' : 'Mute Mic'}
-            >
-              {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={() => setIsDeafened(p => !p)}
-              className={`p-1.5 rounded-lg hover:bg-[#151922] transition-colors ${isDeafened ? 'text-[#FF3366]' : 'hover:text-[#F0F4F8]'}`}
-              title={isDeafened ? 'Undeafen Audio' : 'Deafen Audio'}
-            >
-              <Headphones className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="hover:text-white cursor-pointer">—</span>
+            <span className="hover:text-white cursor-pointer">□</span>
+            <span className="hover:text-[#f23f43] cursor-pointer">✕</span>
           </div>
         </div>
       </div>
 
-      {/* 3. Main Chat Viewport & Relay Feed */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#07090E]">
-        {/* Top Header */}
-        <div className="h-14 px-6 border-b border-[#232936] flex items-center justify-between shrink-0 bg-[#0B0E14]/40 backdrop-blur">
-          <div className="flex items-center gap-3 min-w-0">
-            <Hash className="w-5 h-5 text-[#00F0FF]" />
-            <div className="font-semibold text-[#F0F4F8] tracking-wide text-sm truncate">
-              {channels.find(c => c.id === selectedChannelId)?.name || 'transmission-relay'}
-            </div>
-            <span className="text-xs text-[#64748B] hidden md:inline border-l border-[#232936] pl-3">
-              Direct Quantum Encryption Active (Double Ratchet Subspace)
-            </span>
+      {/* Main Multi-Panel Workspace */}
+      <div className="flex flex-1 min-h-0">
+        {/* 1. Server Rail (Far Left) - Discord Authentic 72px */}
+        <div className="w-[72px] bg-[#1e1f22] flex flex-col items-center py-3 gap-2 shrink-0 z-20">
+          {/* Subspace Gateway / Home DM Button */}
+          <div className="relative flex items-center justify-center w-full group">
+            {/* White Capsule Indicator Pill */}
+            <span 
+              className={`absolute left-0 w-1 bg-white rounded-r-full transition-all duration-200 ${
+                selectedBeaconId === 'home' ? 'h-10' : 'h-0 group-hover:h-5'
+              }`} 
+            />
+            <button
+              onClick={() => setSelectedBeaconId('home')}
+              onContextMenu={(e) => {
+                openContextMenu(e, [
+                  { label: 'Direct Messages', onClick: () => setSelectedBeaconId('home') },
+                  { label: 'Subspace Quick Scan', shortcut: 'Ctrl+K', onClick: () => setIsQuickScanOpen(true) },
+                  { separator: true },
+                  { label: 'Settings', onClick: () => setIsSettingsOpen(true) },
+                ]);
+              }}
+              className={`w-12 h-12 flex items-center justify-center transition-all duration-200 ${
+                selectedBeaconId === 'home'
+                  ? 'rounded-[16px] bg-[#00f0ff] text-[#07090e] shadow-[0_0_20px_rgba(0,240,255,0.4)]'
+                  : 'rounded-[24px] hover:rounded-[16px] bg-[#313338] text-[#dbdee1] hover:bg-[#00f0ff] hover:text-[#07090e]'
+              }`}
+              title="Direct Messages"
+            >
+              <Radio className="w-6 h-6" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Quick Scan Trigger */}
-            <button
-              onClick={() => setIsQuickScanOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#151922] border border-[#232936] text-xs text-[#94A3B8] hover:text-[#F0F4F8] hover:border-[#00F0FF]/40 transition-all"
-            >
-              <Search className="w-3.5 h-3.5 text-[#00F0FF]" />
-              <span className="hidden sm:inline">Quick Scan</span>
-              <kbd className="px-1.5 py-0.5 rounded bg-[#0B0E14] text-[10px] font-mono border border-[#232936]">
-                Ctrl+K
-              </kbd>
-            </button>
+          <div className="w-8 h-[2px] bg-[#35363c] rounded-[1px] my-1" />
 
-            {/* Pinned Messages Button */}
-            <button
-              onClick={() => setIsPinnedDrawerOpen(p => !p)}
-              className={`p-2 rounded-xl border transition-all ${
-                isPinnedDrawerOpen 
-                  ? 'bg-[#00F0FF]/20 border-[#00F0FF] text-[#00F0FF]' 
-                  : 'bg-[#151922] border-[#232936] text-[#94A3B8] hover:text-[#F0F4F8]'
-              }`}
-              title="Pinned Transmissions"
-            >
-              <Pin className="w-4 h-4" />
-            </button>
-
-            {/* Members Panel Toggle */}
-            <button
-              onClick={() => setIsMemberPanelOpen(p => !p)}
-              className={`p-2 rounded-xl border transition-all ${
-                isMemberPanelOpen 
-                  ? 'bg-[#00F0FF]/20 border-[#00F0FF] text-[#00F0FF]' 
-                  : 'bg-[#151922] border-[#232936] text-[#94A3B8] hover:text-[#F0F4F8]'
-              }`}
-              title="Transmitters Dossier List"
-            >
-              <Users className="w-4 h-4" />
-            </button>
-
-            {/* Platform indicator badge */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#151922] border border-[#232936] text-[11px] font-mono ml-1">
-              <span className="w-2 h-2 rounded-full bg-[#00F0FF]" />
-              <span className="uppercase text-[#94A3B8]">{platform.platformName}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Messages Feed */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {inVoiceRoom && (
-            <div className="p-4 rounded-2xl bg-[#151922]/80 border border-[#00F0FF]/30 mb-4 shadow-[0_0_20px_rgba(0,240,255,0.1)] flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#00F0FF]/20 flex items-center justify-center text-[#00F0FF]">
-                  <Volume2 className="w-5 h-5 animate-pulse" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-[#F0F4F8]">Bridge Comm-Link [Alpha] Connected</h4>
-                  <p className="text-xs text-[#94A3B8]">LiveKit RTC Subchannel • 128 kbps Quantum Opus</p>
-                </div>
-              </div>
-              <Button variant="danger" size="sm" onClick={() => setInVoiceRoom(false)}>
-                Disconnect Link
-              </Button>
-            </div>
-          )}
-
-          {messages.map((m) => {
-            const authorMember = members.find(mem => mem.name === m.author) || {
-              id: `user-${m.author}`,
-              name: m.author,
-              callsign: m.callsign || 'transmitter',
-              avatar: m.avatar,
-              status: 'online' as const,
-              staffRank: m.staffRank,
-            };
-
-            return (
-              <div 
-                key={m.id} 
-                onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                className="flex items-start gap-4 group hover:bg-[#151922]/40 -mx-4 px-4 py-2.5 rounded-2xl transition-colors relative"
-              >
-                {/* Floating Message Action Bar on Hover */}
-                <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                  <MessageActionBar
-                    onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
-                    onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
-                    onPin={() => handleTogglePin(m.id)}
-                    onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
+          {/* Servers / Beacons List */}
+          <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto overflow-x-hidden">
+            {beacons.map((beacon) => {
+              const isSelected = selectedBeaconId === beacon.id;
+              return (
+                <div key={beacon.id} className="relative flex items-center justify-center w-full group">
+                  {/* Active / Unread Pill */}
+                  <span 
+                    className={`absolute left-0 w-1 bg-white rounded-r-full transition-all duration-200 ${
+                      isSelected 
+                        ? 'h-10' 
+                        : beacon.unreadCount 
+                        ? 'h-2 group-hover:h-5' 
+                        : 'h-0 group-hover:h-5'
+                    }`} 
                   />
-                </div>
-
-                {/* Avatar with click for profile popout */}
-                <div 
-                  onClick={() => setSelectedUserProfile(authorMember)}
-                  onContextMenu={(e) => {
-                    e.stopPropagation();
-                    openContextMenu(e, getUserContextMenu(authorMember));
-                  }}
-                  className="w-10 h-10 rounded-xl bg-[#151922] border border-[#232936] flex items-center justify-center text-lg shrink-0 cursor-pointer hover:scale-105 transition-transform"
-                >
-                  {m.avatar}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span 
-                      onClick={() => setSelectedUserProfile(authorMember)}
-                      className="text-sm font-semibold text-[#F0F4F8] cursor-pointer hover:underline"
-                    >
-                      {m.author}
-                    </span>
-                    {m.staffRank && m.staffRank > 0 && (
-                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#00F0FF]/20 text-[#00F0FF] font-bold flex items-center gap-1">
-                        <Shield className="w-2.5 h-2.5" />
-                        {m.staffRank === 3 ? 'Root Staff' : m.staffRank === 2 ? 'Admin' : 'Moderator'}
+                  <button
+                    onClick={() => setSelectedBeaconId(beacon.id)}
+                    onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
+                    style={{ background: isSelected ? beacon.gradient : undefined }}
+                    className={`w-12 h-12 flex items-center justify-center font-bold text-sm transition-all duration-200 relative ${
+                      isSelected 
+                        ? 'rounded-[16px] text-white shadow-lg' 
+                        : 'rounded-[24px] hover:rounded-[16px] bg-[#313338] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
+                    }`}
+                  >
+                    {beacon.iconText}
+                    {beacon.unreadCount && beacon.unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-[#f23f43] text-white text-[10px] font-bold h-5 min-w-[20px] px-1 rounded-full flex items-center justify-center border-2 border-[#1e1f22]">
+                        {beacon.unreadCount}
                       </span>
                     )}
-                    <span className="text-xs text-[#64748B]">{m.timestamp}</span>
-                    {m.isPinned && (
-                      <span className="text-[10px] text-[#00F0FF] font-mono flex items-center gap-0.5 ml-1">
-                        <Pin className="w-2.5 h-2.5" /> Pinned
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 text-sm text-[#E2E8F0] leading-relaxed break-words">
-                    {m.content}
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Add Server & Discovery Buttons */}
+            <div className="relative flex items-center justify-center w-full group mt-1">
+              <span className="absolute left-0 w-1 bg-white rounded-r-full h-0 group-hover:h-5 transition-all" />
+              <button
+                onClick={() => showToast('Open Beacon Discovery')}
+                className="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center transition-all duration-200"
+                title="Add a Server"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="relative flex items-center justify-center w-full group">
+              <span className="absolute left-0 w-1 bg-white rounded-r-full h-0 group-hover:h-5 transition-all" />
+              <button
+                onClick={() => showToast('Explore Public Beacons')}
+                className="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center transition-all duration-200"
+                title="Explore Discoverable Servers"
+              >
+                <Compass className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Channel Sidebar (240px) - Discord Authentic */}
+        <div className="w-60 bg-[#2b2d31] flex flex-col shrink-0 border-r border-[#1f2023]/60">
+          {/* Server Dropdown Header */}
+          <div 
+            onClick={(e) => {
+              const currentBeacon = beacons.find(b => b.id === selectedBeaconId) || beacons[0];
+              openContextMenu(e, getBeaconContextMenu(currentBeacon));
+            }}
+            onContextMenu={(e) => {
+              const currentBeacon = beacons.find(b => b.id === selectedBeaconId) || beacons[0];
+              openContextMenu(e, getBeaconContextMenu(currentBeacon));
+            }}
+            className="h-12 px-4 border-b border-[#1f2023] flex items-center justify-between font-bold text-white shadow-sm hover:bg-[#35373c] cursor-pointer transition-colors"
+          >
+            <span className="truncate text-sm">
+              {beacons.find(b => b.id === selectedBeaconId)?.name || 'Aegis Command'}
+            </span>
+            <ChevronDown className="w-4 h-4 text-[#949ba4]" />
+          </div>
+
+          {/* Channels & Categories List */}
+          <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+            {categories.map((cat) => {
+              const isCollapsed = collapsedCategories[cat.id];
+              return (
+                <div key={cat.id}>
+                  {/* Category Header */}
+                  <div
+                    onClick={() => setCollapsedCategories(p => ({ ...p, [cat.id]: !p[cat.id] }))}
+                    className="flex items-center justify-between text-[12px] font-bold tracking-wider text-[#949ba4] uppercase px-1 py-1 hover:text-white cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-1">
+                      {isCollapsed ? (
+                        <ChevronRight className="w-3 h-3 text-[#949ba4]" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3 text-[#949ba4]" />
+                      )}
+                      <span>{cat.name}</span>
+                    </div>
+                    <Plus 
+                      className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 hover:text-white transition-opacity" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        showToast(`Create Channel in ${cat.name}`);
+                      }}
+                    />
                   </div>
 
-                  {/* Reactions Chips */}
-                  {m.reactions && m.reactions.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {m.reactions.map((r, rIdx) => (
-                        <button
-                          key={rIdx}
-                          onClick={() => handleAddReaction(m.id, r.emoji)}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#151922] border border-[#232936] hover:border-[#00F0FF]/40 text-xs text-[#94A3B8] transition-all"
-                        >
-                          <span>{r.emoji}</span>
-                          <span className="font-mono text-[11px] text-[#F0F4F8]">{r.count}</span>
-                        </button>
-                      ))}
+                  {/* Channel Items */}
+                  {!isCollapsed && (
+                    <div className="space-y-0.5 mt-0.5">
+                      {cat.channels.map((chan) => {
+                        const isSelected = selectedChannelId === chan.id;
+                        return (
+                          <div
+                            key={chan.id}
+                            data-channel-id={chan.id}
+                            onClick={() => {
+                              setSelectedChannelId(chan.id);
+                              if (chan.type === 'voice') {
+                                setInVoiceRoom(true);
+                              }
+                            }}
+                            onContextMenu={(e) => openContextMenu(e, getChannelContextMenu(chan))}
+                            className={`group flex items-center gap-2 px-2 py-1.5 rounded-[4px] text-sm font-medium transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#35373c] text-white'
+                                : 'text-[#949ba4] hover:bg-[#35373c]/60 hover:text-[#dbdee1]'
+                            }`}
+                          >
+                            {getChannelIcon(chan.type)}
+                            <span className="truncate">{chan.name}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Message Input Bar */}
-        <form onSubmit={handleSendMessage} className="p-4 bg-[#07090E] border-t border-[#232936]">
-          <div className="flex items-center gap-2 bg-[#151922] border border-[#232936] rounded-2xl px-4 py-2.5 focus-within:border-[#00F0FF] focus-within:shadow-[0_0_20px_rgba(0,240,255,0.15)] transition-all">
-            <button
-              type="button"
-              onClick={handleAttachmentMenu}
-              className="p-1.5 text-[#94A3B8] hover:text-[#00F0FF] transition-colors"
-              title="Add Quantum Attachment or Broadcast"
-            >
-              <Paperclip className="w-5 h-5" />
-            </button>
-            <input
-              type="text"
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              placeholder="Send transmission to #quantum-transmissions (2,000 char limit)..."
-              maxLength={2000}
-              className="flex-1 bg-transparent text-[#F0F4F8] placeholder-[#64748B] text-sm outline-none"
-            />
-            <Button type="submit" variant="primary" size="sm" className="rounded-xl">
-              <Send className="w-4 h-4 mr-1" /> Transmit
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      {/* 4. Transmitters / Member Dossier Sidebar (Far Right) */}
-      {isMemberPanelOpen && (
-        <div className="w-60 bg-[#0B0E14] border-l border-[#232936] flex flex-col shrink-0">
-          <div className="h-14 px-4 border-b border-[#232936] flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-[#64748B]">
-            <span>Active Transmitters</span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#151922] text-[#00F0FF]">
-              {members.length}
-            </span>
+              );
+            })}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-4">
-            {/* Command Staff Section */}
-            <div>
-              <div className="text-[11px] font-semibold uppercase text-[#64748B] px-2 mb-2 tracking-wider">
-                Fleet Command — {members.filter(m => m.staffRank && m.staffRank >= 2).length}
-              </div>
-              <div className="space-y-1">
-                {members.filter(m => m.staffRank && m.staffRank >= 2).map((m) => (
-                  <div
-                    key={m.id}
-                    onClick={() => setSelectedUserProfile(m)}
-                    onContextMenu={(e) => openContextMenu(e, getUserContextMenu(m))}
-                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[#151922] cursor-pointer transition-colors group"
-                  >
-                    <div className="relative">
-                      <div className="w-8 h-8 rounded-lg bg-[#151922] border border-[#232936] flex items-center justify-center text-sm">
-                        {m.avatar}
-                      </div>
-                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#00FF88] border-2 border-[#0B0E14]" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-medium text-[#F0F4F8] truncate flex items-center gap-1 group-hover:text-[#00F0FF]">
-                        {m.name}
-                        <Shield className="w-2.5 h-2.5 text-[#00F0FF]" />
-                      </div>
-                      <div className="text-[10px] text-[#64748B] truncate">
-                        {m.statusText || `@${m.callsign}`}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Enlisted Crew Section */}
-            <div>
-              <div className="text-[11px] font-semibold uppercase text-[#64748B] px-2 mb-2 tracking-wider">
-                Enlisted Transmitters — {members.filter(m => !m.staffRank || m.staffRank < 2).length}
-              </div>
-              <div className="space-y-1">
-                {members.filter(m => !m.staffRank || m.staffRank < 2).map((m) => (
-                  <div
-                    key={m.id}
-                    onClick={() => setSelectedUserProfile(m)}
-                    onContextMenu={(e) => openContextMenu(e, getUserContextMenu(m))}
-                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-[#151922] cursor-pointer transition-colors group"
-                  >
-                    <div className="relative">
-                      <div className="w-8 h-8 rounded-lg bg-[#151922] border border-[#232936] flex items-center justify-center text-sm">
-                        {m.avatar}
-                      </div>
-                      <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0B0E14] ${
-                        m.status === 'online' ? 'bg-[#00FF88]' : m.status === 'idle' ? 'bg-[#FFB800]' : 'bg-[#64748B]'
-                      }`} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-medium text-[#F0F4F8] truncate group-hover:text-[#00F0FF]">
-                        {m.name}
-                      </div>
-                      <div className="text-[10px] text-[#64748B] truncate">
-                        {m.statusText || `@${m.callsign}`}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Pinned Transmissions Flyout Drawer */}
-      {isPinnedDrawerOpen && (
-        <div className="w-80 bg-[#0B0E14] border-l border-[#232936] flex flex-col shrink-0 animate-in slide-in-from-right duration-200">
-          <div className="h-14 px-4 border-b border-[#232936] flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#F0F4F8]">
-              <Pin className="w-4 h-4 text-[#00F0FF]" />
-              <span>Pinned Transmissions</span>
-            </div>
-            <button 
-              onClick={() => setIsPinnedDrawerOpen(false)}
-              className="p-1 rounded-lg text-[#64748B] hover:text-[#F0F4F8] hover:bg-[#151922]"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {messages.filter(m => m.isPinned).length === 0 ? (
-              <div className="text-xs text-[#64748B] text-center mt-8">
-                No transmissions pinned to this frequency band yet.
-              </div>
-            ) : (
-              messages.filter(m => m.isPinned).map(m => (
-                <div 
-                  key={`pin-${m.id}`}
-                  onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                  className="p-3 rounded-xl bg-[#151922] border border-[#232936] space-y-2 hover:border-[#00F0FF]/40 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-[#F0F4F8]">{m.author}</span>
-                    <span className="text-[10px] text-[#64748B]">{m.timestamp}</span>
-                  </div>
-                  <p className="text-xs text-[#94A3B8] leading-relaxed">{m.content}</p>
-                  <div className="flex justify-end gap-2 pt-1 border-t border-[#232936]/60">
-                    <button
-                      onClick={() => handleTogglePin(m.id)}
-                      className="text-[10px] text-[#FF3366] hover:underline"
-                    >
-                      Unpin
-                    </button>
-                  </div>
+          {/* Connected Voice Bar (when active) */}
+          {inVoiceRoom && (
+            <div className="bg-[#232428] border-t border-[#1f2023] px-3 py-2 text-xs">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#23a55a] animate-ping" />
+                  <span className="font-semibold text-[#23a55a]">Voice Connected</span>
                 </div>
-              ))
+                <button 
+                  onClick={() => setInVoiceRoom(false)}
+                  className="p-1 rounded hover:bg-[#35373c] text-[#f23f43]"
+                  title="Disconnect"
+                >
+                  <PhoneOff className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="text-[11px] text-[#949ba4] truncate mb-2">
+                Bridge Comm-Link [Alpha] / 128 kbps
+              </div>
+              <div className="flex gap-1.5">
+                <button className="flex-1 bg-[#2b2d31] hover:bg-[#35373c] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1">
+                  <Video className="w-3.5 h-3.5" /> Video
+                </button>
+                <button className="flex-1 bg-[#2b2d31] hover:bg-[#35373c] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1">
+                  <Monitor className="w-3.5 h-3.5" /> Share Screen
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* User Status Bar Footer (Discord Authentic 52px) */}
+          <div className="h-[52px] bg-[#232428] px-2 py-1.5 flex items-center justify-between shrink-0 relative">
+            {/* User Identity Pill */}
+            <div
+              onClick={() => setIsUserPopoutOpen(p => !p)}
+              onContextMenu={(e) => openContextMenu(e, getUserContextMenu(currentUser))}
+              className="flex items-center gap-2 p-1 -ml-1 rounded-[4px] hover:bg-[#35373c] cursor-pointer min-w-0 flex-1 transition-colors"
+            >
+              <div className="relative shrink-0">
+                <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-base">
+                  {currentUser.avatar}
+                </div>
+                <span 
+                  className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#232428] ${getStatusColor(currentUser.status)}`} 
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-white truncate flex items-center gap-1">
+                  {currentUser.name}
+                </div>
+                <div className="text-[11px] text-[#949ba4] truncate">
+                  {currentUser.statusText || `@${currentUser.callsign}`}
+                </div>
+              </div>
+            </div>
+
+            {/* Audio & Settings Buttons */}
+            <div className="flex items-center text-[#b5bac1]">
+              <button
+                onClick={() => setIsMuted(p => !p)}
+                className={`p-1.5 rounded-[4px] hover:bg-[#35373c] transition-colors ${isMuted ? 'text-[#f23f43]' : 'hover:text-[#dbdee1]'}`}
+                title={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => setIsDeafened(p => !p)}
+                className={`p-1.5 rounded-[4px] hover:bg-[#35373c] transition-colors ${isDeafened ? 'text-[#f23f43]' : 'hover:text-[#dbdee1]'}`}
+                title={isDeafened ? 'Undeafen' : 'Deafen'}
+              >
+                <Headphones className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-1.5 rounded-[4px] hover:bg-[#35373c] hover:text-[#dbdee1] transition-colors"
+                title="User Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* User Popout Panel (Discord Exact) */}
+            {isUserPopoutOpen && (
+              <div className="absolute bottom-[56px] left-2 z-50">
+                <ProfileCard
+                  user={currentUser}
+                  onStatusChange={(st) => {
+                    setCurrentUser(p => ({ ...p, status: st }));
+                    showToast(`Status updated to ${st}`);
+                  }}
+                  onClose={() => setIsUserPopoutOpen(false)}
+                />
+              </div>
             )}
           </div>
         </div>
-      )}
 
-      {/* User Tactical Dossier Modal Popout */}
+        {/* 3. Main Chat Viewport (Discord Authentic) */}
+        <div className="flex-1 flex flex-col min-w-0 bg-[#313338] h-full">
+          {/* Top Header Bar */}
+          <div className="h-12 px-4 border-b border-[#232428] flex items-center justify-between shrink-0 bg-[#313338] shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <Hash className="w-6 h-6 text-[#80848e]" />
+              <span className="font-bold text-white text-base truncate">
+                quantum-transmissions
+              </span>
+              <div className="w-[1px] h-4 bg-[#4e5058] mx-2 hidden sm:block" />
+              <span className="text-xs text-[#949ba4] truncate hidden sm:inline">
+                Direct Quantum Encryption Active (Double Ratchet Subspace)
+              </span>
+            </div>
+
+            {/* Right Action Icons */}
+            <div className="flex items-center gap-3 text-[#b5bac1]">
+              <button
+                onClick={() => setIsPinnedDrawerOpen(p => !p)}
+                className={`p-1 rounded-[4px] hover:bg-[#35373c] transition-colors ${isPinnedDrawerOpen ? 'text-white' : 'hover:text-white'}`}
+                title="Pinned Messages"
+              >
+                <Pin className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setIsMemberPanelOpen(p => !p)}
+                className={`p-1 rounded-[4px] hover:bg-[#35373c] transition-colors ${isMemberPanelOpen ? 'text-white' : 'hover:text-white'}`}
+                title="Member List"
+              >
+                <Users className="w-5 h-5" />
+              </button>
+
+              {/* Quick Search */}
+              <div 
+                onClick={() => setIsQuickScanOpen(true)}
+                className="bg-[#1e1f22] text-[#949ba4] text-xs px-2 py-1 rounded-[4px] flex items-center gap-2 w-36 hover:w-52 transition-all cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5 text-[#80848e]" />
+                <span className="truncate">Search</span>
+                <kbd className="text-[10px] font-mono bg-[#2b2d31] px-1 rounded ml-auto">Ctrl+K</kbd>
+              </div>
+
+              <button 
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-1 rounded-[4px] hover:bg-[#35373c] hover:text-white transition-colors"
+                title="Help"
+              >
+                <HelpCircle className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Messages Feed (Timeline Style) */}
+          <div className="flex-1 overflow-y-auto py-4 select-text">
+            {/* Channel Welcome Banner */}
+            <div className="px-4 mb-6">
+              <div className="w-16 h-16 rounded-full bg-[#404249] flex items-center justify-center text-white mb-2">
+                <Hash className="w-10 h-10" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Welcome to #quantum-transmissions!</h2>
+              <p className="text-sm text-[#949ba4] mt-1">This is the start of the #quantum-transmissions frequency band.</p>
+            </div>
+
+            {/* Date Separator */}
+            <div className="relative flex items-center justify-center my-4 mx-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#3f4147]" />
+              </div>
+              <span className="relative bg-[#313338] px-2 text-[12px] font-semibold text-[#949ba4]">
+                September 6, 2026
+              </span>
+            </div>
+
+            {/* Messages */}
+            <div className="space-y-0.5">
+              {messages.map((m) => {
+                const authorMember = members.find(mem => mem.name === m.author) || {
+                  id: `u-${m.author}`,
+                  name: m.author,
+                  callsign: m.callsign,
+                  avatar: m.avatar,
+                  status: 'online' as const,
+                  staffRank: m.staffRank,
+                };
+
+                return (
+                  <div
+                    key={m.id}
+                    data-message-id={m.id}
+                    onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                    className="px-4 py-1 hover:bg-[#2e3035] transition-colors relative group flex items-start gap-4"
+                  >
+                    {/* Floating Hover Action Bar */}
+                    <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <MessageActionBar
+                        onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
+                        onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
+                        onPin={() => handleTogglePin(m.id)}
+                        onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                      />
+                    </div>
+
+                    {/* Avatar */}
+                    <div
+                      onClick={() => setInspectedUser(authorMember)}
+                      className="w-10 h-10 rounded-full bg-[#111214] flex items-center justify-center text-lg shrink-0 cursor-pointer hover:opacity-80 transition-opacity mt-0.5"
+                    >
+                      {m.avatar}
+                    </div>
+
+                    {/* Message Body */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <span
+                          onClick={() => setInspectedUser(authorMember)}
+                          style={{ color: m.roleColor || '#f2f3f5' }}
+                          className="font-medium text-[15px] hover:underline cursor-pointer"
+                        >
+                          {m.author}
+                        </span>
+
+                        {m.roleBadge && (
+                          <span className="bg-[#5865f2] text-white text-[10px] font-bold px-1 rounded uppercase">
+                            {m.roleBadge}
+                          </span>
+                        )}
+
+                        <span className="text-[11px] text-[#949ba4]">
+                          {m.timestamp}
+                        </span>
+
+                        {m.isPinned && (
+                          <span className="text-[10px] text-[#00f0ff] font-mono flex items-center gap-0.5">
+                            <Pin className="w-2.5 h-2.5" /> Pinned
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
+                        {m.content}
+                      </div>
+
+                      {/* Reaction Pills */}
+                      {m.reactions && m.reactions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {m.reactions.map((r, rIdx) => (
+                            <button
+                              key={rIdx}
+                              onClick={() => handleAddReaction(m.id, r.emoji)}
+                              className="rounded-[8px] bg-[#2b2d31] hover:bg-[#35373c] border border-transparent hover:border-[#4e5058] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1] transition-colors"
+                            >
+                              <span>{r.emoji}</span>
+                              <span className="font-semibold text-[11px] text-[#dbdee1]">{r.count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Message Input Container (Discord Authentic Inset Pill) */}
+          <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#313338]">
+            <div className="bg-[#383a40] rounded-[8px] flex items-center px-4 py-2.5 gap-3 focus-within:shadow-md">
+              {/* Plus Button */}
+              <button
+                type="button"
+                onClick={handleAttachmentMenu}
+                className="w-6 h-6 rounded-full bg-[#4e5058] hover:bg-[#b5bac1] text-[#313338] flex items-center justify-center font-bold text-lg transition-colors cursor-pointer"
+                title="Add attachment or handshake"
+              >
+                +
+              </button>
+
+              {/* Text Input */}
+              <input
+                type="text"
+                value={messageInput}
+                onChange={(e) => setMessageInput(e.target.value)}
+                placeholder="Message #quantum-transmissions"
+                maxLength={2000}
+                className="bg-transparent flex-1 text-[#dbdee1] placeholder-[#80848e] text-[15px] outline-none"
+              />
+
+              {/* Input Action Icons */}
+              <div className="flex items-center gap-2.5 text-[#b5bac1]">
+                <button type="button" className="hover:text-white transition-colors" title="Send a gift">
+                  <Gift className="w-5 h-5" />
+                </button>
+                <button type="button" className="hover:text-white text-xs font-bold font-mono px-1 rounded bg-[#4e5058]/40 transition-colors" title="Open GIF picker">
+                  GIF
+                </button>
+                <button type="button" className="hover:text-white transition-colors" title="Select Emoji">
+                  <Smile className="w-5 h-5" />
+                </button>
+                {messageInput.trim() && (
+                  <button type="submit" className="text-[#00f0ff] hover:text-white transition-colors">
+                    <Send className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </form>
+        </div>
+
+        {/* 4. Transmitters / Member Sidebar (240px) */}
+        {isMemberPanelOpen && (
+          <div className="w-60 bg-[#2b2d31] flex flex-col shrink-0 border-l border-[#1f2023]/60 select-none">
+            <div className="flex-1 overflow-y-auto px-2 py-4 space-y-4">
+              {/* Fleet Command Role Group */}
+              <div>
+                <div className="text-[12px] font-bold tracking-wider text-[#949ba4] uppercase px-2 mb-1">
+                  Fleet Command — {members.filter(m => m.staffRank && m.staffRank >= 2).length}
+                </div>
+                <div className="space-y-0.5">
+                  {members.filter(m => m.staffRank && m.staffRank >= 2).map((m) => (
+                    <div
+                      key={m.id}
+                      data-member-id={m.id}
+                      onClick={() => setInspectedUser(m)}
+                      onContextMenu={(e) => openContextMenu(e, getUserContextMenu(m))}
+                      className="px-2 py-1.5 rounded-[4px] hover:bg-[#35373c] cursor-pointer flex items-center gap-3 transition-colors group"
+                    >
+                      <div className="relative shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-sm">
+                          {m.avatar}
+                        </div>
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${getStatusColor(m.status)}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-[#00f0ff] group-hover:text-white truncate flex items-center gap-1">
+                          {m.name}
+                        </div>
+                        <div className="text-[11px] text-[#949ba4] truncate">
+                          {m.statusText || `@${m.callsign}`}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Enlisted Crew Role Group */}
+              <div>
+                <div className="text-[12px] font-bold tracking-wider text-[#949ba4] uppercase px-2 mb-1">
+                  Enlisted Transmitters — {members.filter(m => !m.staffRank || m.staffRank < 2).length}
+                </div>
+                <div className="space-y-0.5">
+                  {members.filter(m => !m.staffRank || m.staffRank < 2).map((m) => (
+                    <div
+                      key={m.id}
+                      onClick={() => setInspectedUser(m)}
+                      onContextMenu={(e) => openContextMenu(e, getUserContextMenu(m))}
+                      className="px-2 py-1.5 rounded-[4px] hover:bg-[#35373c] cursor-pointer flex items-center gap-3 transition-colors group"
+                    >
+                      <div className="relative shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-sm">
+                          {m.avatar}
+                        </div>
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${getStatusColor(m.status)}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-[#dbdee1] group-hover:text-white truncate">
+                          {m.name}
+                        </div>
+                        <div className="text-[11px] text-[#949ba4] truncate">
+                          {m.statusText || `@${m.callsign}`}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 5. Pinned Messages Flyout Drawer */}
+        {isPinnedDrawerOpen && (
+          <div className="w-80 bg-[#2b2d31] border-l border-[#1f2023] flex flex-col shrink-0 animate-in slide-in-from-right duration-150 select-none">
+            <div className="h-12 px-4 border-b border-[#1f2023] flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <Pin className="w-4 h-4 text-[#00f0ff]" />
+                <span>Pinned Messages</span>
+              </div>
+              <button 
+                onClick={() => setIsPinnedDrawerOpen(false)}
+                className="p-1 rounded hover:bg-[#35373c] text-[#949ba4] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.filter(m => m.isPinned).length === 0 ? (
+                <div className="text-xs text-[#949ba4] text-center mt-10">
+                  No pinned messages in this channel.
+                </div>
+              ) : (
+                messages.filter(m => m.isPinned).map(m => (
+                  <div
+                    key={`pin-${m.id}`}
+                    onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                    className="p-3 rounded-[8px] bg-[#313338] border border-[#232428] space-y-2 hover:border-[#5865f2] transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white">{m.author}</span>
+                      <span className="text-[10px] text-[#949ba4]">{m.timestamp}</span>
+                    </div>
+                    <p className="text-xs text-[#dbdee1] leading-relaxed">{m.content}</p>
+                    <div className="flex justify-end gap-2 pt-1 border-t border-[#232428]">
+                      <button
+                        onClick={() => handleTogglePin(m.id)}
+                        className="text-[10px] text-[#f23f43] hover:underline"
+                      >
+                        Unpin
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* User Profile Modal (when clicking other users) */}
       <Modal
-        isOpen={Boolean(selectedUserProfile)}
-        onClose={() => setSelectedUserProfile(null)}
-        title="Tactical Transmitter Dossier"
+        isOpen={Boolean(inspectedUser)}
+        onClose={() => setInspectedUser(null)}
+        title="User Profile"
         maxWidth="md"
       >
-        {selectedUserProfile && (
+        {inspectedUser && (
           <div className="flex justify-center py-2">
             <ProfileCard
-              user={selectedUserProfile}
+              user={inspectedUser}
               onSendMessage={(uid) => {
-                setSelectedUserProfile(null);
-                showToast(`Opened direct transmission with ${uid}`);
+                setInspectedUser(null);
+                showToast(`Opening DM with ${uid}`);
               }}
-              onClose={() => setSelectedUserProfile(null)}
+              onClose={() => setInspectedUser(null)}
             />
           </div>
         )}
       </Modal>
 
-      {/* Quick Scan Modal (Ctrl+K) */}
+      {/* Quick Scan (Ctrl+K) Modal */}
       <Modal
         isOpen={isQuickScanOpen}
         onClose={() => setIsQuickScanOpen(false)}
-        title="Subspace Quick Scan"
-        description="Search transmissions, frequency bands, archival forum logs, or jump directly."
+        title="Quick Switcher"
+        description="Search channels, direct transmissions, or commands."
         maxWidth="lg"
       >
         <div className="flex flex-col gap-4">
           <Input
             autoFocus
             icon={<Search className="w-4 h-4" />}
-            placeholder="Search keywords, #channels, or @operators..."
+            placeholder="Where would you like to go?"
             value={quickScanQuery}
             onChange={(e) => setQuickScanQuery(e.target.value)}
           />
 
-          <div className="space-y-2 mt-2">
-            <div className="text-[11px] font-semibold uppercase text-[#64748B]">Recent Frequency Bands</div>
-            {channels.map((chan) => (
+          <div className="space-y-1 mt-2">
+            <div className="text-[11px] font-bold uppercase text-[#949ba4] px-1">Channels</div>
+            {categories.flatMap(c => c.channels).map((chan) => (
               <div
                 key={chan.id}
                 onClick={() => {
                   setSelectedChannelId(chan.id);
                   setIsQuickScanOpen(false);
                 }}
-                className="flex items-center justify-between p-2.5 rounded-xl bg-[#0B0E14] hover:bg-[#1C222E] border border-[#232936] cursor-pointer transition-colors"
+                className="flex items-center justify-between p-2 rounded-[4px] hover:bg-[#35373c] cursor-pointer text-sm text-[#dbdee1] hover:text-white transition-colors"
               >
                 <div className="flex items-center gap-2">
                   {getChannelIcon(chan.type)}
-                  <span className="text-sm font-medium text-[#F0F4F8]">{chan.name}</span>
+                  <span>{chan.name}</span>
                 </div>
-                <span className="text-xs text-[#64748B] font-mono">JUMP</span>
+                <span className="text-[10px] text-[#949ba4] font-mono">JUMP</span>
               </div>
             ))}
           </div>
         </div>
       </Modal>
 
-      {/* Settings & Customization Modal */}
+      {/* Full Discord-Style Settings Modal */}
       <Modal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        title="Subspace Tactical Customizer"
-        description="Configure your quantum visual spectrum, typography, and commendation showcase."
-        maxWidth="xl"
+        title="User Settings"
+        maxWidth="2xl"
       >
-        <div className="flex flex-col gap-6 max-h-[70vh] overflow-y-auto pr-2">
-          {/* Color Accent Picker */}
-          <ColorWheel
-            color={accentColor}
-            onChange={setAccentColor}
-          />
+        <div className="flex gap-6 max-h-[75vh]">
+          {/* Settings Left Navigation */}
+          <div className="w-48 flex flex-col gap-1 border-r border-[#232428] pr-4 shrink-0 text-xs font-medium">
+            <div className="text-[10px] uppercase font-bold text-[#949ba4] px-2 py-1">User Settings</div>
+            <button
+              onClick={() => setActiveSettingsTab('profile')}
+              className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
+                activeSettingsTab === 'profile' ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+              }`}
+            >
+              My Account & Identity
+            </button>
+            <button
+              onClick={() => setActiveSettingsTab('appearance')}
+              className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
+                activeSettingsTab === 'appearance' ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+              }`}
+            >
+              Appearance & Spectrum
+            </button>
+            <button
+              onClick={() => setActiveSettingsTab('badges')}
+              className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
+                activeSettingsTab === 'badges' ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+              }`}
+            >
+              Commendations & Badges
+            </button>
+            <button
+              onClick={() => setActiveSettingsTab('voice')}
+              className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
+                activeSettingsTab === 'voice' ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+              }`}
+            >
+              Voice & Video
+            </button>
+          </div>
 
-          {/* Typography Selector */}
-          <FontSelector
-            selectedFont={selectedFont}
-            onChange={setSelectedFont}
-          />
+          {/* Settings Tab Content */}
+          <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+            {activeSettingsTab === 'appearance' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-1">Visual Accent Spectrum</h3>
+                  <p className="text-xs text-[#949ba4] mb-3">Choose your personal tactical HUD color accent.</p>
+                  <ColorWheel color={accentColor} onChange={setAccentColor} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-1">Typography Frequency</h3>
+                  <p className="text-xs text-[#949ba4] mb-3">Select the typeface for subspace messages and terminal logs.</p>
+                  <FontSelector selectedFont={selectedFont} onChange={setSelectedFont} />
+                </div>
+              </div>
+            )}
 
-          {/* Badge Deck */}
-          <BadgeDeck
-            userStaffRank={2}
-            badges={[
-              { id: 'b1', name: 'Quantum Pioneer', description: 'Participated in the initial subspace handshake.', tier: 'quantum' },
-              { id: 'b2', name: 'Command Staff Insignia', description: 'Authorized officer on tactical command networks.', tier: 'staff', isStaffLocked: true },
-              { id: 'b3', name: 'Deep Space Archivist', description: 'Maintained 50+ archival forum flight threads.', tier: 'gold' },
-              { id: 'b4', name: 'Signal Vanguard', description: 'Zero signal dropouts in orbital operations.', tier: 'silver' },
-            ]}
-          />
+            {activeSettingsTab === 'badges' && (
+              <div>
+                <h3 className="text-sm font-bold text-white mb-1">Commendations & Service Insignia</h3>
+                <p className="text-xs text-[#949ba4] mb-3">Earned badges across orbital fleets and tactical nodes.</p>
+                <BadgeDeck
+                  userStaffRank={2}
+                  badges={[
+                    { id: 'b1', name: 'Quantum Pioneer', description: 'Participated in the initial subspace handshake.', tier: 'quantum' },
+                    { id: 'b2', name: 'Command Staff Insignia', description: 'Authorized officer on tactical command networks.', tier: 'staff', isStaffLocked: true },
+                    { id: 'b3', name: 'Deep Space Archivist', description: 'Maintained 50+ archival forum flight threads.', tier: 'gold' },
+                    { id: 'b4', name: 'Signal Vanguard', description: 'Zero signal dropouts in orbital operations.', tier: 'silver' },
+                  ]}
+                />
+              </div>
+            )}
+
+            {activeSettingsTab === 'profile' && (
+              <div className="space-y-4 text-xs">
+                <h3 className="text-sm font-bold text-white">My Account Info</h3>
+                <div className="bg-[#2b2d31] p-3 rounded-[8px] space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-[#949ba4]">Username</span>
+                    <span className="text-white font-medium">{currentUser.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#949ba4]">Callsign</span>
+                    <span className="text-white font-mono">@{currentUser.callsign}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#949ba4]">Subspace Key Fingerprint</span>
+                    <span className="text-[#00f0ff] font-mono">{currentUser.quantumKeyFingerprint}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeSettingsTab === 'voice' && (
+              <div className="space-y-4 text-xs">
+                <h3 className="text-sm font-bold text-white">Voice & Video Diagnostics</h3>
+                <div className="bg-[#2b2d31] p-3 rounded-[8px] space-y-2 text-[#dbdee1]">
+                  <p>RTC Engine: LiveKit Subspace WebRTC</p>
+                  <p>Audio Codec: Opus 128 kbps Quantum Optimized</p>
+                  <p>Echo Cancellation & Noise Suppression: Enabled</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
     </div>
   );
 };
 
-// Top-level App with ContextMenuProvider
+// Global App Root with Fallback Context Menu
 export const App: React.FC = () => {
-  // Global canvas fallback context menu (displayed when right-clicking empty space anywhere in the app)
   const canvasFallbackItems: ContextMenuItem[] = [
-    {
-      label: 'Subspace Frequency Terminal',
-      disabled: true,
-    },
+    { label: 'Subspace Frequency Terminal', disabled: true },
     { separator: true },
     {
       label: 'Subspace Quick Scan',
       shortcut: 'Ctrl+K',
-      icon: <Search className="w-3.5 h-3.5 text-[#00F0FF]" />,
-      onClick: () => {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
-      },
+      icon: <Search className="w-3.5 h-3.5" />,
+      onClick: () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true })),
     },
     {
       label: 'Subspace Diagnostics',
-      icon: <Activity className="w-3.5 h-3.5 text-[#00FF88]" />,
+      icon: <Activity className="w-3.5 h-3.5 text-[#23a55a]" />,
       onClick: () => {
-        navigator.clipboard?.writeText(JSON.stringify({
-          status: 'NOMINAL',
-          latency: '12ms',
-          quantumEntanglement: 'ACTIVE',
-          clientVersion: '1.0.0-tactical'
-        }, null, 2));
+        navigator.clipboard?.writeText(JSON.stringify({ status: 'NOMINAL', latency: '18ms' }, null, 2));
         alert('Quantum diagnostics telemetry copied to clipboard.');
       },
     },
     {
-      label: 'Reload Frequency Array',
+      label: 'Reload App',
       shortcut: 'F5',
-      icon: <Radio className="w-3.5 h-3.5 text-[#94A3B8]" />,
+      icon: <Radio className="w-3.5 h-3.5" />,
       onClick: () => window.location.reload(),
-    },
-    { separator: true },
-    {
-      label: 'Subspace Protocol v1.0.0 (Tactical Edition)',
-      disabled: true,
     },
   ];
 
