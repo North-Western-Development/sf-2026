@@ -235,11 +235,11 @@ flowchart TD
   - [x] 2FA TOTP setup & verification endpoints
   - [x] FIDO2 Passkey registration & challenge verification
   - [x] Instance Rules agreement gate
-- [ ] **Phase 3: Real-Time Gateway & Ghost Mode Presence** ([phase-03-gateway-presence.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-03-gateway-presence.md))
-  - [ ] `apps/gateway-service` (WebSocket server, heartbeats)
-  - [ ] Redis Pub/Sub gateway event bus
-  - [ ] 5 Presence states with Ghost Mode offline masking
-  - [ ] Gateway connection auth handshake
+- [x] **Phase 3: Real-Time Gateway & Ghost Mode Presence** ([phase-03-gateway-presence.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-03-gateway-presence.md))
+  - [x] `apps/gateway-service` (WebSocket server, heartbeats)
+  - [x] Redis Pub/Sub gateway event bus
+  - [x] 5 Presence states with Ghost Mode offline masking
+  - [x] Gateway connection auth handshake
 - [ ] **Phase 4: Beacons, Beacon Clusters & Clearances** ([phase-04-beacons-clearances.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-04-beacons-clearances.md))
   - [ ] `apps/api-service/src/modules/beacons` (Beacon CRUD, Clusters)
   - [ ] 64-bit Bitfield permissions calculator
