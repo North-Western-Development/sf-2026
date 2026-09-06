@@ -31,9 +31,9 @@ describe('Beacons, Beacon Clusters & Clearances E2E Suite', () => {
     const db = (app as any).db;
     if (db) {
       const usersToSeed = [
-        { id: ownerId, username: 'admiral_kirk', email: 'kirk@starfleet.net', passwordHash: 'hash', displayName: 'Admiral Kirk' },
-        { id: officerId, username: 'commander_spock', email: 'spock@starfleet.net', passwordHash: 'hash', displayName: 'Commander Spock' },
-        { id: cadetId, username: 'cadet_scotty', email: 'scotty@starfleet.net', passwordHash: 'hash', displayName: 'Cadet Scotty' },
+        { id: ownerId, username: 'beacon_admiral_kirk', email: 'beacon_kirk@starfleet.net', passwordHash: 'hash', displayName: 'Admiral Kirk' },
+        { id: officerId, username: 'beacon_commander_spock', email: 'beacon_spock@starfleet.net', passwordHash: 'hash', displayName: 'Commander Spock' },
+        { id: cadetId, username: 'beacon_cadet_scotty', email: 'beacon_scotty@starfleet.net', passwordHash: 'hash', displayName: 'Cadet Scotty' },
       ];
       for (const u of usersToSeed) {
         const existing = await db.select().from(transmitters).where(eq(transmitters.id, u.id)).limit(1);
@@ -44,15 +44,15 @@ describe('Beacons, Beacon Clusters & Clearances E2E Suite', () => {
     }
 
     ownerToken = signAccessToken(
-      { transmitterId: ownerId, username: 'admiral_kirk', staffRank: 0 },
+      { transmitterId: ownerId, username: 'beacon_admiral_kirk', staffRank: 0 },
       JWT_SECRET
     );
     officerToken = signAccessToken(
-      { transmitterId: officerId, username: 'commander_spock', staffRank: 0 },
+      { transmitterId: officerId, username: 'beacon_commander_spock', staffRank: 0 },
       JWT_SECRET
     );
     cadetToken = signAccessToken(
-      { transmitterId: cadetId, username: 'cadet_scotty', staffRank: 0 },
+      { transmitterId: cadetId, username: 'beacon_cadet_scotty', staffRank: 0 },
       JWT_SECRET
     );
   });
