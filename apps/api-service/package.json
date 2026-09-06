@@ -14,8 +14,10 @@
     "@fastify/cors": "^10.0.2",
     "@fastify/helmet": "^13.0.1",
     "@subspace/constants": "workspace:*",
+    "@subspace/crypto": "workspace:*",
     "@subspace/database": "workspace:*",
     "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.39.3",
     "fastify": "^5.2.1",
     "ioredis": "^5.5.0",
     "pg": "^8.13.3"

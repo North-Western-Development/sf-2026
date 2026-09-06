@@ -8,6 +8,7 @@ COPY apps/api-service ./apps/api-service
 
 RUN pnpm install --frozen-lockfile=false
 RUN pnpm --filter @subspace/constants build
+RUN pnpm --filter @subspace/crypto build
 RUN pnpm --filter @subspace/database build
 RUN pnpm --filter @subspace/api-service build
 

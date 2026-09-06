@@ -27,11 +27,32 @@ export const transmitters = pgTable('transmitters', {
   presence: text('presence').default('offline').notNull(),
   staffRank: integer('staff_rank').default(0).notNull(),
   isEmailVerified: boolean('is_email_verified').default(false).notNull(),
+  emailVerificationCode: text('email_verification_code'),
+  totpSecret: text('totp_secret'),
+  is2faEnabled: boolean('is_2fa_enabled').default(false).notNull(),
+  backupCodes: jsonb('backup_codes').$type<string[]>().default([]).notNull(),
   hasAcceptedUploadDisclaimer: boolean('has_accepted_upload_disclaimer').default(false).notNull(),
   lastAgreedRulesVersion: integer('last_agreed_rules_version').default(0).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/**
+ * Transmitter Passkeys (WebAuthn / FIDO2)
+ */
+export const transmitterPasskeys = pgTable('transmitter_passkeys', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  credentialId: text('credential_id').notNull().unique(),
+  publicKey: text('public_key').notNull(),
+  counter: integer('counter').default(0).notNull(),
+  deviceType: text('device_type').notNull(),
+  backedUp: boolean('backed_up').default(false).notNull(),
+  transports: jsonb('transports').$type<string[]>().default([]).notNull(),
+  name: text('name').default('Passkey').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 
 /**
  * Beacons (Servers)

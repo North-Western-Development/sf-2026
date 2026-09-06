@@ -53,6 +53,14 @@ export async function buildApp() {
     app.log.warn({ err }, 'Redis connection delayed or unavailable during boot');
   }
 
+  // Decorate app with db and redis clients
+  (app as any).db = dbClient ? dbClient.db : null;
+  (app as any).redis = redisClient;
+
+  // Import and register auth routes
+  const { authRoutes } = await import('./modules/auth/auth.routes.js');
+  await app.register(authRoutes, { prefix: '/api/v1/auth' });
+
   // Health check endpoint
   app.get('/health', async () => {
     return {
