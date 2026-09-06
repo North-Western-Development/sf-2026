@@ -93,7 +93,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:-subspace_secret}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
       REDIS_URL: redis://redis:6379
     ports:
-      - "127.0.0.1:3001:3001"
+      - "3001:3001"
     networks:
       - subspace_net
     depends_on:
@@ -112,7 +112,7 @@ services:
       GATEWAY_PORT: 3002
       REDIS_URL: redis://redis:6379
     ports:
-      - "127.0.0.1:3002:3002"
+      - "3002:3002"
     networks:
       - subspace_net
     depends_on:
