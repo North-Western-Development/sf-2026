@@ -219,16 +219,16 @@ flowchart TD
 
 ## 4. Master Deliverables Checklist
 
-- [ ] **Phase 1: Monorepo Foundation & Microservices Infrastructure** ([phase-01-foundation.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-01-foundation.md))
-  - [ ] `docs/terminology.md`
-  - [ ] `docs/architecture.md`
-  - [ ] `docs/roadmap.md`
-  - [ ] `docs/phases/phase-01-foundation.md`
-  - [ ] `pnpm-workspace.yaml`, `turbo.json`, `package.json`
-  - [ ] `docker-compose.yml` (Postgres, Redis, MinIO, LiveKit, Services)
-  - [ ] `packages/database` (Drizzle ORM base models)
-  - [ ] `packages/constants` (Permissions, presence, terminology)
-  - [ ] `docker-compose.test.yml` (Vitest test cluster)
+- [x] **Phase 1: Monorepo Foundation & Microservices Infrastructure** ([phase-01-foundation.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-01-foundation.md))
+  - [x] `docs/terminology.md`
+  - [x] `docs/architecture.md`
+  - [x] `docs/roadmap.md`
+  - [x] `docs/phases/phase-01-foundation.md`
+  - [x] `pnpm-workspace.yaml`, `turbo.json`, `package.json`
+  - [x] `docker-compose.yml` (Postgres, Redis, MinIO, LiveKit, Services)
+  - [x] `packages/database` (Drizzle ORM base models)
+  - [x] `packages/constants` (Permissions, presence, terminology)
+  - [x] `docker-compose.test.yml` (Vitest test cluster)
 - [ ] **Phase 2: Authentication, Security, 2FA & Passkeys** ([phase-02-auth-security.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-02-auth-security.md))
   - [ ] `packages/crypto` (Argon2id, WebAuthn, TOTP)
   - [ ] `apps/api-service/src/modules/auth` (Register, Login, Session)
