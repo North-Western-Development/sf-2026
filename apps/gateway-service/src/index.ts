@@ -280,16 +280,17 @@ export function createGatewayServer(customPort = port) {
   function broadcastVoiceStateUpdate(
     transmitterId: string,
     username: string,
-    relayId: string | null,
+    relayId: string | null | undefined,
     isMuted: boolean = false,
     isDeafened: boolean = false,
     isSpeaking: boolean = false
   ) {
-    if (relayId) {
+    const activeRelayId = relayId || null;
+    if (activeRelayId) {
       voiceStates.set(transmitterId, {
         transmitterId,
         username,
-        relayId,
+        relayId: activeRelayId,
         isMuted,
         isDeafened,
         isSpeaking,
@@ -301,7 +302,7 @@ export function createGatewayServer(customPort = port) {
     const eventPayload = {
       transmitter_id: transmitterId,
       username,
-      relay_id: relayId,
+      relay_id: activeRelayId,
       is_muted: isMuted,
       is_deafened: isDeafened,
       is_speaking: isSpeaking,

@@ -176,6 +176,11 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     const { id: beaconId } = request.params as { id: string };
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
 
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(beaconId)) {
+      return reply.status(404).send({ error: 'Beacon not found' });
+    }
+
     const [beacon] = await db
       .select()
       .from(beacons)
