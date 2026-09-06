@@ -1,0 +1,153 @@
+name: subspace-frequency
+
+networks:
+  subspace_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: subspace-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-subspace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-subspace_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-subspace_frequency}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - subspace_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-subspace} -d ${POSTGRES_DB:-subspace_frequency}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: subspace-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - subspace_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: subspace-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_subspace}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_secret_subspace}
+    volumes:
+      - minio_data:/data
+    networks:
+      - subspace_net
+    # Ports accessible internally over loopback for host reverse proxying
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: subspace-livekit
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./docker/livekit.yaml:/etc/livekit.yaml:ro
+    networks:
+      - subspace_net
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  api-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: subspace-api
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:-subspace_secret}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks:
+      - subspace_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gateway
+    container_name: subspace-gateway
+    restart: unless-stopped
+    environment:
+      GATEWAY_PORT: 3002
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "127.0.0.1:3002:3002"
+    networks:
+      - subspace_net
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  file-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.file
+    container_name: subspace-file
+    restart: unless-stopped
+    environment:
+      FILE_PORT: 3003
+      DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:-subspace_secret}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
+      S3_ENDPOINT: minio:9000
+    ports:
+      - "127.0.0.1:3003:3003"
+    networks:
+      - subspace_net
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  badge-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.badge
+    container_name: subspace-badge-worker
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:-subspace_secret}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
+    networks:
+      - subspace_net
+    depends_on:
+      redis:
+        condition: service_healthy

@@ -1,0 +1,20 @@
+{
+  "name": "subspace-frequency",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Subspace Frequency - Space-themed real-time communications platform",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "test:e2e": "vitest run --config vitest.config.ts",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  },
+  "packageManager": "pnpm@10.30.2"
+}

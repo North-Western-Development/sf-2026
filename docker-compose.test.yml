@@ -1,0 +1,63 @@
+name: subspace-frequency-test
+
+networks:
+  test_net:
+    driver: bridge
+
+volumes:
+  test_postgres_data:
+  test_redis_data:
+
+services:
+  test-postgres:
+    image: postgres:16-alpine
+    container_name: subspace-test-postgres
+    environment:
+      POSTGRES_USER: subspace_test
+      POSTGRES_PASSWORD: subspace_test_secret
+      POSTGRES_DB: subspace_test_db
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data
+    networks:
+      - test_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U subspace_test -d subspace_test_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  test-redis:
+    image: redis:7-alpine
+    container_name: subspace-test-redis
+    networks:
+      - test_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  test-runner:
+    image: node:22-alpine
+    container_name: subspace-test-runner
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      DATABASE_URL: postgresql://subspace_test:subspace_test_secret@test-postgres:5432/subspace_test_db
+      REDIS_URL: redis://test-redis:6379
+      NODE_ENV: test
+    networks:
+      - test_net
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        npm install -g pnpm@10.30.2 &&
+        pnpm install --frozen-lockfile=false &&
+        pnpm run build &&
+        pnpm test:e2e
+      "
