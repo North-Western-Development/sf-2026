@@ -143,11 +143,85 @@ export const relayOverwrites = pgTable('relay_overwrites', {
 });
 
 /**
+ * Point-to-Point Links (1-on-1 DMs)
+ */
+export const pointToPointLinks = pgTable('point_to_point_links', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transmitter1Id: uuid('transmitter1_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  transmitter2Id: uuid('transmitter2_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Subspace Meshes (Group DMs, max 10 members)
+ */
+export const subspaceMeshes = pgTable('subspace_meshes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  ownerId: uuid('owner_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  iconUrl: text('icon_url'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Subspace Mesh Members
+ */
+export const subspaceMeshMembers = pgTable('subspace_mesh_members', {
+  meshId: uuid('mesh_id').references(() => subspaceMeshes.id, { onDelete: 'cascade' }).notNull(),
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.meshId, table.transmitterId] }),
+]);
+
+/**
+ * Affiliations (Friend Relationships & Requests with Greeting Notes)
+ */
+export const affiliations = pgTable('affiliations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  targetId: uuid('target_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  status: text('status').default('pending').notNull(), // 'pending' | 'accepted' | 'declined'
+  greetingNote: text('greeting_note'), // Optional note up to 200 chars
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Transmission Requests (Direct Message Gate between non-affiliated users sharing a Beacon)
+ */
+export const transmissionRequests = pgTable('transmission_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  senderId: uuid('sender_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  recipientId: uuid('recipient_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  mutualBeaconId: uuid('mutual_beacon_id').references(() => beacons.id, { onDelete: 'cascade' }).notNull(),
+  initialTransmission: text('initial_transmission').notNull(),
+  status: text('status').default('pending').notNull(), // 'pending' | 'accepted' | 'declined' | 'timed_out'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), // 7 days from creation
+});
+
+/**
+ * Signal Blacklist (Transmitter, Transmission, or Beacon Block)
+ */
+export const signalBlacklist = pgTable('signal_blacklist', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  targetId: text('target_id').notNull(), // UUID of blocked transmitter, transmission, or beacon
+  targetType: text('target_type').notNull(), // 'transmitter' | 'transmission' | 'beacon'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
  * Transmissions (Messages)
  */
 export const transmissions = pgTable('transmissions', {
   id: uuid('id').defaultRandom().primaryKey(),
-  relayId: uuid('relay_id').references(() => relays.id, { onDelete: 'cascade' }).notNull(),
+  relayId: uuid('relay_id').references(() => relays.id, { onDelete: 'cascade' }),
+  p2pLinkId: uuid('p2p_link_id').references(() => pointToPointLinks.id, { onDelete: 'cascade' }),
+  meshId: uuid('mesh_id').references(() => subspaceMeshes.id, { onDelete: 'cascade' }),
   transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   content: text('content').notNull(), // Max 2000 chars default
   attachments: jsonb('attachments').$type<Array<{ id: string; url: string; filename: string; size: number }>>().default([]).notNull(),

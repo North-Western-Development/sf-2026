@@ -73,6 +73,27 @@ export async function buildApp() {
   const { onboardingRoutes } = await import('./modules/onboarding/onboarding.routes.js');
   await app.register(onboardingRoutes, { prefix: '/api/v1/beacons/:id/onboarding' });
 
+  const { relayRoutes } = await import('./modules/relays/relays.routes.js');
+  await app.register(relayRoutes, { prefix: '/api/v1/beacons/:beaconId/relays' });
+
+  const { transmissionRoutes } = await import('./modules/transmissions/transmissions.routes.js');
+  await app.register(transmissionRoutes, { prefix: '/api/v1' });
+
+  const { linkRoutes } = await import('./modules/links/links.routes.js');
+  await app.register(linkRoutes, { prefix: '/api/v1/links' });
+
+  const { meshRoutes } = await import('./modules/meshes/meshes.routes.js');
+  await app.register(meshRoutes, { prefix: '/api/v1/meshes' });
+
+  const { affiliationRoutes } = await import('./modules/affiliations/affiliations.routes.js');
+  await app.register(affiliationRoutes, { prefix: '/api/v1/affiliations' });
+
+  const { requestRoutes } = await import('./modules/requests/requests.routes.js');
+  await app.register(requestRoutes, { prefix: '/api/v1/requests' });
+
+  const { blacklistRoutes } = await import('./modules/blacklist/blacklist.routes.js');
+  await app.register(blacklistRoutes, { prefix: '/api/v1/blacklist' });
+
   // Health check endpoint
   app.get('/health', async () => {
     return {

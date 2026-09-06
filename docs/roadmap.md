@@ -246,13 +246,13 @@ flowchart TD
   - [x] Clearance hierarchy validator (prevent higher/equal modifications)
   - [x] Beacon onboarding rules agreement & role picker
   - [x] Opt-in Beacon discovery directory
-- [ ] **Phase 5: Text Relays & Direct Messaging (P2P / Mesh)** ([phase-05-text-relays-messaging.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-05-text-relays-messaging.md))
-  - [ ] `apps/api-service/src/modules/transmissions` (Text relay chat, 2000 char limit)
-  - [ ] Point-to-Point links (1-on-1 DMs)
-  - [ ] Subspace Meshes (Group DMs)
-  - [ ] Transmission requests (1 message, 7-day expiration)
-  - [ ] Affiliation requests with note transmission
-  - [ ] User, message, and beacon block system
+- [x] **Phase 5: Text Relays & Direct Messaging (P2P / Mesh)** ([phase-05-text-relays-messaging.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-05-text-relays-messaging.md))
+  - [x] `apps/api-service/src/modules/transmissions` (Text relay chat, 2000 char limit)
+  - [x] Point-to-Point links (1-on-1 DMs)
+  - [x] Subspace Meshes (Group DMs)
+  - [x] Transmission requests (1 message, 7-day expiration)
+  - [x] Affiliation requests with note transmission
+  - [x] User, message, and beacon block system
 - [ ] **Phase 6: Subspace Vault (Storage) & Cloud Integrations** ([phase-06-subspace-vault-storage.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-06-subspace-vault-storage.md))
   - [ ] `apps/file-service` (MinIO S3 presigned URL engine)
   - [ ] Quarantine disclaimer compliance modal
