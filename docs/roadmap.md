@@ -173,7 +173,7 @@ flowchart TD
   - Deep Full-Text Transmission Search with date, user, and relay filters
 - **Verification**: Threads create and nest correctly; unhideable relays remain visible even when user filters relays.
 
-### Phase 9: Command Console, Moderation & Commendations
+### Phase 9: Command Console, Moderation & Commendations [COMPLETED]
 - **Focus**: Instance administration, incident reports, and automated badge worker.
 - **Deliverables**:
   - Command Console: Staff dashboard for reports, user bans, drive file audits, and server discovery moderation

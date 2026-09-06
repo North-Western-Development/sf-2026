@@ -109,6 +109,15 @@ export async function buildApp() {
   const { searchRoutes } = await import('./modules/search/search.routes.js');
   await app.register(searchRoutes, { prefix: '/api/v1/search' });
 
+  const { reportRoutes } = await import('./modules/reports/reports.routes.js');
+  await app.register(reportRoutes, { prefix: '/api/v1/reports' });
+
+  const { consoleRoutes } = await import('./modules/console/console.routes.js');
+  await app.register(consoleRoutes, { prefix: '/api/v1/console' });
+
+  const { commendationRoutes } = await import('./modules/commendations/commendations.routes.js');
+  await app.register(commendationRoutes, { prefix: '/api/v1/transmitters' });
+
   // Health check endpoint
   app.get('/health', async () => {
     return {

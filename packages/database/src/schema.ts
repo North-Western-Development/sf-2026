@@ -27,6 +27,8 @@ export const transmitters = pgTable('transmitters', {
   avatarUrl: text('avatar_url'),
   presence: text('presence').default('offline').notNull(),
   staffRank: integer('staff_rank').default(0).notNull(),
+  isBanned: boolean('is_banned').default(false).notNull(),
+  banReason: text('ban_reason'),
   isEmailVerified: boolean('is_email_verified').default(false).notNull(),
   emailVerificationCode: text('email_verification_code'),
   totpSecret: text('totp_secret'),
@@ -302,3 +304,23 @@ export const vaultFiles = pgTable('vault_files', {
   isQuarantined: boolean('is_quarantined').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/**
+ * Incident Reports (Incident Flare)
+ */
+export const incidentReports = pgTable('incident_reports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  reporterId: uuid('reporter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  targetType: text('target_type').notNull(), // 'transmission' | 'transmitter' | 'beacon'
+  targetId: text('target_id').notNull(),
+  reason: text('reason').notNull(), // 'harassment' | 'spam' | 'malware' | 'illicit_content' | 'other'
+  description: text('description'),
+  telemetrySnapshot: jsonb('telemetry_snapshot').default({}).notNull(),
+  status: text('status').default('open').notNull(), // 'open' | 'investigating' | 'resolved' | 'dismissed'
+  resolutionNotes: text('resolution_notes'),
+  resolvedByStaffId: uuid('resolved_by_staff_id').references(() => transmitters.id, { onDelete: 'set null' }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+

@@ -133,6 +133,15 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(401).send({ error: 'Invalid credentials' });
     }
 
+    // Invariant: Suspended/banned accounts cannot log in
+    if (user.isBanned) {
+      return reply.status(403).send({
+        error: 'Transmitter account has been suspended by Command Staff',
+        code: 'TRANSMITTER_SUSPENDED',
+        reason: user.banReason || 'Violation of Subspace Directives',
+      });
+    }
+
     // Check if 2FA is active
     if (user.is2faEnabled) {
       const tempToken = signAccessToken(
