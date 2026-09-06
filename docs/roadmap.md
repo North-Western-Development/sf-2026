@@ -229,12 +229,12 @@ flowchart TD
   - [x] `packages/database` (Drizzle ORM base models)
   - [x] `packages/constants` (Permissions, presence, terminology)
   - [x] `docker-compose.test.yml` (Vitest test cluster)
-- [ ] **Phase 2: Authentication, Security, 2FA & Passkeys** ([phase-02-auth-security.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-02-auth-security.md))
-  - [ ] `packages/crypto` (Argon2id, WebAuthn, TOTP)
-  - [ ] `apps/api-service/src/modules/auth` (Register, Login, Session)
-  - [ ] 2FA TOTP setup & verification endpoints
-  - [ ] FIDO2 Passkey registration & challenge verification
-  - [ ] Instance Rules agreement gate
+- [x] **Phase 2: Authentication, Security, 2FA & Passkeys** ([phase-02-auth-security.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-02-auth-security.md))
+  - [x] `packages/crypto` (Argon2id, WebAuthn, TOTP)
+  - [x] `apps/api-service/src/modules/auth` (Register, Login, Session)
+  - [x] 2FA TOTP setup & verification endpoints
+  - [x] FIDO2 Passkey registration & challenge verification
+  - [x] Instance Rules agreement gate
 - [ ] **Phase 3: Real-Time Gateway & Ghost Mode Presence** ([phase-03-gateway-presence.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-03-gateway-presence.md))
   - [ ] `apps/gateway-service` (WebSocket server, heartbeats)
   - [ ] Redis Pub/Sub gateway event bus

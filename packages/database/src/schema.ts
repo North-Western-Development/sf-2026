@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   text,
@@ -93,7 +94,7 @@ export const clearances = pgTable('clearances', {
   name: text('name').notNull(),
   color: text('color').default('#99AAB5').notNull(),
   position: integer('position').notNull(), // Higher = higher rank
-  permissions: bigint('permissions', { mode: 'bigint' }).default(0n).notNull(),
+  permissions: bigint('permissions', { mode: 'bigint' }).default(sql`0`).notNull(),
   allowDelegation: boolean('allow_delegation').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -137,8 +138,8 @@ export const relayOverwrites = pgTable('relay_overwrites', {
   relayId: uuid('relay_id').references(() => relays.id, { onDelete: 'cascade' }).notNull(),
   targetId: uuid('target_id').notNull(), // clearance_id or transmitter_id
   targetType: text('target_type').notNull(), // 'clearance' | 'transmitter'
-  allowBits: bigint('allow_bits', { mode: 'bigint' }).default(0n).notNull(),
-  denyBits: bigint('deny_bits', { mode: 'bigint' }).default(0n).notNull(),
+  allowBits: bigint('allow_bits', { mode: 'bigint' }).default(sql`0`).notNull(),
+  denyBits: bigint('deny_bits', { mode: 'bigint' }).default(sql`0`).notNull(),
 });
 
 /**
