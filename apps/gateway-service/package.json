@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@subspace/constants": "workspace:*",
+    "@subspace/crypto": "workspace:*",
     "@subspace/database": "workspace:*",
     "dotenv": "^16.4.7",
     "ioredis": "^5.5.0",

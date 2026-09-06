@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@types/ws':
+        specifier: ^8.5.14
+        version: 8.18.1
       turbo:
         specifier: ^2.4.4
         version: 2.10.12
@@ -17,6 +20,9 @@ importers:
       vitest:
         specifier: ^3.0.7
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.13)
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.3
 
   apps/api-service:
     dependencies:
@@ -122,6 +128,9 @@ importers:
       '@subspace/constants':
         specifier: workspace:*
         version: link:../../packages/constants
+      '@subspace/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@subspace/database':
         specifier: workspace:*
         version: link:../../packages/database
