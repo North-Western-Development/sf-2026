@@ -37,7 +37,9 @@ import {
   Compass as BrowseIcon,
   MessageCircle,
   MoreVertical,
-  Lock
+  Lock,
+  FolderPlus,
+  Bell
 } from 'lucide-react';
 import { 
   Modal, 
@@ -56,6 +58,8 @@ import {
 import { usePlatformEnvironment } from './usePlatformEnvironment';
 import { api, ApiBeacon, ApiRelay } from './services/api';
 import { gateway } from './services/gateway';
+import { InviteModal } from './InviteModal';
+import { ServerSettingsModal } from './ServerSettingsModal';
 
 // Data Interfaces
 interface Beacon {
@@ -182,9 +186,16 @@ function categorizeRelays(relays: ApiRelay[]): ChannelCategory[] {
   if (textRelays.length > 0) {
     categories.push({ id: 'cat-text', name: 'Text Relays', channels: textRelays });
   }
-  if (voiceRelays.length > 0) {
-    categories.push({ id: 'cat-voice', name: 'Voice Comm-Links', channels: voiceRelays });
+  
+  // Always provide standard Voice Comm-Links for tactical communications
+  if (voiceRelays.length === 0) {
+    voiceRelays.push(
+      { id: 'chan-voice-bridge', name: 'Command Bridge', type: 'voice', description: 'Primary voice bridge' },
+      { id: 'chan-voice-tactical', name: 'Tactical Frequency', type: 'voice', description: 'Subspace operational comms' }
+    );
   }
+  categories.push({ id: 'cat-voice', name: 'Voice Comm-Links', channels: voiceRelays });
+
   if (mediaRelays.length > 0) {
     categories.push({ id: 'cat-media', name: 'Archival & Media', channels: mediaRelays });
   }
@@ -202,11 +213,27 @@ export const AppContent: React.FC = () => {
   const [friendsTab, setFriendsTab] = useState<'online' | 'all' | 'pending' | 'blocked' | 'add'>('online');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
-  // Modals & Panels
+  // Resizable Panels State
+  const [channelSidebarWidth, setChannelSidebarWidth] = useState<number>(240);
+  const [memberPanelWidth, setMemberPanelWidth] = useState<number>(240);
+  const [isResizingChannelSidebar, setIsResizingChannelSidebar] = useState(false);
+  const [isResizingMemberPanel, setIsResizingMemberPanel] = useState(false);
+
+  // Server Folders & Drag-and-Drop Reordering State
+  const [serverOrder, setServerOrder] = useState<string[]>([]);
+  const [serverFolders, setServerFolders] = useState<{ id: string; name: string; beaconIds: string[]; isExpanded?: boolean }[]>([]);
+  const [draggedBeaconId, setDraggedBeaconId] = useState<string | null>(null);
+  const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
+
+  // Modals & Popovers
   const [isQuickScanOpen, setIsQuickScanOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isServerMenuOpen, setIsServerMenuOpen] = useState(false);
   const [isMemberPanelOpen, setIsMemberPanelOpen] = useState(true);
   const [isPinnedDrawerOpen, setIsPinnedDrawerOpen] = useState(false);
+  const [isVoiceChatOpen, setIsVoiceChatOpen] = useState(false);
   const [isUserPopoutOpen, setIsUserPopoutOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'profile' | 'appearance' | 'voice' | 'badges'>('appearance');
 
@@ -526,6 +553,7 @@ export const AppContent: React.FC = () => {
           gradient: getBeaconGradient(b.id),
         }));
         setBeacons(mappedBeacons);
+        setServerOrder(mappedBeacons.map(b => b.id));
 
         if (mappedBeacons.length > 0) {
           setSelectedBeaconId(mappedBeacons[0].id);
@@ -666,6 +694,96 @@ export const AppContent: React.FC = () => {
     return () => { mounted = false; };
   }, [selectedChannelId, selectedBeaconId]);
 
+  // Column Resize Handlers
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingChannelSidebar) {
+        const newWidth = Math.max(180, Math.min(420, e.clientX - 72));
+        setChannelSidebarWidth(newWidth);
+      }
+      if (isResizingMemberPanel) {
+        const newWidth = Math.max(180, Math.min(380, window.innerWidth - e.clientX));
+        setMemberPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingChannelSidebar(false);
+      setIsResizingMemberPanel(false);
+    };
+
+    if (isResizingChannelSidebar || isResizingMemberPanel) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingChannelSidebar, isResizingMemberPanel]);
+
+  // Drag and Drop Server Reordering & Folder Clustering Handlers
+  const handleServerDragStart = (e: React.DragEvent, beaconId: string) => {
+    e.dataTransfer.setData('text/plain', beaconId);
+    setDraggedBeaconId(beaconId);
+  };
+
+  const handleServerDragOver = (e: React.DragEvent, targetBeaconId: string) => {
+    e.preventDefault();
+    if (draggedBeaconId && draggedBeaconId !== targetBeaconId) {
+      setDragOverTargetId(targetBeaconId);
+    }
+  };
+
+  const handleServerDrop = (e: React.DragEvent, targetBeaconId: string) => {
+    e.preventDefault();
+    setDragOverTargetId(null);
+    if (!draggedBeaconId || draggedBeaconId === targetBeaconId) return;
+
+    // If dropped directly in the center, form/add to a cluster folder
+    const rect = e.currentTarget.getBoundingClientRect();
+    const isCenterDrop = e.clientY > rect.top + 10 && e.clientY < rect.bottom - 10;
+
+    if (isCenterDrop) {
+      // Check if target is already in a folder
+      const existingFolderIndex = serverFolders.findIndex(f => f.beaconIds.includes(targetBeaconId));
+      if (existingFolderIndex >= 0) {
+        setServerFolders(prev => prev.map((f, idx) => 
+          idx === existingFolderIndex && !f.beaconIds.includes(draggedBeaconId)
+            ? { ...f, beaconIds: [...f.beaconIds, draggedBeaconId] }
+            : f
+        ));
+      } else {
+        // Create new folder cluster
+        const newFolderId = `folder-${Date.now()}`;
+        setServerFolders(prev => [
+          ...prev,
+          {
+            id: newFolderId,
+            name: 'Beacon Cluster',
+            beaconIds: [targetBeaconId, draggedBeaconId],
+            isExpanded: true,
+          },
+        ]);
+      }
+      showToast('Created / Updated Server Folder');
+    } else {
+      // Reorder in serverOrder
+      setServerOrder(prev => {
+        const order = prev.length > 0 ? [...prev] : beacons.map(b => b.id);
+        const sourceIndex = order.indexOf(draggedBeaconId);
+        const targetIndex = order.indexOf(targetBeaconId);
+        if (sourceIndex >= 0 && targetIndex >= 0) {
+          order.splice(sourceIndex, 1);
+          order.splice(targetIndex, 0, draggedBeaconId);
+        }
+        return order;
+      });
+      showToast('Reordered servers');
+    }
+    setDraggedBeaconId(null);
+  };
+
   // Quick Scan Hotkey & Click-outside listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -677,6 +795,9 @@ export const AppContent: React.FC = () => {
         setIsUserPopoutOpen(false);
         setHoverUserPopout(null);
         setIsSettingsOpen(false);
+        setIsServerSettingsOpen(false);
+        setIsInviteModalOpen(false);
+        setIsServerMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -722,6 +843,7 @@ export const AppContent: React.FC = () => {
     } else {
       setInVoiceRoom(channelId);
       setSelectedChannelId(channelId);
+      setIsMemberPanelOpen(false); // Collapsed by default in voice channel view per user instructions!
       gateway.updateVoiceState(channelId, isMuted, isDeafened, false);
       showToast(`Connected to real voice channel`);
     }
@@ -860,13 +982,13 @@ export const AppContent: React.FC = () => {
     },
     {
       label: 'Invite People',
-      icon: <Users className="w-3.5 h-3.5" />,
-      onClick: () => showToast(`Invite link copied for ${beacon.name}`),
+      icon: <Users className="w-3.5 h-3.5 text-[#5865f2]" />,
+      onClick: () => setIsInviteModalOpen(true),
     },
     {
       label: 'Server Settings',
       icon: <Settings className="w-3.5 h-3.5" />,
-      onClick: () => setIsSettingsOpen(true),
+      onClick: () => setIsServerSettingsOpen(true),
     },
     {
       label: 'Copy Server ID',
@@ -1015,10 +1137,11 @@ export const AppContent: React.FC = () => {
 
   return (
     <div 
-      className="flex flex-col h-screen w-screen bg-[#1e1f22] text-[#dbdee1] select-none overflow-hidden"
+      className="flex flex-col h-screen w-screen bg-[#000000] text-[#dbdee1] select-none overflow-hidden"
       style={{ fontFamily: currentFontFamily }}
       onClick={() => {
         if (hoverUserPopout) setHoverUserPopout(null);
+        if (isServerMenuOpen) setIsServerMenuOpen(false);
       }}
     >
       {/* Toast Notification */}
@@ -1051,12 +1174,12 @@ export const AppContent: React.FC = () => {
 
       {/* Main Multi-Panel Workspace */}
       <div className="flex flex-1 min-h-0">
-        {/* 2. Server Rail (Far Left) - Discord Authentic 72px */}
-        <div className="w-[72px] bg-[#1e1f22] flex flex-col items-center py-3 gap-2 shrink-0 z-20">
+        {/* 2. Server Rail (Far Left) - Discord Authentic 72px - Jet Black (#080809) */}
+        <div className="w-[72px] bg-[#080809] flex flex-col items-center py-3 gap-2 shrink-0 z-30 select-none border-r border-[#141518]">
           {/* Subspace Gateway / Home DM Button */}
           <div className="relative flex items-center justify-center w-full group">
             <span 
-              className={`absolute left-0 w-1 bg-white rounded-r-full transition-all duration-200 ${
+              className={`absolute -left-1 w-1.5 bg-white rounded-r-full transition-all duration-200 z-40 ${
                 selectedBeaconId === 'home' ? 'h-10' : 'h-0 group-hover:h-5'
               }`} 
             />
@@ -1072,7 +1195,7 @@ export const AppContent: React.FC = () => {
               className={`w-12 h-12 flex items-center justify-center transition-all duration-200 ${
                 selectedBeaconId === 'home'
                   ? 'rounded-[16px] bg-[#00f0ff] text-[#07090e] shadow-[0_0_20px_rgba(0,240,255,0.4)]'
-                  : 'rounded-[24px] hover:rounded-[16px] bg-[#313338] text-[#dbdee1] hover:bg-[#00f0ff] hover:text-[#07090e]'
+                  : 'rounded-[24px] hover:rounded-[16px] bg-[#16171a] text-[#dbdee1] hover:bg-[#00f0ff] hover:text-[#07090e]'
               }`}
               title="Direct Messages & Friends"
             >
@@ -1080,51 +1203,131 @@ export const AppContent: React.FC = () => {
             </button>
           </div>
 
-          <div className="w-8 h-[2px] bg-[#35363c] rounded-[1px] my-1" />
+          <div className="w-8 h-[2px] bg-[#1f2024] rounded-[1px] my-1" />
 
-          {/* Servers / Beacons List */}
-          <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto px-3">
-            {beacons.map((beacon) => {
-              const isSelected = selectedBeaconId === beacon.id;
+          {/* Servers / Beacons List (Supports Drag-and-Drop Reordering and Folders!) */}
+          <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto px-3 scrollbar-none">
+            {/* Folder Clusters */}
+            {serverFolders.map((folder) => {
+              const folderBeacons = beacons.filter(b => folder.beaconIds.includes(b.id));
+              const hasActiveInFolder = folder.beaconIds.includes(selectedBeaconId);
               return (
-                <div key={beacon.id} className="relative flex items-center justify-center w-full group">
-                  <span 
-                    className={`absolute left-0 w-1 bg-white rounded-r-full transition-all duration-200 ${
-                      isSelected 
-                        ? 'h-10' 
-                        : beacon.unreadCount 
-                        ? 'h-2 group-hover:h-5' 
-                        : 'h-0 group-hover:h-5'
-                    }`} 
-                  />
-                  <button
-                    onClick={() => handleSelectServer(beacon.id)}
-                    onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
-                    style={{ background: isSelected ? beacon.gradient : undefined }}
-                    className={`w-12 h-12 flex items-center justify-center font-bold text-sm transition-all duration-200 relative ${
-                      isSelected 
-                        ? 'rounded-[16px] text-white shadow-lg' 
-                        : 'rounded-[24px] hover:rounded-[16px] bg-[#313338] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
+                <div key={folder.id} className="w-full flex flex-col items-center gap-1.5">
+                  <div
+                    onClick={() => {
+                      setServerFolders(prev => prev.map(f => f.id === folder.id ? { ...f, isExpanded: !f.isExpanded } : f));
+                    }}
+                    className={`w-12 h-12 rounded-[18px] bg-[#16171a] hover:bg-[#202226] flex flex-wrap items-center justify-center p-1.5 gap-1 cursor-pointer transition-all border ${
+                      hasActiveInFolder ? 'border-[#00f0ff]' : 'border-[#1f2024]'
                     }`}
+                    title={folder.name}
                   >
-                    {beacon.iconText}
-                    {/* Unread Indicator Badge: Located at Bottom-Right to avoid top clipping! */}
-                    {beacon.unreadCount && beacon.unreadCount > 0 && (
-                      <span className="absolute -bottom-1 -right-1 bg-[#f23f43] text-white text-[10px] font-bold h-5 min-w-[20px] px-1 rounded-full flex items-center justify-center border-[3px] border-[#1e1f22] z-20 pointer-events-none shadow-md">
-                        {beacon.unreadCount}
+                    {folderBeacons.slice(0, 4).map((fb) => (
+                      <span
+                        key={fb.id}
+                        style={{ background: fb.gradient }}
+                        className="w-4 h-4 rounded-[4px] text-[8px] font-bold text-white flex items-center justify-center"
+                      >
+                        {fb.iconText[0]}
                       </span>
-                    )}
-                  </button>
+                    ))}
+                  </div>
+
+                  {/* Expanded Folder Children */}
+                  {folder.isExpanded && (
+                    <div className="w-full bg-[#111214] py-2 rounded-[20px] flex flex-col items-center gap-2 border border-[#1f2024]">
+                      {folderBeacons.map((beacon) => {
+                        const isSelected = selectedBeaconId === beacon.id;
+                        return (
+                          <div key={beacon.id} className="relative flex items-center justify-center w-full group">
+                            <span 
+                              className={`absolute -left-1 w-1.5 bg-white rounded-r-full transition-all duration-200 z-40 ${
+                                isSelected ? 'h-10' : 'h-0 group-hover:h-5'
+                              }`} 
+                            />
+                            <button
+                              onClick={() => handleSelectServer(beacon.id)}
+                              onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
+                              style={{ background: isSelected ? beacon.gradient : undefined }}
+                              className={`w-10 h-10 flex items-center justify-center font-bold text-xs transition-all duration-200 relative ${
+                                isSelected 
+                                  ? 'rounded-[14px] text-white shadow-lg' 
+                                  : 'rounded-[20px] hover:rounded-[14px] bg-[#1c1d22] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
+                              }`}
+                            >
+                              {beacon.iconText}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
 
+            {/* Standalone Server Items */}
+            {(() => {
+              const clusteredIds = new Set(serverFolders.flatMap(f => f.beaconIds));
+              const orderedList = serverOrder.length > 0 
+                ? serverOrder.map(id => beacons.find(b => b.id === id)).filter(Boolean) as Beacon[]
+                : beacons;
+              const standaloneBeacons = orderedList.filter(b => !clusteredIds.has(b.id));
+
+              return standaloneBeacons.map((beacon) => {
+                const isSelected = selectedBeaconId === beacon.id;
+                const isDragTarget = dragOverTargetId === beacon.id;
+                return (
+                  <div 
+                    key={beacon.id} 
+                    className="relative flex items-center justify-center w-full group"
+                    draggable
+                    onDragStart={(e) => handleServerDragStart(e, beacon.id)}
+                    onDragOver={(e) => handleServerDragOver(e, beacon.id)}
+                    onDragLeave={() => setDragOverTargetId(null)}
+                    onDrop={(e) => handleServerDrop(e, beacon.id)}
+                  >
+                    {/* White Indicator Pill - Positioned strictly on the outside left (-left-1) */}
+                    <span 
+                      className={`absolute -left-1 w-1.5 bg-white rounded-r-full transition-all duration-200 z-40 ${
+                        isSelected 
+                          ? 'h-10' 
+                          : beacon.unreadCount 
+                          ? 'h-2 group-hover:h-5' 
+                          : 'h-0 group-hover:h-5'
+                      }`} 
+                    />
+                    <button
+                      onClick={() => handleSelectServer(beacon.id)}
+                      onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
+                      style={{ background: isSelected ? beacon.gradient : undefined }}
+                      className={`w-12 h-12 flex items-center justify-center font-bold text-sm transition-all duration-200 relative ${
+                        isDragTarget ? 'ring-2 ring-[#00f0ff] scale-105' : ''
+                      } ${
+                        isSelected 
+                          ? 'rounded-[16px] text-white shadow-lg' 
+                          : 'rounded-[24px] hover:rounded-[16px] bg-[#16171a] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
+                      }`}
+                    >
+                      {beacon.iconText}
+                      {/* Unread Indicator Badge: Located at Bottom-Right to avoid top clipping! */}
+                      {beacon.unreadCount && beacon.unreadCount > 0 && (
+                        <span className="absolute -bottom-1 -right-1 bg-[#f23f43] text-white text-[10px] font-bold h-5 min-w-[20px] px-1 rounded-full flex items-center justify-center border-[3px] border-[#080809] z-20 pointer-events-none shadow-md">
+                          {beacon.unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                );
+              });
+            })()}
+
             {/* Add Server & Discovery Buttons */}
             <div className="relative flex items-center justify-center w-full group mt-1">
-              <span className="absolute left-0 w-1 bg-white rounded-r-full h-0 group-hover:h-5 transition-all" />
+              <span className="absolute -left-1 w-1.5 bg-white rounded-r-full h-0 group-hover:h-5 transition-all z-40" />
               <button
                 onClick={() => showToast('Open Beacon Discovery')}
-                className="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center transition-all duration-200"
+                className="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#16171a] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center transition-all duration-200"
                 title="Add a Server"
               >
                 <Plus className="w-5 h-5" />
@@ -1132,7 +1335,7 @@ export const AppContent: React.FC = () => {
             </div>
 
             <div className="relative flex items-center justify-center w-full group">
-              <span className={`absolute left-0 w-1 bg-white rounded-r-full transition-all duration-200 ${
+              <span className={`absolute -left-1 w-1.5 bg-white rounded-r-full transition-all duration-200 z-40 ${
                 selectedBeaconId === 'explore' ? 'h-10' : 'h-0 group-hover:h-5'
               }`} />
               <button
@@ -1140,7 +1343,7 @@ export const AppContent: React.FC = () => {
                 className={`w-12 h-12 flex items-center justify-center transition-all duration-200 ${
                   selectedBeaconId === 'explore'
                     ? 'rounded-[16px] bg-[#23a55a] text-white shadow-lg'
-                    : 'rounded-[24px] hover:rounded-[16px] bg-[#313338] hover:bg-[#23a55a] text-[#23a55a] hover:text-white'
+                    : 'rounded-[24px] hover:rounded-[16px] bg-[#16171a] hover:bg-[#23a55a] text-[#23a55a] hover:text-white'
                 }`}
                 title="Explore Discoverable Servers"
               >
@@ -1150,18 +1353,21 @@ export const AppContent: React.FC = () => {
           </div>
         </div>
 
-        {/* 3. Secondary Sidebar (240px) */}
+        {/* 3. Secondary Sidebar (Channels or DMs) - Resizable with Draggable Handle */}
         {selectedBeaconId === 'home' ? (
-          /* A. Direct Messages & Friends Sidebar (Home View) */
-          <div className="w-60 bg-[#2b2d31] flex flex-col shrink-0 border-r border-[#1f2023]/60">
+          /* A. Direct Messages & Friends Sidebar (Home View - Jet Black #0f1012) */
+          <div 
+            style={{ width: `${channelSidebarWidth}px` }} 
+            className="bg-[#0f1012] flex flex-col shrink-0 border-r border-[#1a1b1e] relative select-none"
+          >
             {/* Top Search Button: "Find or start a conversation" */}
-            <div className="h-12 px-2.5 border-b border-[#1f2023] flex items-center">
+            <div className="h-12 px-2.5 border-b border-[#1a1b1e] flex items-center">
               <button
                 onClick={() => setIsQuickScanOpen(true)}
-                className="w-full bg-[#1e1f22] hover:bg-[#111214] text-[#949ba4] text-xs px-2 py-1.5 rounded-[4px] flex items-center justify-between transition-colors shadow-inner"
+                className="w-full bg-[#08080a] hover:bg-[#16171a] text-[#949ba4] text-xs px-2 py-1.5 rounded-[4px] flex items-center justify-between transition-colors shadow-inner border border-[#1f2024]"
               >
                 <span className="truncate">Find or start a conversation</span>
-                <kbd className="text-[10px] font-mono bg-[#2b2d31] px-1 rounded">Ctrl+K</kbd>
+                <kbd className="text-[10px] font-mono bg-[#16171a] px-1 rounded text-[#80848e]">Ctrl+K</kbd>
               </button>
             </div>
 
@@ -1169,10 +1375,10 @@ export const AppContent: React.FC = () => {
             <div className="px-2 pt-3 pb-1 space-y-0.5">
               <button
                 onClick={() => setSelectedDmId('friends')}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-[4px] text-sm font-medium transition-colors ${
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-[6px] text-sm font-medium transition-colors ${
                   selectedDmId === 'friends'
-                    ? 'bg-[#35373c] text-white'
-                    : 'text-[#949ba4] hover:bg-[#35373c]/60 hover:text-[#dbdee1]'
+                    ? 'bg-[#1a1b1e] text-white font-semibold'
+                    : 'text-[#949ba4] hover:bg-[#16171a] hover:text-[#dbdee1]'
                 }`}
               >
                 <Users className="w-5 h-5" />
@@ -1202,18 +1408,18 @@ export const AppContent: React.FC = () => {
                       key={dm.id}
                       onClick={() => setSelectedDmId(dm.id)}
                       onContextMenu={(e) => openContextMenu(e, getUserContextMenu(dm.user))}
-                      className={`group flex items-center justify-between px-2 py-2 rounded-[4px] cursor-pointer transition-colors ${
+                      className={`group flex items-center justify-between px-2 py-2 rounded-[6px] cursor-pointer transition-colors ${
                         isSelected
-                          ? 'bg-[#35373c] text-white'
-                          : 'text-[#949ba4] hover:bg-[#35373c]/60 hover:text-[#dbdee1]'
+                          ? 'bg-[#1a1b1e] text-white'
+                          : 'text-[#949ba4] hover:bg-[#16171a] hover:text-[#dbdee1]'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="relative shrink-0">
-                          <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-sm">
+                          <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-sm">
                             {dm.user.avatar}
                           </div>
-                          <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#2b2d31] ${getStatusColor(dm.user.status)}`} />
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0f1012] ${getStatusColor(dm.user.status)}`} />
                         </div>
                         <div className="min-w-0">
                           <div className="text-sm font-medium truncate flex items-center gap-1.5">
@@ -1242,39 +1448,39 @@ export const AppContent: React.FC = () => {
               </div>
             </div>
 
-            {/* Bottom User Bar */}
-            <div className="h-[52px] bg-[#232428] px-2 py-1.5 flex items-center justify-between shrink-0 relative">
+            {/* Floating User Display Island (Bottom) */}
+            <div className="mx-2 mb-2 p-1.5 rounded-[8px] bg-[#111214] border border-[#1f2024] shadow-lg flex items-center justify-between shrink-0 relative">
               <div
                 onClick={() => setIsUserPopoutOpen(p => !p)}
-                className="flex items-center gap-2 p-1 -ml-1 rounded-[4px] hover:bg-[#35373c] cursor-pointer min-w-0 flex-1 transition-colors"
+                className="flex items-center gap-2 p-1 rounded-[6px] hover:bg-[#1a1b1e] cursor-pointer min-w-0 flex-1 transition-colors"
               >
                 <div className="relative shrink-0">
-                  <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-base">
+                  <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-base">
                     {currentUser.avatar}
                   </div>
-                  <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#232428] ${getStatusColor(currentUser.status)}`} />
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#111214] ${getStatusColor(currentUser.status)}`} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold text-white truncate">{currentUser.name}</div>
-                  <div className="text-[11px] text-[#949ba4] truncate">{currentUser.statusText}</div>
+                  <div className="text-[10px] text-[#949ba4] truncate">{currentUser.statusText}</div>
                 </div>
               </div>
 
               <div className="flex items-center text-[#b5bac1]">
-                <button onClick={() => setIsMuted(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#35373c] ${isMuted ? 'text-[#f23f43]' : 'hover:text-white'}`}>
+                <button onClick={() => setIsMuted(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isMuted ? 'text-[#f23f43]' : 'hover:text-white'}`}>
                   {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                 </button>
-                <button onClick={() => setIsDeafened(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#35373c] ${isDeafened ? 'text-[#f23f43]' : 'hover:text-white'}`}>
+                <button onClick={() => setIsDeafened(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isDeafened ? 'text-[#f23f43]' : 'hover:text-white'}`}>
                   <Headphones className="w-4 h-4" />
                 </button>
-                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 rounded-[4px] hover:bg-[#35373c] hover:text-white">
+                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 rounded-[4px] hover:bg-[#1a1b1e] hover:text-white">
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
 
               {/* User Island Popout (NO ROLES SHOWN FOR CURRENT USER ISLAND) */}
               {isUserPopoutOpen && (
-                <div className="absolute bottom-[56px] left-2 z-50">
+                <div className="absolute bottom-[56px] left-0 z-50">
                   <ProfileCard
                     user={currentUser}
                     hideRoles={true}
@@ -1291,34 +1497,147 @@ export const AppContent: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Draggable Divider Handle for Resizing */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingChannelSidebar(true);
+              }}
+              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-[#00f0ff] transition-colors z-30"
+            />
           </div>
         ) : (
-          /* B. Server Channels Sidebar */
-          <div className="w-60 bg-[#2b2d31] flex flex-col shrink-0 border-r border-[#1f2023]/60">
-            {/* Server Dropdown Header */}
-            <div 
-              onClick={(e) => {
-                const beacon = beacons.find(b => b.id === selectedBeaconId) || beacons[0];
-                openContextMenu(e, getBeaconContextMenu(beacon));
-              }}
-              onContextMenu={(e) => {
-                const beacon = beacons.find(b => b.id === selectedBeaconId) || beacons[0];
-                openContextMenu(e, getBeaconContextMenu(beacon));
-              }}
-              className="h-12 px-4 border-b border-[#1f2023] flex items-center justify-between font-bold text-white shadow-sm hover:bg-[#35373c] cursor-pointer transition-colors"
-            >
-              <span className="truncate text-sm">{currentServer.name}</span>
-              <ChevronDown className="w-4 h-4 text-[#949ba4]" />
+          /* B. Server Channels Sidebar (Jet Black #0f1012) */
+          <div 
+            style={{ width: `${channelSidebarWidth}px` }} 
+            className="bg-[#0f1012] flex flex-col shrink-0 border-r border-[#1a1b1e] relative select-none"
+          >
+            {/* Server Fixed Header with Anchored Dropdown Menu */}
+            <div className="relative">
+              <div 
+                onClick={() => setIsServerMenuOpen(p => !p)}
+                className="h-12 px-4 border-b border-[#1a1b1e] flex items-center justify-between font-bold text-white shadow-sm hover:bg-[#16171a] cursor-pointer transition-colors"
+              >
+                <span className="truncate text-sm">{currentServer.name}</span>
+                <ChevronDown className={`w-4 h-4 text-[#949ba4] transition-transform ${isServerMenuOpen ? 'rotate-180 text-white' : ''}`} />
+              </div>
+
+              {/* Anchored Server Dropdown Menu (Directly Below Header, matching media_1788736046847.png) */}
+              {isServerMenuOpen && (
+                <div 
+                  className="absolute top-13 left-2 right-2 z-50 bg-[#08080a] border border-[#1f2024] rounded-[8px] shadow-[0_16px_36px_rgba(0,0,0,0.9)] p-1.5 space-y-0.5 text-xs animate-in fade-in zoom-in-95 duration-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => {
+                      setIsServerMenuOpen(false);
+                      showToast(`Boosted ${currentServer.name}!`);
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#eb459e] hover:bg-[#eb459e]/10 font-semibold transition-colors"
+                  >
+                    <span>Server Boost</span>
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsServerMenuOpen(false);
+                      setIsInviteModalOpen(true);
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#5865f2] hover:bg-[#5865f2]/10 font-semibold transition-colors"
+                  >
+                    <span>Invite to Server</span>
+                    <UserPlus className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className="h-[1px] bg-[#1a1b1e] my-1" />
+
+                  <button
+                    onClick={() => {
+                      setIsServerMenuOpen(false);
+                      setIsServerSettingsOpen(true);
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
+                  >
+                    <span>Server Settings</span>
+                    <Settings className="w-3.5 h-3.5 text-[#949ba4]" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsServerMenuOpen(false);
+                      showToast('Server Insights telemetry');
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
+                  >
+                    <span>Server Insights</span>
+                    <Activity className="w-3.5 h-3.5 text-[#949ba4]" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsServerMenuOpen(false);
+                      showToast('Create Relay Channel dialog');
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
+                  >
+                    <span>Create Channel</span>
+                    <Plus className="w-3.5 h-3.5 text-[#949ba4]" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsServerMenuOpen(false);
+                      showToast('Create Category');
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
+                  >
+                    <span>Create Category</span>
+                    <FolderPlus className="w-3.5 h-3.5 text-[#949ba4]" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsServerMenuOpen(false);
+                      showToast('Notification Settings');
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
+                  >
+                    <span>Notification Settings</span>
+                    <Bell className="w-3.5 h-3.5 text-[#949ba4]" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsServerMenuOpen(false);
+                      showToast('Privacy & Safety Settings');
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
+                  >
+                    <span>Privacy Settings</span>
+                    <Shield className="w-3.5 h-3.5 text-[#949ba4]" />
+                  </button>
+
+                  <div className="h-[1px] bg-[#1a1b1e] my-1" />
+
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(selectedBeaconId);
+                      setIsServerMenuOpen(false);
+                      showToast(`Copied Server ID: ${selectedBeaconId}`);
+                    }}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
+                  >
+                    <span>Copy Server ID</span>
+                    <Copy className="w-3.5 h-3.5 text-[#949ba4]" />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Channels & Roles / Browse Channels Header Item */}
             <div className="px-2 pt-3 pb-1">
               <button
                 onClick={() => setSelectedChannelId('browse-channels')}
-                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[4px] text-sm font-medium transition-colors ${
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[6px] text-sm font-medium transition-colors ${
                   selectedChannelId === 'browse-channels'
-                    ? 'bg-[#35373c] text-white'
-                    : 'text-[#949ba4] hover:bg-[#35373c]/60 hover:text-[#dbdee1]'
+                    ? 'bg-[#1a1b1e] text-white font-semibold'
+                    : 'text-[#949ba4] hover:bg-[#16171a] hover:text-[#dbdee1]'
                 }`}
               >
                 <BrowseIcon className="w-4 h-4 text-[#00f0ff]" />
@@ -1373,10 +1692,10 @@ export const AppContent: React.FC = () => {
                                   }
                                 }}
                                 onContextMenu={(e) => openContextMenu(e, getChannelContextMenu(chan))}
-                                className={`group flex items-center gap-2 px-2 py-1.5 rounded-[4px] text-sm font-medium transition-colors cursor-pointer ${
+                                className={`group flex items-center gap-2 px-2 py-1.5 rounded-[6px] text-sm font-medium transition-colors cursor-pointer ${
                                   isSelected
-                                    ? 'bg-[#35373c] text-white'
-                                    : 'text-[#949ba4] hover:bg-[#35373c]/60 hover:text-[#dbdee1]'
+                                    ? 'bg-[#1a1b1e] text-white font-semibold'
+                                    : 'text-[#949ba4] hover:bg-[#16171a] hover:text-[#dbdee1]'
                                 }`}
                               >
                                 {getChannelIcon(chan.type)}
@@ -1398,10 +1717,10 @@ export const AppContent: React.FC = () => {
                                         const member = members.find(m => m.id === u.id) || currentUser;
                                         handleOpenUserPopout(e, member);
                                       }}
-                                      className="flex items-center justify-between px-2 py-1 rounded-[4px] hover:bg-[#35373c]/60 cursor-pointer transition-colors group"
+                                      className="flex items-center justify-between px-2 py-1 rounded-[4px] hover:bg-[#1a1b1e] cursor-pointer transition-colors group"
                                     >
                                       <div className="flex items-center gap-2 min-w-0">
-                                        <div className={`w-6 h-6 rounded-full bg-[#111214] flex items-center justify-center text-xs shrink-0 ${u.isSpeaking ? 'ring-2 ring-[#23a55a]' : ''}`}>
+                                        <div className={`w-6 h-6 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-xs shrink-0 ${u.isSpeaking ? 'ring-2 ring-[#23a55a]' : ''}`}>
                                           {u.avatar}
                                         </div>
                                         <span className={`text-xs font-medium truncate ${u.isSpeaking ? 'text-[#23a55a]' : 'text-[#dbdee1]'}`}>
@@ -1416,7 +1735,7 @@ export const AppContent: React.FC = () => {
                                   ))}
 
                                   <button
-                                    onClick={() => showToast(`Invite link copied for #${chan.name}`)}
+                                    onClick={() => setIsInviteModalOpen(true)}
                                     className="w-full text-left px-2 py-0.5 text-[11px] text-[#949ba4] hover:text-white flex items-center gap-1.5 transition-colors"
                                   >
                                     <UserPlus className="w-3 h-3 text-[#23a55a]" />
@@ -1436,7 +1755,7 @@ export const AppContent: React.FC = () => {
 
             {/* Active Voice Connection Panel (Bottom) */}
             {inVoiceRoom && (
-              <div className="bg-[#232428] border-t border-[#1f2023] px-3 py-2 text-xs">
+              <div className="bg-[#0b0c0e] border-t border-[#1a1b1e] px-3 py-2 text-xs">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#23a55a] animate-ping" />
@@ -1444,7 +1763,7 @@ export const AppContent: React.FC = () => {
                   </div>
                   <button 
                     onClick={handleDisconnectVoice}
-                    className="p-1 rounded hover:bg-[#35373c] text-[#f23f43]"
+                    className="p-1 rounded hover:bg-[#1a1b1e] text-[#f23f43]"
                     title="Disconnect"
                   >
                     <PhoneOff className="w-4 h-4" />
@@ -1454,49 +1773,49 @@ export const AppContent: React.FC = () => {
                   {allCurrentChannels.find(c => c.id === inVoiceRoom)?.name || 'Comm-Link'} / 128 kbps
                 </div>
                 <div className="flex gap-1.5">
-                  <button onClick={() => showToast('Video toggle')} className="flex-1 bg-[#2b2d31] hover:bg-[#35373c] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1">
+                  <button onClick={() => showToast('Video toggle')} className="flex-1 bg-[#16171a] hover:bg-[#202226] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border border-[#1f2024]">
                     <Video className="w-3.5 h-3.5" /> Video
                   </button>
-                  <button onClick={() => showToast('Screen share toggle')} className="flex-1 bg-[#2b2d31] hover:bg-[#35373c] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1">
+                  <button onClick={() => showToast('Screen share toggle')} className="flex-1 bg-[#16171a] hover:bg-[#202226] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border border-[#1f2024]">
                     <Monitor className="w-3.5 h-3.5" /> Share Screen
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Bottom 52px User Footer Bar */}
-            <div className="h-[52px] bg-[#232428] px-2 py-1.5 flex items-center justify-between shrink-0 relative">
+            {/* Floating User Display Island (Bottom) */}
+            <div className="mx-2 mb-2 p-1.5 rounded-[8px] bg-[#111214] border border-[#1f2024] shadow-lg flex items-center justify-between shrink-0 relative">
               <div
                 onClick={() => setIsUserPopoutOpen(p => !p)}
-                className="flex items-center gap-2 p-1 -ml-1 rounded-[4px] hover:bg-[#35373c] cursor-pointer min-w-0 flex-1 transition-colors"
+                className="flex items-center gap-2 p-1 rounded-[6px] hover:bg-[#1a1b1e] cursor-pointer min-w-0 flex-1 transition-colors"
               >
                 <div className="relative shrink-0">
-                  <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-base">
+                  <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-base">
                     {currentUser.avatar}
                   </div>
-                  <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#232428] ${getStatusColor(currentUser.status)}`} />
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#111214] ${getStatusColor(currentUser.status)}`} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold text-white truncate">{currentUser.name}</div>
-                  <div className="text-[11px] text-[#949ba4] truncate">{currentUser.statusText}</div>
+                  <div className="text-[10px] text-[#949ba4] truncate">{currentUser.statusText}</div>
                 </div>
               </div>
 
               <div className="flex items-center text-[#b5bac1]">
-                <button onClick={() => setIsMuted(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#35373c] ${isMuted ? 'text-[#f23f43]' : 'hover:text-white'}`}>
+                <button onClick={() => setIsMuted(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isMuted ? 'text-[#f23f43]' : 'hover:text-white'}`}>
                   {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                 </button>
-                <button onClick={() => setIsDeafened(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#35373c] ${isDeafened ? 'text-[#f23f43]' : 'hover:text-white'}`}>
+                <button onClick={() => setIsDeafened(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isDeafened ? 'text-[#f23f43]' : 'hover:text-white'}`}>
                   <Headphones className="w-4 h-4" />
                 </button>
-                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 rounded-[4px] hover:bg-[#35373c] hover:text-white">
+                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 rounded-[4px] hover:bg-[#1a1b1e] hover:text-white">
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
 
               {/* User Island Popout (NO ROLES SHOWN FOR CURRENT USER ISLAND) */}
               {isUserPopoutOpen && (
-                <div className="absolute bottom-[56px] left-2 z-50">
+                <div className="absolute bottom-[56px] left-0 z-50">
                   <ProfileCard
                     user={currentUser}
                     hideRoles={true}
@@ -1513,13 +1832,22 @@ export const AppContent: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Draggable Divider Handle for Resizing */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingChannelSidebar(true);
+              }}
+              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-[#00f0ff] transition-colors z-30"
+            />
           </div>
         )}
 
         {/* 4. Main Viewport Area */}
         {selectedBeaconId === 'explore' ? (
-          /* Explore Public Beacons View */
-          <div className="flex-1 flex flex-col min-w-0 bg-[#313338] h-full overflow-y-auto p-8">
+          /* Explore Public Beacons View - Jet Black */
+          <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full overflow-y-auto p-8 select-none">
             <div className="max-w-4xl mx-auto w-full space-y-6">
               <div>
                 <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -1537,7 +1865,7 @@ export const AppContent: React.FC = () => {
                   return (
                     <div
                       key={b.id}
-                      className="p-5 rounded-[12px] bg-[#2b2d31] border border-[#1f2023] hover:border-[#00f0ff]/50 transition-all flex flex-col justify-between"
+                      className="p-5 rounded-[12px] bg-[#0b0c0e] border border-[#1f2024] hover:border-[#00f0ff]/50 transition-all flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex items-center gap-3 mb-2">
@@ -1557,12 +1885,12 @@ export const AppContent: React.FC = () => {
                         </p>
                       </div>
 
-                      <div className="mt-4 pt-3 border-t border-[#1f2023] flex items-center justify-between">
+                      <div className="mt-4 pt-3 border-t border-[#1f2024] flex items-center justify-between">
                         <span className="text-[11px] font-mono text-[#80848e]">{b.id.slice(0, 8)}</span>
                         {isJoined ? (
                           <button
                             onClick={() => setSelectedBeaconId(b.id)}
-                            className="bg-[#35373c] text-white px-3 py-1.5 rounded-[4px] text-xs font-semibold hover:bg-[#404249] transition-colors"
+                            className="bg-[#16171a] text-white px-3 py-1.5 rounded-[4px] text-xs font-semibold hover:bg-[#202226] transition-colors border border-[#2b2d33]"
                           >
                             Enter Beacon
                           </button>
@@ -1597,17 +1925,17 @@ export const AppContent: React.FC = () => {
             </div>
           </div>
         ) : selectedBeaconId === 'home' && selectedDmId === 'friends' ? (
-          /* A. Friends List View */
-          <div className="flex-1 flex flex-col min-w-0 bg-[#313338] h-full">
+          /* A. Friends List View - Jet Black */
+          <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full select-none">
             {/* Top Friends Header Bar */}
-            <div className="h-12 px-4 border-b border-[#232428] flex items-center justify-between shrink-0 bg-[#313338]">
+            <div className="h-12 px-4 border-b border-[#141518] flex items-center justify-between shrink-0 bg-[#0b0c0e]">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 font-bold text-white text-base">
                   <Users className="w-5 h-5 text-[#80848e]" />
                   <span>Friends</span>
                 </div>
 
-                <div className="w-[1px] h-4 bg-[#4e5058]" />
+                <div className="w-[1px] h-4 bg-[#232428]" />
 
                 {/* Tabs */}
                 <div className="flex items-center gap-2 text-sm font-medium">
@@ -1617,8 +1945,8 @@ export const AppContent: React.FC = () => {
                       <button
                         key={tab}
                         onClick={() => setFriendsTab(tab)}
-                        className={`px-2 py-1 rounded-[4px] capitalize transition-colors ${
-                          friendsTab === tab ? 'bg-[#35373c] text-white font-semibold' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+                        className={`px-2.5 py-1 rounded-[4px] capitalize transition-colors ${
+                          friendsTab === tab ? 'bg-[#1a1b1e] text-white font-semibold' : 'text-[#b5bac1] hover:bg-[#16171a]'
                         }`}
                       >
                         {tab} {count > 0 && `(${count})`}
@@ -1643,7 +1971,7 @@ export const AppContent: React.FC = () => {
               {/* Friends List Column */}
               <div className="flex-1 flex flex-col p-6 overflow-y-auto min-w-0">
                 <div className="mb-4">
-                  <div className="bg-[#1e1f22] rounded-[4px] flex items-center px-3 py-2 gap-2 text-sm">
+                  <div className="bg-[#0b0c0e] border border-[#1f2024] rounded-[6px] flex items-center px-3 py-2 gap-2 text-sm">
                     <Search className="w-4 h-4 text-[#80848e]" />
                     <input
                       type="text"
@@ -1667,22 +1995,22 @@ export const AppContent: React.FC = () => {
                     .map((item) => (
                       <div
                         key={item.id}
-                        className="flex items-center justify-between p-2.5 hover:bg-[#35373c]/60 rounded-[8px] border-t border-[#35373c]/30 transition-colors group"
+                        className="flex items-center justify-between p-2.5 hover:bg-[#0b0c0e] rounded-[8px] border-t border-[#141518] transition-colors group"
                       >
                         <div 
                           className="flex items-center gap-3 cursor-pointer"
                           onClick={(e) => handleOpenUserPopout(e, item.user)}
                         >
                           <div className="relative">
-                            <div className="w-10 h-10 rounded-full bg-[#111214] flex items-center justify-center text-lg">
+                            <div className="w-10 h-10 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-lg">
                               {item.user.avatar}
                             </div>
-                            <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#313338] ${getStatusColor(item.user.status)}`} />
+                            <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#000000] ${getStatusColor(item.user.status)}`} />
                           </div>
                           <div>
                             <div className="text-sm font-semibold text-white group-hover:underline flex items-center gap-1.5">
                               <span>{item.user.name}</span>
-                              <span className="text-xs text-[#949ba4] font-normal">@{item.user.callsign}</span>
+                              <span className="text-xs text-[#80848e] font-normal">@{item.user.callsign}</span>
                             </div>
                             <div className="text-xs text-[#949ba4]">{item.customActivity || item.user.statusText}</div>
                           </div>
@@ -1695,14 +2023,14 @@ export const AppContent: React.FC = () => {
                               if (dm) setSelectedDmId(dm.id);
                               else showToast(`Opening DM with ${item.user.name}`);
                             }}
-                            className="w-9 h-9 rounded-full bg-[#2b2d31] hover:bg-[#111214] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
+                            className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
                             title="Message"
                           >
                             <MessageCircle className="w-5 h-5" />
                           </button>
                           <button
                             onClick={(e) => openContextMenu(e, getUserContextMenu(item.user))}
-                            className="w-9 h-9 rounded-full bg-[#2b2d31] hover:bg-[#111214] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
+                            className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
                             title="More Actions"
                           >
                             <MoreVertical className="w-5 h-5" />
@@ -1714,12 +2042,12 @@ export const AppContent: React.FC = () => {
               </div>
 
               {/* Active Now Sidebar */}
-              <div className="w-80 border-l border-[#232428] p-4 hidden lg:flex flex-col shrink-0">
+              <div className="w-80 border-l border-[#141518] p-4 hidden lg:flex flex-col shrink-0 bg-[#080809]">
                 <h3 className="text-xl font-bold text-white mb-4">Active Now</h3>
                 <div className="space-y-3">
-                  <div className="p-3 rounded-[8px] bg-[#2b2d31] border border-[#35373c]/50 space-y-2">
+                  <div className="p-3 rounded-[8px] bg-[#0b0c0e] border border-[#1f2024] space-y-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-sm">
+                      <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-sm">
                         👨‍🚀
                       </div>
                       <div>
@@ -1730,9 +2058,9 @@ export const AppContent: React.FC = () => {
                     <p className="text-xs text-[#949ba4]">Connected to orbital tactical array for 1h 24m.</p>
                   </div>
 
-                  <div className="p-3 rounded-[8px] bg-[#2b2d31] border border-[#35373c]/50 space-y-2">
+                  <div className="p-3 rounded-[8px] bg-[#0b0c0e] border border-[#1f2024] space-y-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-sm">
+                      <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-sm">
                         🛸
                       </div>
                       <div>
@@ -1747,19 +2075,19 @@ export const AppContent: React.FC = () => {
             </div>
           </div>
         ) : selectedBeaconId === 'home' && activeDm ? (
-          /* B. Direct Message Conversation (With Quantum Double Ratchet E2EE!) */
-          <div className="flex-1 flex flex-col min-w-0 bg-[#313338] h-full">
+          /* B. Direct Message Conversation (With Quantum Double Ratchet E2EE! - Jet Black) */
+          <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full">
             {/* Top DM Header Bar */}
-            <div className="h-12 px-4 border-b border-[#232428] flex items-center justify-between shrink-0 bg-[#313338] shadow-sm">
+            <div className="h-12 px-4 border-b border-[#141518] flex items-center justify-between shrink-0 bg-[#0b0c0e] shadow-sm">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="relative">
-                  <div className="w-7 h-7 rounded-full bg-[#111214] flex items-center justify-center text-xs">
+                  <div className="w-7 h-7 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-xs">
                     {activeDm.user.avatar}
                   </div>
-                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#313338] ${getStatusColor(activeDm.user.status)}`} />
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0b0c0e] ${getStatusColor(activeDm.user.status)}`} />
                 </div>
                 <span className="font-bold text-white text-base truncate">{activeDm.user.name}</span>
-                <span className="text-xs text-[#949ba4] truncate hidden sm:inline">@{activeDm.user.callsign}</span>
+                <span className="text-xs text-[#80848e] truncate hidden sm:inline">@{activeDm.user.callsign}</span>
               </div>
 
               <div className="flex items-center gap-3 text-[#b5bac1]">
@@ -1779,7 +2107,7 @@ export const AppContent: React.FC = () => {
             </div>
 
             {/* Quantum Double Ratchet E2EE Verified Security Banner (Strictly in DMs!) */}
-            <div className="bg-[#1e1f22] border-b border-[#232428] px-4 py-2 flex items-center justify-between text-xs text-[#23a55a]">
+            <div className="bg-[#0b0c0e] border-b border-[#141518] px-4 py-2 flex items-center justify-between text-xs text-[#23a55a]">
               <div className="flex items-center gap-2 font-mono">
                 <Shield className="w-4 h-4 text-[#23a55a]" />
                 <span className="font-semibold text-white">Quantum Double Ratchet E2EE Active</span>
@@ -1794,7 +2122,7 @@ export const AppContent: React.FC = () => {
             <div className="flex-1 overflow-y-auto py-4 select-text">
               {/* DM Start Hero */}
               <div className="px-4 mb-6">
-                <div className="w-16 h-16 rounded-full bg-[#111214] flex items-center justify-center text-3xl mb-2">
+                <div className="w-16 h-16 rounded-full bg-[#0b0c0e] border border-[#1f2024] flex items-center justify-center text-3xl mb-2">
                   {activeDm.user.avatar}
                 </div>
                 <h2 className="text-2xl font-bold text-white">{activeDm.user.name}</h2>
@@ -1810,7 +2138,7 @@ export const AppContent: React.FC = () => {
                     key={m.id}
                     data-message-id={m.id}
                     onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                    className="px-4 py-1 hover:bg-[#2e3035] transition-colors relative group flex items-start gap-4"
+                    className="px-4 py-1.5 hover:bg-[#0b0c0e] transition-colors relative group flex items-start gap-4"
                   >
                     <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                       <MessageActionBar
@@ -1823,7 +2151,7 @@ export const AppContent: React.FC = () => {
 
                     <div
                       onClick={(e) => handleOpenUserPopout(e, activeDm.user)}
-                      className="w-10 h-10 rounded-full bg-[#111214] flex items-center justify-center text-lg shrink-0 cursor-pointer hover:opacity-80 transition-opacity mt-0.5"
+                      className="w-10 h-10 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-lg shrink-0 cursor-pointer hover:opacity-80 transition-opacity mt-0.5"
                     >
                       {m.avatar}
                     </div>
@@ -1836,7 +2164,7 @@ export const AppContent: React.FC = () => {
                         >
                           {m.author}
                         </span>
-                        <span className="text-[11px] text-[#949ba4]">{m.timestamp}</span>
+                        <span className="text-[11px] text-[#80848e]">{m.timestamp}</span>
                         {m.isPinned && (
                           <span className="text-[10px] text-[#00f0ff] font-mono flex items-center gap-0.5">
                             <Pin className="w-2.5 h-2.5" /> Pinned
@@ -1854,7 +2182,7 @@ export const AppContent: React.FC = () => {
                             <button
                               key={rIdx}
                               onClick={() => handleAddReaction(m.id, r.emoji)}
-                              className="rounded-[8px] bg-[#2b2d31] hover:bg-[#35373c] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1]"
+                              className="rounded-[8px] bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1]"
                             >
                               <span>{r.emoji}</span>
                               <span className="font-semibold text-[11px] text-[#dbdee1]">{r.count}</span>
@@ -1869,12 +2197,12 @@ export const AppContent: React.FC = () => {
             </div>
 
             {/* DM Input Pill */}
-            <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#313338]">
-              <div className="bg-[#383a40] rounded-[8px] flex items-center px-4 py-2.5 gap-3">
+            <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#000000]">
+              <div className="bg-[#111214] border border-[#1f2024] rounded-[8px] flex items-center px-4 py-2.5 gap-3 focus-within:border-[#00f0ff]/50 transition-colors">
                 <button
                   type="button"
                   onClick={handleAttachmentMenu}
-                  className="w-6 h-6 rounded-full bg-[#4e5058] hover:bg-[#b5bac1] text-[#313338] flex items-center justify-center font-bold text-lg transition-colors cursor-pointer"
+                  className="w-6 h-6 rounded-full bg-[#1f2024] hover:bg-[#2b2d33] text-[#dbdee1] flex items-center justify-center font-bold text-lg transition-colors cursor-pointer"
                 >
                   +
                 </button>
@@ -1888,11 +2216,11 @@ export const AppContent: React.FC = () => {
                   className="bg-transparent flex-1 text-[#dbdee1] placeholder-[#80848e] text-[15px] outline-none"
                 />
 
-                <div className="flex items-center gap-2.5 text-[#b5bac1]">
+                <div className="flex items-center gap-2.5 text-[#80848e]">
                   <button type="button" className="hover:text-white" title="Send a gift">
                     <Gift className="w-5 h-5" />
                   </button>
-                  <button type="button" className="hover:text-white text-xs font-bold font-mono px-1 rounded bg-[#4e5058]/40">
+                  <button type="button" className="hover:text-white text-xs font-bold font-mono px-1 rounded bg-[#1f2024]">
                     GIF
                   </button>
                   <button type="button" className="hover:text-white" title="Select Emoji">
@@ -1908,10 +2236,10 @@ export const AppContent: React.FC = () => {
             </form>
           </div>
         ) : selectedChannelId === 'browse-channels' ? (
-          /* C. Browse Channels Area ("Channels & Roles") */
-          <div className="flex-1 flex flex-col min-w-0 bg-[#313338] h-full overflow-y-auto">
+          /* C. Browse Channels Area ("Channels & Roles" - Jet Black) */
+          <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full overflow-y-auto select-none">
             {/* Header */}
-            <div className="h-12 px-6 border-b border-[#232428] flex items-center justify-between shrink-0 bg-[#313338]">
+            <div className="h-12 px-6 border-b border-[#141518] flex items-center justify-between shrink-0 bg-[#0b0c0e]">
               <div className="flex items-center gap-2 font-bold text-white text-base">
                 <BrowseIcon className="w-5 h-5 text-[#00f0ff]" />
                 <span>Channels & Roles — Browse Channels</span>
@@ -1998,33 +2326,44 @@ export const AppContent: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* D. Public Server Channel View (Standard Server Channels - NOT E2EE!) */
-          <div className="flex-1 flex flex-col min-w-0 bg-[#313338] h-full">
+          /* D. Public Server Channel View (Standard Server Channels - Jet Black #000000 / #0b0c0e) */
+          <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full relative">
             {/* Top Channel Header Bar */}
-            <div className="h-12 px-4 border-b border-[#232428] flex items-center justify-between shrink-0 bg-[#313338] shadow-sm">
+            <div className="h-12 px-4 border-b border-[#141518] flex items-center justify-between shrink-0 bg-[#0b0c0e] shadow-sm">
               <div className="flex items-center gap-2 min-w-0">
                 {getChannelIcon(currentChannel.type)}
                 <span className="font-bold text-white text-base truncate">
                   {currentChannel.name}
                 </span>
-                <div className="w-[1px] h-4 bg-[#4e5058] mx-2 hidden sm:block" />
+                <div className="w-[1px] h-4 bg-[#232428] mx-2 hidden sm:block" />
                 <span className="text-xs text-[#949ba4] truncate hidden sm:inline">
                   {currentChannel.description || `${currentServer.name} channel`}
                 </span>
               </div>
 
               {/* Right Action Icons */}
-              <div className="flex items-center gap-3 text-[#b5bac1]">
+              <div className="flex items-center gap-2.5 text-[#b5bac1]">
+                {/* Voice Text Chat Toggle Button (Only displayed in Voice Channels) */}
+                {currentChannel.type === 'voice' && (
+                  <button
+                    onClick={() => setIsVoiceChatOpen(p => !p)}
+                    className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] transition-colors ${isVoiceChatOpen ? 'text-white bg-[#1a1b1e]' : 'hover:text-white'}`}
+                    title={isVoiceChatOpen ? "Hide Voice Text Chat" : "Show Voice Text Chat"}
+                  >
+                    <MessageSquare className="w-5 h-5" />
+                  </button>
+                )}
+
                 <button
                   onClick={() => setIsPinnedDrawerOpen(p => !p)}
-                  className={`p-1 rounded-[4px] hover:bg-[#35373c] transition-colors ${isPinnedDrawerOpen ? 'text-white' : 'hover:text-white'}`}
+                  className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] transition-colors ${isPinnedDrawerOpen ? 'text-white bg-[#1a1b1e]' : 'hover:text-white'}`}
                   title="Pinned Messages"
                 >
                   <Pin className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => setIsMemberPanelOpen(p => !p)}
-                  className={`p-1 rounded-[4px] hover:bg-[#35373c] transition-colors ${isMemberPanelOpen ? 'text-white' : 'hover:text-white'}`}
+                  className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] transition-colors ${isMemberPanelOpen ? 'text-white bg-[#1a1b1e]' : 'hover:text-white'}`}
                   title="Member List"
                 >
                   <Users className="w-5 h-5" />
@@ -2033,16 +2372,16 @@ export const AppContent: React.FC = () => {
                 {/* Quick Search */}
                 <div 
                   onClick={() => setIsQuickScanOpen(true)}
-                  className="bg-[#1e1f22] text-[#949ba4] text-xs px-2 py-1 rounded-[4px] flex items-center gap-2 w-36 hover:w-52 transition-all cursor-pointer"
+                  className="bg-[#111214] border border-[#1f2024] text-[#949ba4] text-xs px-2.5 py-1 rounded-[4px] flex items-center gap-2 w-36 hover:w-52 transition-all cursor-pointer"
                 >
                   <Search className="w-3.5 h-3.5 text-[#80848e]" />
                   <span className="truncate">Search</span>
-                  <kbd className="text-[10px] font-mono bg-[#2b2d31] px-1 rounded ml-auto">Ctrl+K</kbd>
+                  <kbd className="text-[10px] font-mono bg-[#1a1b1e] px-1 rounded ml-auto text-[#80848e]">Ctrl+K</kbd>
                 </div>
 
                 <button 
                   onClick={() => setIsSettingsOpen(true)}
-                  className="p-1 rounded-[4px] hover:bg-[#35373c] hover:text-white transition-colors"
+                  className="p-1.5 rounded-[4px] hover:bg-[#1a1b1e] hover:text-white transition-colors"
                   title="Settings"
                 >
                   <HelpCircle className="w-5 h-5" />
@@ -2050,201 +2389,282 @@ export const AppContent: React.FC = () => {
               </div>
             </div>
 
-            {/* If Channel is Voice & inVoiceRoom, show Voice Lounge Stage */}
-            {currentChannel.type === 'voice' && inVoiceRoom === currentChannel.id ? (
-              <div className="flex-1 flex flex-col bg-[#111214] p-6 items-center justify-center relative select-none">
-                <div className="grid grid-cols-2 gap-6 max-w-2xl w-full">
-                  {(voiceUsers[currentChannel.id] || []).map(vu => (
-                    <div
-                      key={vu.id}
-                      className={`bg-[#2b2d31] rounded-[12px] p-8 flex flex-col items-center justify-center relative shadow-lg ${
-                        vu.isSpeaking ? 'ring-4 ring-[#23a55a]' : 'border border-[#35373c]'
-                      }`}
+            {/* Split Voice View or Standard Feed */}
+            <div className="flex-1 flex min-h-0 relative">
+              {/* If Channel is Voice, show Voice Lounge Stage (NO TEXT TYPING BOX AT BOTTOM!) */}
+              {currentChannel.type === 'voice' ? (
+                <div className="flex-1 flex flex-col bg-[#000000] p-6 items-center justify-center relative select-none">
+                  <div className="grid grid-cols-2 gap-6 max-w-2xl w-full">
+                    {(voiceUsers[currentChannel.id] || []).map(vu => (
+                      <div
+                        key={vu.id}
+                        className={`bg-[#0b0c0e] rounded-[14px] p-8 flex flex-col items-center justify-center relative shadow-2xl ${
+                          vu.isSpeaking ? 'ring-4 ring-[#23a55a]' : 'border border-[#1f2024]'
+                        }`}
+                      >
+                        <div className="w-20 h-20 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-4xl mb-3 shadow-inner">
+                          {vu.avatar}
+                        </div>
+                        <div className="text-sm font-bold text-white flex items-center gap-1.5">
+                          <span>{vu.name}</span>
+                          {vu.isSpeaking && <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />}
+                        </div>
+                        <div className="absolute bottom-3 right-3 text-[#949ba4]">
+                          {vu.isMuted && <MicOff className="w-4 h-4 text-[#f23f43]" />}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-8 text-xs text-[#80848e]">
+                    Connected to Subspace High-Fidelity Voice Mesh
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button 
+                      onClick={() => setIsInviteModalOpen(true)}
+                      className="bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold px-4 py-2 rounded-[6px] flex items-center gap-1.5 transition-colors shadow-sm"
                     >
-                      <div className="w-20 h-20 rounded-full bg-[#111214] flex items-center justify-center text-4xl mb-3">
-                        {vu.avatar}
+                      <UserPlus className="w-3.5 h-3.5" /> Invite to Voice
+                    </button>
+                    <button 
+                      onClick={() => setIsVoiceChatOpen(p => !p)}
+                      className="bg-[#16171a] hover:bg-[#202226] text-white text-xs font-semibold px-4 py-2 rounded-[6px] flex items-center gap-1.5 transition-colors border border-[#1f2024]"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-[#00f0ff]" /> {isVoiceChatOpen ? 'Hide Voice Chat' : 'Open Voice Chat'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Standard Messages Feed */
+                <div className="flex-1 flex flex-col min-w-0 bg-[#000000]">
+                  <div className="flex-1 overflow-y-auto py-4 select-text">
+                    {/* Channel Welcome Banner */}
+                    <div className="px-4 mb-6">
+                      <div className="w-16 h-16 rounded-full bg-[#111214] border border-[#1f2024] flex items-center justify-center text-white mb-2">
+                        {getChannelIcon(currentChannel.type)}
                       </div>
-                      <div className="text-sm font-bold text-white flex items-center gap-1.5">
-                        <span>{vu.name}</span>
-                        {vu.isSpeaking && <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />}
+                      <h2 className="text-2xl font-bold text-white">Welcome to #{currentChannel.name}!</h2>
+                      <p className="text-sm text-[#949ba4] mt-1">
+                        {currentChannel.description || `This is the start of the #${currentChannel.name} channel.`}
+                      </p>
+                    </div>
+
+                    {/* Date Separator */}
+                    <div className="relative flex items-center justify-center my-4 mx-4">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-[#1a1b1e]" />
                       </div>
-                      <div className="absolute bottom-3 right-3 text-[#949ba4]">
-                        {vu.isMuted && <MicOff className="w-4 h-4 text-[#f23f43]" />}
+                      <span className="relative bg-[#000000] px-2 text-[12px] font-semibold text-[#80848e]">
+                        September 6, 2026
+                      </span>
+                    </div>
+
+                    {/* Messages */}
+                    <div className="space-y-0.5">
+                      {activeMessages.map((m) => {
+                        const authorMember = members.find(mem => mem.name === m.author) || {
+                          id: `u-${m.author}`,
+                          name: m.author,
+                          callsign: m.callsign,
+                          avatar: m.avatar,
+                          status: 'online' as const,
+                          staffRank: m.staffRank,
+                        };
+
+                        return (
+                          <div
+                            key={m.id}
+                            data-message-id={m.id}
+                            onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                            className="px-4 py-1.5 hover:bg-[#0b0c0e] transition-colors relative group flex items-start gap-4"
+                          >
+                            {/* Floating Hover Action Bar */}
+                            <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                              <MessageActionBar
+                                onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
+                                onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
+                                onPin={() => handleTogglePin(m.id)}
+                                onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                              />
+                            </div>
+
+                            {/* Avatar (Opens Hover Popover) */}
+                            <div
+                              onClick={(e) => handleOpenUserPopout(e, authorMember)}
+                              className="w-10 h-10 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-lg shrink-0 cursor-pointer hover:opacity-80 transition-opacity mt-0.5"
+                            >
+                              {m.avatar}
+                            </div>
+
+                            {/* Message Body */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2">
+                                <span
+                                  onClick={(e) => handleOpenUserPopout(e, authorMember)}
+                                  style={{ color: m.roleColor || '#f2f3f5' }}
+                                  className="font-medium text-[15px] hover:underline cursor-pointer"
+                                >
+                                  {m.author}
+                                </span>
+
+                                {m.roleBadge && (
+                                  <span className="bg-[#5865f2] text-white text-[10px] font-bold px-1 rounded uppercase">
+                                    {m.roleBadge}
+                                  </span>
+                                )}
+
+                                <span className="text-[11px] text-[#80848e]">{m.timestamp}</span>
+
+                                {m.isPinned && (
+                                  <span className="text-[10px] text-[#00f0ff] font-mono flex items-center gap-0.5">
+                                    <Pin className="w-2.5 h-2.5" /> Pinned
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
+                                {m.content}
+                              </div>
+
+                              {/* Reaction Pills */}
+                              {m.reactions && m.reactions.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {m.reactions.map((r, rIdx) => (
+                                    <button
+                                      key={rIdx}
+                                      onClick={() => handleAddReaction(m.id, r.emoji)}
+                                      className="rounded-[8px] bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1] transition-colors"
+                                    >
+                                      <span>{r.emoji}</span>
+                                      <span className="font-semibold text-[11px] text-[#dbdee1]">{r.count}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Channel Message Input Container (Shown ONLY for standard text channels, NEVER in voice stage!) */}
+                  <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#000000]">
+                    <div className="bg-[#111214] border border-[#1f2024] rounded-[8px] flex items-center px-4 py-2.5 gap-3 focus-within:border-[#00f0ff]/50 transition-colors">
+                      <button
+                        type="button"
+                        onClick={handleAttachmentMenu}
+                        className="w-6 h-6 rounded-full bg-[#1f2024] hover:bg-[#2b2d33] text-[#dbdee1] flex items-center justify-center font-bold text-lg transition-colors cursor-pointer"
+                        title="Add attachment"
+                      >
+                        +
+                      </button>
+
+                      <input
+                        type="text"
+                        value={messageInput}
+                        onChange={(e) => setMessageInput(e.target.value)}
+                        placeholder={`Message #${currentChannel.name}`}
+                        maxLength={2000}
+                        className="bg-transparent flex-1 text-[#dbdee1] placeholder-[#80848e] text-[15px] outline-none"
+                      />
+
+                      <div className="flex items-center gap-2.5 text-[#80848e]">
+                        <button type="button" className="hover:text-white transition-colors" title="Send a gift">
+                          <Gift className="w-5 h-5" />
+                        </button>
+                        <button type="button" className="hover:text-white text-xs font-bold font-mono px-1 rounded bg-[#1f2024] transition-colors" title="Open GIF picker">
+                          GIF
+                        </button>
+                        <button type="button" className="hover:text-white transition-colors" title="Select Emoji">
+                          <Smile className="w-5 h-5" />
+                        </button>
+                        {messageInput.trim() && (
+                          <button type="submit" className="text-[#00f0ff] hover:text-white transition-colors">
+                            <Send className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
-                  ))}
+                  </form>
                 </div>
+              )}
 
-                <div className="mt-8 text-xs text-[#949ba4]">
-                  Participants without video are currently hidden
-                </div>
-                <button className="mt-2 bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-4 py-2 rounded-[4px]">
-                  Show All Participants
-                </button>
-              </div>
-            ) : (
-              /* Messages Feed */
-              <div className="flex-1 overflow-y-auto py-4 select-text">
-                {/* Channel Welcome Banner */}
-                <div className="px-4 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-[#404249] flex items-center justify-center text-white mb-2">
-                    {getChannelIcon(currentChannel.type)}
-                  </div>
-                  <h2 className="text-2xl font-bold text-white">Welcome to #{currentChannel.name}!</h2>
-                  <p className="text-sm text-[#949ba4] mt-1">
-                    {currentChannel.description || `This is the start of the #${currentChannel.name} channel.`}
-                  </p>
-                </div>
-
-                {/* Date Separator */}
-                <div className="relative flex items-center justify-center my-4 mx-4">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-[#3f4147]" />
-                  </div>
-                  <span className="relative bg-[#313338] px-2 text-[12px] font-semibold text-[#949ba4]">
-                    September 6, 2026
-                  </span>
-                </div>
-
-                {/* Messages */}
-                <div className="space-y-0.5">
-                  {activeMessages.map((m) => {
-                    const authorMember = members.find(mem => mem.name === m.author) || {
-                      id: `u-${m.author}`,
-                      name: m.author,
-                      callsign: m.callsign,
-                      avatar: m.avatar,
-                      status: 'online' as const,
-                      staffRank: m.staffRank,
-                    };
-
-                    return (
-                      <div
-                        key={m.id}
-                        data-message-id={m.id}
-                        onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                        className="px-4 py-1 hover:bg-[#2e3035] transition-colors relative group flex items-start gap-4"
-                      >
-                        {/* Floating Hover Action Bar */}
-                        <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                          <MessageActionBar
-                            onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
-                            onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
-                            onPin={() => handleTogglePin(m.id)}
-                            onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                          />
-                        </div>
-
-                        {/* Avatar (Opens Hover Popover) */}
-                        <div
-                          onClick={(e) => handleOpenUserPopout(e, authorMember)}
-                          className="w-10 h-10 rounded-full bg-[#111214] flex items-center justify-center text-lg shrink-0 cursor-pointer hover:opacity-80 transition-opacity mt-0.5"
-                        >
-                          {m.avatar}
-                        </div>
-
-                        {/* Message Body */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-2">
-                            <span
-                              onClick={(e) => handleOpenUserPopout(e, authorMember)}
-                              style={{ color: m.roleColor || '#f2f3f5' }}
-                              className="font-medium text-[15px] hover:underline cursor-pointer"
-                            >
-                              {m.author}
-                            </span>
-
-                            {m.roleBadge && (
-                              <span className="bg-[#5865f2] text-white text-[10px] font-bold px-1 rounded uppercase">
-                                {m.roleBadge}
-                              </span>
-                            )}
-
-                            <span className="text-[11px] text-[#949ba4]">{m.timestamp}</span>
-
-                            {m.isPinned && (
-                              <span className="text-[10px] text-[#00f0ff] font-mono flex items-center gap-0.5">
-                                <Pin className="w-2.5 h-2.5" /> Pinned
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
-                            {m.content}
-                          </div>
-
-                          {/* Reaction Pills */}
-                          {m.reactions && m.reactions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                              {m.reactions.map((r, rIdx) => (
-                                <button
-                                  key={rIdx}
-                                  onClick={() => handleAddReaction(m.id, r.emoji)}
-                                  className="rounded-[8px] bg-[#2b2d31] hover:bg-[#35373c] border border-transparent hover:border-[#4e5058] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1] transition-colors"
-                                >
-                                  <span>{r.emoji}</span>
-                                  <span className="font-semibold text-[11px] text-[#dbdee1]">{r.count}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Channel Message Input Container */}
-            <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#313338]">
-              <div className="bg-[#383a40] rounded-[8px] flex items-center px-4 py-2.5 gap-3 focus-within:shadow-md">
-                <button
-                  type="button"
-                  onClick={handleAttachmentMenu}
-                  className="w-6 h-6 rounded-full bg-[#4e5058] hover:bg-[#b5bac1] text-[#313338] flex items-center justify-center font-bold text-lg transition-colors cursor-pointer"
-                  title="Add attachment"
-                >
-                  +
-                </button>
-
-                <input
-                  type="text"
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  placeholder={`Message #${currentChannel.name}`}
-                  maxLength={2000}
-                  className="bg-transparent flex-1 text-[#dbdee1] placeholder-[#80848e] text-[15px] outline-none"
-                />
-
-                <div className="flex items-center gap-2.5 text-[#b5bac1]">
-                  <button type="button" className="hover:text-white transition-colors" title="Send a gift">
-                    <Gift className="w-5 h-5" />
-                  </button>
-                  <button type="button" className="hover:text-white text-xs font-bold font-mono px-1 rounded bg-[#4e5058]/40 transition-colors" title="Open GIF picker">
-                    GIF
-                  </button>
-                  <button type="button" className="hover:text-white transition-colors" title="Select Emoji">
-                    <Smile className="w-5 h-5" />
-                  </button>
-                  {messageInput.trim() && (
-                    <button type="submit" className="text-[#00f0ff] hover:text-white transition-colors">
-                      <Send className="w-4 h-4" />
+              {/* Split Voice Text Chat Flyout (Toggleable in Voice Channels via the Message Icon) */}
+              {currentChannel.type === 'voice' && isVoiceChatOpen && (
+                <div className="w-80 bg-[#0b0c0e] border-l border-[#1a1b1e] flex flex-col shrink-0 animate-in slide-in-from-right duration-150 select-none">
+                  <div className="h-12 px-4 border-b border-[#1a1b1e] flex items-center justify-between">
+                    <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <MessageSquare className="w-3.5 h-3.5 text-[#00f0ff]" />
+                      <span>Voice Text Chat</span>
+                    </span>
+                    <button 
+                      onClick={() => setIsVoiceChatOpen(false)}
+                      className="p-1 rounded hover:bg-[#1a1b1e] text-[#949ba4] hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
                     </button>
-                  )}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 space-y-2 select-text">
+                    {(channelMessages[currentChannel.id] || []).length === 0 ? (
+                      <div className="text-xs text-[#80848e] text-center mt-8">
+                        No messages in this voice channel yet.
+                      </div>
+                    ) : (
+                      (channelMessages[currentChannel.id] || []).map((m) => (
+                        <div key={m.id} className="p-2 rounded bg-[#111214] border border-[#1f2024] text-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-semibold text-white">{m.author}</span>
+                            <span className="text-[10px] text-[#80848e]">{m.timestamp}</span>
+                          </div>
+                          <p className="text-[#dbdee1]">{m.content}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <form onSubmit={handleSendMessage} className="p-3 border-t border-[#1a1b1e] bg-[#08080a]">
+                    <div className="bg-[#111214] border border-[#1f2024] rounded-[6px] flex items-center px-3 py-1.5 gap-2">
+                      <input
+                        type="text"
+                        value={messageInput}
+                        onChange={(e) => setMessageInput(e.target.value)}
+                        placeholder="Message in voice chat..."
+                        className="bg-transparent flex-1 text-xs text-white outline-none placeholder-[#80848e]"
+                      />
+                      {messageInput.trim() && (
+                        <button type="submit" className="text-[#00f0ff]">
+                          <Send className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </form>
                 </div>
-              </div>
-            </form>
+              )}
+            </div>
           </div>
         )}
 
-        {/* 5. Server Member List Sidebar (240px) */}
+        {/* 5. Server Member List Sidebar (Jet Black #0f1012) - Resizable with Draggable Handle */}
         {selectedBeaconId !== 'home' && isMemberPanelOpen && (
-          <div className="w-60 bg-[#2b2d31] flex flex-col shrink-0 border-l border-[#1f2023]/60 select-none">
+          <div 
+            style={{ width: `${memberPanelWidth}px` }} 
+            className="bg-[#0f1012] flex flex-col shrink-0 border-l border-[#1a1b1e] select-none relative"
+          >
+            {/* Draggable Divider Handle for Member List Resizing */}
+            <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsResizingMemberPanel(true);
+              }}
+              className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-[#00f0ff] transition-colors z-30"
+            />
+
             <div className="flex-1 overflow-y-auto px-2 py-4 space-y-4">
               {/* Fleet Command Role Group */}
               <div>
-                <div className="text-[12px] font-bold tracking-wider text-[#949ba4] uppercase px-2 mb-1">
+                <div className="text-[11px] font-bold tracking-wider text-[#949ba4] uppercase px-2 mb-1">
                   Fleet Command — {members.filter(m => m.staffRank && m.staffRank >= 2).length}
                 </div>
                 <div className="space-y-0.5">
@@ -2254,19 +2674,19 @@ export const AppContent: React.FC = () => {
                       data-member-id={m.id}
                       onClick={(e) => handleOpenUserPopout(e, m)}
                       onContextMenu={(e) => openContextMenu(e, getUserContextMenu(m))}
-                      className="px-2 py-1.5 rounded-[4px] hover:bg-[#35373c] cursor-pointer flex items-center gap-3 transition-colors group"
+                      className="px-2 py-1.5 rounded-[6px] hover:bg-[#16171a] cursor-pointer flex items-center gap-2.5 transition-colors group"
                     >
                       <div className="relative shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-sm">
+                        <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-sm">
                           {m.avatar}
                         </div>
-                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${getStatusColor(m.status)}`} />
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0f1012] ${getStatusColor(m.status)}`} />
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-[#00f0ff] group-hover:text-white truncate flex items-center gap-1">
                           {m.name}
                         </div>
-                        <div className="text-[11px] text-[#949ba4] truncate">
+                        <div className="text-[10px] text-[#80848e] truncate">
                           {m.statusText || `@${m.callsign}`}
                         </div>
                       </div>
@@ -2277,7 +2697,7 @@ export const AppContent: React.FC = () => {
 
               {/* Enlisted Crew Role Group */}
               <div>
-                <div className="text-[12px] font-bold tracking-wider text-[#949ba4] uppercase px-2 mb-1">
+                <div className="text-[11px] font-bold tracking-wider text-[#949ba4] uppercase px-2 mb-1">
                   Enlisted Transmitters — {members.filter(m => !m.staffRank || m.staffRank < 2).length}
                 </div>
                 <div className="space-y-0.5">
@@ -2286,19 +2706,19 @@ export const AppContent: React.FC = () => {
                       key={m.id}
                       onClick={(e) => handleOpenUserPopout(e, m)}
                       onContextMenu={(e) => openContextMenu(e, getUserContextMenu(m))}
-                      className="px-2 py-1.5 rounded-[4px] hover:bg-[#35373c] cursor-pointer flex items-center gap-3 transition-colors group"
+                      className="px-2 py-1.5 rounded-[6px] hover:bg-[#16171a] cursor-pointer flex items-center gap-2.5 transition-colors group"
                     >
                       <div className="relative shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-[#111214] flex items-center justify-center text-sm">
+                        <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-sm">
                           {m.avatar}
                         </div>
-                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#2b2d31] ${getStatusColor(m.status)}`} />
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#0f1012] ${getStatusColor(m.status)}`} />
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-[#dbdee1] group-hover:text-white truncate">
                           {m.name}
                         </div>
-                        <div className="text-[11px] text-[#949ba4] truncate">
+                        <div className="text-[10px] text-[#80848e] truncate">
                           {m.statusText || `@${m.callsign}`}
                         </div>
                       </div>
@@ -2541,6 +2961,41 @@ export const AppContent: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* 10. Invite Friends Modal */}
+      <InviteModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        serverName={currentServer.name}
+        channelName={currentChannel.name}
+        friends={friendsList}
+        inviteCode={`subspace.gg/${currentServer.name.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'orbit'}`}
+        onSendInvite={(fId) => showToast(`Invite beacon transmitted to friend (${fId})!`)}
+      />
+
+      {/* 11. Dedicated Server Settings Modal */}
+      <ServerSettingsModal
+        isOpen={isServerSettingsOpen}
+        onClose={() => setIsServerSettingsOpen(false)}
+        serverName={currentServer.name}
+        serverId={selectedBeaconId}
+        onUpdateServerName={(newName) => {
+          setBeacons(prev => prev.map(b => b.id === selectedBeaconId ? { ...b, name: newName } : b));
+          setServerData(prev => ({
+            ...prev,
+            [selectedBeaconId]: {
+              ...prev[selectedBeaconId],
+              name: newName,
+            },
+          }));
+          showToast(`Server updated to ${newName}`);
+          setIsServerSettingsOpen(false);
+        }}
+        onDeleteServer={() => {
+          showToast(`Cannot delete active fleet station`);
+          setIsServerSettingsOpen(false);
+        }}
+      />
     </div>
   );
 };
