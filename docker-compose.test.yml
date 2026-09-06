@@ -47,6 +47,7 @@ services:
       DATABASE_URL: postgresql://subspace_test:subspace_test_secret@test-postgres:5432/subspace_test_db
       REDIS_URL: redis://test-redis:6379
       NODE_ENV: test
+      CI: 'true'
     networks:
       - test_net
     depends_on:
@@ -59,5 +60,6 @@ services:
         npm install -g pnpm@10.30.2 &&
         pnpm install --frozen-lockfile=false &&
         pnpm run build &&
+        pnpm --filter @subspace/database db:push &&
         pnpm test:e2e
       "

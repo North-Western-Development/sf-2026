@@ -240,12 +240,12 @@ flowchart TD
   - [x] Redis Pub/Sub gateway event bus
   - [x] 5 Presence states with Ghost Mode offline masking
   - [x] Gateway connection auth handshake
-- [ ] **Phase 4: Beacons, Beacon Clusters & Clearances** ([phase-04-beacons-clearances.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-04-beacons-clearances.md))
-  - [ ] `apps/api-service/src/modules/beacons` (Beacon CRUD, Clusters)
-  - [ ] 64-bit Bitfield permissions calculator
-  - [ ] Clearance hierarchy validator (prevent higher/equal modifications)
-  - [ ] Beacon onboarding rules agreement & role picker
-  - [ ] Opt-in Beacon discovery directory
+- [x] **Phase 4: Beacons, Beacon Clusters & Clearances** ([phase-04-beacons-clearances.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-04-beacons-clearances.md))
+  - [x] `apps/api-service/src/modules/beacons` (Beacon CRUD, Clusters)
+  - [x] 64-bit Bitfield permissions calculator
+  - [x] Clearance hierarchy validator (prevent higher/equal modifications)
+  - [x] Beacon onboarding rules agreement & role picker
+  - [x] Opt-in Beacon discovery directory
 - [ ] **Phase 5: Text Relays & Direct Messaging (P2P / Mesh)** ([phase-05-text-relays-messaging.md](file:///c:/Users/Jackson%20Abney/subspace-frequency/docs/phases/phase-05-text-relays-messaging.md))
   - [ ] `apps/api-service/src/modules/transmissions` (Text relay chat, 2000 char limit)
   - [ ] Point-to-Point links (1-on-1 DMs)

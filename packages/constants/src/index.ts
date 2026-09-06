@@ -61,6 +61,69 @@ export function hasPermission(bitfield: bigint, permission: bigint): boolean {
 }
 
 /**
+ * Standard default permissions for @everyone clearance in newly established Beacons
+ */
+export const DEFAULT_EVERYONE_PERMISSIONS =
+  PERMISSIONS.VIEW_RELAY |
+  PERMISSIONS.SEND_TRANSMISSIONS |
+  PERMISSIONS.EMBED_LINKS |
+  PERMISSIONS.ATTACH_FILES |
+  PERMISSIONS.CONNECT_AUDIO |
+  PERMISSIONS.SPEAK_AUDIO;
+
+/**
+ * Calculate the effective permission bitfield for a member given their clearances and owner status
+ */
+export function computeMemberPermissions(
+  clearances: Array<{ permissions: bigint | string | number }>,
+  isOwner: boolean = false
+): bigint {
+  if (isOwner) {
+    return PERMISSIONS.ADMINISTRATOR;
+  }
+  let total = 0n;
+  for (const clearance of clearances) {
+    total |= BigInt(clearance.permissions);
+  }
+  return total;
+}
+
+/**
+ * Compute the highest hierarchy position for a member.
+ * Beacon owners always have highest possible rank (Infinity / 999999).
+ */
+export function getHighestRank(
+  clearances: Array<{ position: number }>,
+  isOwner: boolean = false
+): number {
+  if (isOwner) {
+    return 999999;
+  }
+  if (!clearances || clearances.length === 0) {
+    return 0; // Baseline @everyone position
+  }
+  return Math.max(...clearances.map((c) => c.position));
+}
+
+/**
+ * Checks if actor has strict authority over target according to clearance hierarchy
+ */
+export function canModerate(
+  actorRank: number,
+  targetRank: number,
+  isActorOwner: boolean = false,
+  isTargetOwner: boolean = false
+): boolean {
+  if (isTargetOwner) {
+    return false; // Nobody can moderate the owner
+  }
+  if (isActorOwner) {
+    return true; // Owner can moderate everyone except another owner (which doesn't exist)
+  }
+  return actorRank > targetRank;
+}
+
+/**
  * 5 Presence States
  */
 export const PRESENCE_STATES = {

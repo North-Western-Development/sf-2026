@@ -57,9 +57,21 @@ export async function buildApp() {
   (app as any).db = dbClient ? dbClient.db : null;
   (app as any).redis = redisClient;
 
-  // Import and register auth routes
+  // Import and register routes
   const { authRoutes } = await import('./modules/auth/auth.routes.js');
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
+
+  const { beaconRoutes } = await import('./modules/beacons/beacons.routes.js');
+  await app.register(beaconRoutes, { prefix: '/api/v1/beacons' });
+
+  const { clearanceRoutes } = await import('./modules/clearances/clearances.routes.js');
+  await app.register(clearanceRoutes, { prefix: '/api/v1/beacons/:id/clearances' });
+
+  const { clusterRoutes } = await import('./modules/clusters/clusters.routes.js');
+  await app.register(clusterRoutes, { prefix: '/api/v1/clusters' });
+
+  const { onboardingRoutes } = await import('./modules/onboarding/onboarding.routes.js');
+  await app.register(onboardingRoutes, { prefix: '/api/v1/beacons/:id/onboarding' });
 
   // Health check endpoint
   app.get('/health', async () => {

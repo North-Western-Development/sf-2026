@@ -35,6 +35,9 @@ export function createGatewayServer(customPort = port) {
       lazyConnect: true,
     });
 
+    redisPub.on('error', () => {});
+    redisSub.on('error', () => {});
+
     redisPub.connect().catch((err: any) => {
       console.warn('[Gateway] Redis Pub connection delayed:', err.message);
     });
@@ -215,9 +218,9 @@ export function createGatewayServer(customPort = port) {
       timestamp: new Date().toISOString(),
     };
 
-    // If redis is available, publish through event bus
-    if (redisPub) {
-      redisPub.publish('gateway:presence:events', JSON.stringify(eventPayload));
+    // If redis is available and connected, publish through event bus
+    if (redisPub && (redisPub as any).status === 'ready') {
+      redisPub.publish('gateway:presence:events', JSON.stringify(eventPayload)).catch(() => {});
     }
 
     // Direct local delivery to other connected clients on this instance
@@ -249,6 +252,20 @@ export function createGatewayServer(customPort = port) {
     });
   }, 30000);
 
+  const close = async () => {
+    clearInterval(interval);
+    for (const ws of wss.clients) {
+      ws.terminate();
+    }
+    await new Promise<void>((resolve) => wss.close(() => resolve()));
+    if (redisPub) {
+      try { await redisPub.quit(); } catch { redisPub.disconnect(); }
+    }
+    if (redisSub) {
+      try { await redisSub.quit(); } catch { redisSub.disconnect(); }
+    }
+  };
+
   wss.on('close', () => {
     clearInterval(interval);
     if (redisPub) redisPub.disconnect();
@@ -256,7 +273,7 @@ export function createGatewayServer(customPort = port) {
   });
 
   console.log(`[Gateway Service] Subspace Gateway listening on port ${customPort}`);
-  return { wss, sessions };
+  return { wss, sessions, close };
 }
 
 if (process.env.NODE_ENV !== 'test') {

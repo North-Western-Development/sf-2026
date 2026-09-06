@@ -13,8 +13,8 @@ describe('Gateway & Ghost Mode Presence Suite', () => {
     serverInstance = createGatewayServer(TEST_PORT);
   });
 
-  afterAll(() => {
-    serverInstance.wss.close();
+  afterAll(async () => {
+    await serverInstance.close();
   });
 
   it('performs connection handshake and IDENTIFY authentication', async () => {
