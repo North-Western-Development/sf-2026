@@ -153,7 +153,7 @@ flowchart TD
   - Transmission Unfurler: Metadata scraping for rich inline file previews
 - **Verification**: Direct upload via presigned S3 URL succeeds; upload blocked if disclaimer not accepted.
 
-### Phase 7: Comm-Link Audio, Video & Holo-Cast
+### Phase 7: Comm-Link Audio, Video & Holo-Cast [COMPLETED]
 - **Focus**: Real-time voice/video streaming, screensharing, and embedded text chats.
 - **Deliverables**:
   - `docker/livekit.yaml` + LiveKit SFU server configuration

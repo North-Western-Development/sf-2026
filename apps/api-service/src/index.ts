@@ -97,6 +97,9 @@ export async function buildApp() {
   const { unfurlRoutes } = await import('./modules/unfurl/unfurl.js');
   await app.register(unfurlRoutes, { prefix: '/api/v1' });
 
+  const { commLinkRoutes } = await import('./modules/media/comm-link.routes.js');
+  await app.register(commLinkRoutes, { prefix: '/api/v1/relays/:relayId/comm-link' });
+
   // Health check endpoint
   app.get('/health', async () => {
     return {

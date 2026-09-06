@@ -110,6 +110,12 @@ export function verifyToken<T>(token: string, secret: string): T | null {
   }
 }
 
+export function signJwt(payload: string | object | Buffer, secret: string, options?: jwt.SignOptions): string {
+  return jwt.sign(payload, secret, options);
+}
+
+export { jwt };
+
 /**
  * Passkeys (SimpleWebAuthn)
  */
