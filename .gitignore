@@ -56,3 +56,4 @@ minio_data/
 # Agents & agent-specific skills
 .agents/
 
+ui-examples/

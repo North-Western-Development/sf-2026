@@ -5,3 +5,6 @@ export * from './components/Input.js';
 export * from './components/ColorWheel.js';
 export * from './components/FontSelector.js';
 export * from './components/BadgeDeck.js';
+export * from './components/ContextMenu.js';
+export * from './components/ProfileCard.js';
+export * from './components/MessageActionBar.js';
