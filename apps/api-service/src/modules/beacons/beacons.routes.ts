@@ -96,6 +96,32 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
   });
 
   /**
+   * GET /api/v1/beacons/me
+   * List Beacons that the authenticated transmitter has joined
+   */
+  app.get('/me', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const userBeacons = await db
+      .select({
+        id: beacons.id,
+        name: beacons.name,
+        description: beacons.description,
+        iconUrl: beacons.iconUrl,
+        bannerUrl: beacons.bannerUrl,
+        ownerId: beacons.ownerId,
+        isDiscoverable: beacons.isDiscoverable,
+      })
+      .from(beaconMembers)
+      .innerJoin(beacons, eq(beaconMembers.beaconId, beacons.id))
+      .where(eq(beaconMembers.transmitterId, token.transmitterId));
+
+    return reply.send({ beacons: userBeacons });
+  });
+
+  /**
    * GET /api/v1/beacons/discovery
    * List discoverable Beacons
    */

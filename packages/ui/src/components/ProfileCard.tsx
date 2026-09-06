@@ -22,12 +22,18 @@ interface ProfileCardProps {
   onSendMessage?: (userId: string) => void;
   onStatusChange?: (newStatus: UserProfile['status']) => void;
   onClose?: () => void;
+  hideRoles?: boolean;
+  onEditProfile?: () => void;
+  onCopyId?: (id: string) => void;
 }
 
 export const ProfileCard: React.FC<ProfileCardProps> = ({
   user,
   onSendMessage,
   onStatusChange,
+  hideRoles,
+  onEditProfile,
+  onCopyId,
 }) => {
   const getStatusBg = (status: UserProfile['status']) => {
     switch (status) {
@@ -117,8 +123,8 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
             </div>
           )}
 
-          {/* Roles */}
-          {user.roles && user.roles.length > 0 && (
+          {/* Roles (Hidden on User Island / Self Profile) */}
+          {!hideRoles && !user.isSelf && user.roles && user.roles.length > 0 && (
             <div className="pt-2 border-t border-[#232428]">
               <div className="text-[10px] uppercase font-bold text-[#b5bac1] mb-1.5 tracking-wider">
                 ROLES
@@ -154,40 +160,75 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           </div>
         </div>
 
-        {/* Quick Actions (Copy ID, Status Switcher) */}
-        {user.isSelf && onStatusChange ? (
-          <div className="mt-3 space-y-1.5">
-            <div className="text-[11px] uppercase font-bold text-[#949ba4] px-1">
-              STATUS PRESENCE
-            </div>
-            {(['online', 'idle', 'dnd', 'ghost'] as const).map((st) => (
+        {/* Quick Actions (Self Island or Other Member) */}
+        {user.isSelf ? (
+          <div className="mt-3 space-y-2">
+            {onEditProfile && (
               <button
-                key={st}
                 type="button"
-                onClick={() => onStatusChange(st)}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-[4px] text-xs font-medium transition-colors ${
-                  user.status === st ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/60'
-                }`}
+                onClick={onEditProfile}
+                className="w-full bg-[#2b2d31] hover:bg-[#35373c] text-white py-1.5 rounded-[4px] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-[#35373c]"
               >
-                <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${getStatusBg(st)}`} />
-                  <span>{getStatusLabel(st)}</span>
-                </div>
-                {user.status === st && <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" />}
+                <Edit3 className="w-3.5 h-3.5 text-[#00f0ff]" /> Edit Profile
               </button>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-3 flex gap-2">
+            )}
+
+            {onStatusChange && (
+              <div className="space-y-1 pt-1 border-t border-[#232428]">
+                <div className="text-[10px] uppercase font-bold text-[#949ba4] px-1 mb-1">
+                  STATUS PRESENCE
+                </div>
+                {(['online', 'idle', 'dnd', 'ghost'] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => onStatusChange(st)}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-[4px] text-xs font-medium transition-colors ${
+                      user.status === st ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${getStatusBg(st)}`} />
+                      <span>{getStatusLabel(st)}</span>
+                    </div>
+                    {user.status === st && <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" />}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => {
-                navigator.clipboard?.writeText(user.id);
-                alert(`Copied ID: ${user.id}`);
+                if (onCopyId) onCopyId(user.id);
+                else navigator.clipboard?.writeText(user.id);
               }}
-              className="flex-1 bg-[#2b2d31] hover:bg-[#35373c] text-xs text-[#dbdee1] py-1.5 rounded-[4px] font-medium flex items-center justify-center gap-1.5 transition-colors"
+              className="w-full bg-[#2b2d31] hover:bg-[#35373c] text-xs text-[#949ba4] hover:text-white py-1.5 rounded-[4px] font-medium flex items-center justify-center gap-1.5 transition-colors"
             >
               <Copy className="w-3.5 h-3.5" /> Copy User ID
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 flex gap-2">
+            {onSendMessage && (
+              <button
+                type="button"
+                onClick={() => onSendMessage(user.id)}
+                className="flex-1 bg-[#5865f2] hover:bg-[#4752c4] text-xs text-white py-1.5 rounded-[4px] font-medium flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5" /> Send Message
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (onCopyId) onCopyId(user.id);
+                else navigator.clipboard?.writeText(user.id);
+              }}
+              className="px-3 bg-[#2b2d31] hover:bg-[#35373c] text-xs text-[#dbdee1] py-1.5 rounded-[4px] font-medium flex items-center justify-center gap-1.5 transition-colors"
+              title="Copy User ID"
+            >
+              <Copy className="w-3.5 h-3.5" />
             </button>
           </div>
         )}

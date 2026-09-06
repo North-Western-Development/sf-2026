@@ -16,11 +16,23 @@ export interface Session {
   presence: PresenceState;
   isAuthenticated: boolean;
   isAlive: boolean;
+  voiceRelayId?: string | null;
+  isMuted?: boolean;
+  isDeafened?: boolean;
+  isSpeaking?: boolean;
 }
 
 export function createGatewayServer(customPort = port) {
   const wss = new WebSocketServer({ port: customPort });
   const sessions = new Map<WebSocket, Session>();
+  const voiceStates = new Map<string, {
+    transmitterId: string;
+    username: string;
+    relayId: string;
+    isMuted: boolean;
+    isDeafened: boolean;
+    isSpeaking: boolean;
+  }>();
 
   let redisPub: Redis | null = null;
   let redisSub: Redis | null = null;
@@ -43,7 +55,7 @@ export function createGatewayServer(customPort = port) {
     });
 
     redisSub.connect().then(() => {
-      redisSub?.subscribe('gateway:presence:events', (err) => {
+      redisSub?.subscribe('gateway:presence:events', 'gateway:voice:events', (err) => {
         if (err) console.warn('[Gateway] Redis Sub subscription error:', err);
       });
 
@@ -51,7 +63,6 @@ export function createGatewayServer(customPort = port) {
         if (channel === 'gateway:presence:events') {
           try {
             const event = JSON.parse(message);
-            // Broadcast to all authenticated connected sockets on this node
             wss.clients.forEach((client) => {
               const sess = sessions.get(client);
               if (sess && sess.isAuthenticated && sess.transmitterId !== event.transmitter_id) {
@@ -66,6 +77,36 @@ export function createGatewayServer(customPort = port) {
             });
           } catch (e) {
             console.warn('[Gateway] Error parsing redis presence event:', e);
+          }
+        } else if (channel === 'gateway:voice:events') {
+          try {
+            const event = JSON.parse(message);
+            if (event.relay_id) {
+              voiceStates.set(event.transmitter_id, {
+                transmitterId: event.transmitter_id,
+                username: event.username,
+                relayId: event.relay_id,
+                isMuted: !!event.is_muted,
+                isDeafened: !!event.is_deafened,
+                isSpeaking: !!event.is_speaking,
+              });
+            } else {
+              voiceStates.delete(event.transmitter_id);
+            }
+            wss.clients.forEach((client) => {
+              const sess = sessions.get(client);
+              if (sess && sess.isAuthenticated) {
+                client.send(
+                  JSON.stringify({
+                    op: GATEWAY_OPCODES.DISPATCH,
+                    t: 'VOICE_STATE_UPDATE',
+                    d: event,
+                  })
+                );
+              }
+            });
+          } catch (e) {
+            console.warn('[Gateway] Error parsing redis voice event:', e);
           }
         }
       });
@@ -150,6 +191,7 @@ export function createGatewayServer(customPort = port) {
                   username: session.username,
                 },
                 presence: session.presence,
+                voice_states: Array.from(voiceStates.values()),
                 session_id: `subspace_sess_${Date.now()}`,
               },
             })
@@ -165,6 +207,27 @@ export function createGatewayServer(customPort = port) {
         // Must be authenticated for subsequent actions
         if (!session.isAuthenticated) {
           ws.close(4004, 'Unauthenticated operation');
+          return;
+        }
+
+        // VOICE_STATE_UPDATE
+        if (payload.op === GATEWAY_OPCODES.VOICE_STATE_UPDATE) {
+          const { relay_id, is_muted, is_deafened, is_speaking } = payload.d || {};
+          session.voiceRelayId = relay_id || null;
+          session.isMuted = !!is_muted;
+          session.isDeafened = !!is_deafened;
+          session.isSpeaking = !!is_speaking;
+
+          if (session.transmitterId) {
+            broadcastVoiceStateUpdate(
+              session.transmitterId,
+              session.username || 'Transmitter',
+              session.voiceRelayId,
+              session.isMuted,
+              session.isDeafened,
+              session.isSpeaking
+            );
+          }
           return;
         }
 
@@ -198,11 +261,70 @@ export function createGatewayServer(customPort = port) {
       const session = sessions.get(ws);
       if (session && session.transmitterId) {
         broadcastPresenceUpdate(session.transmitterId, PRESENCE_STATES.OFFLINE);
+        if (session.voiceRelayId) {
+          broadcastVoiceStateUpdate(
+            session.transmitterId,
+            session.username || 'Transmitter',
+            null,
+            false,
+            false,
+            false
+          );
+        }
       }
       sessions.delete(ws);
       clearTimeout(authTimeout);
     });
   });
+
+  function broadcastVoiceStateUpdate(
+    transmitterId: string,
+    username: string,
+    relayId: string | null,
+    isMuted: boolean = false,
+    isDeafened: boolean = false,
+    isSpeaking: boolean = false
+  ) {
+    if (relayId) {
+      voiceStates.set(transmitterId, {
+        transmitterId,
+        username,
+        relayId,
+        isMuted,
+        isDeafened,
+        isSpeaking,
+      });
+    } else {
+      voiceStates.delete(transmitterId);
+    }
+
+    const eventPayload = {
+      transmitter_id: transmitterId,
+      username,
+      relay_id: relayId,
+      is_muted: isMuted,
+      is_deafened: isDeafened,
+      is_speaking: isSpeaking,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (redisPub && (redisPub as any).status === 'ready') {
+      redisPub.publish('gateway:voice:events', JSON.stringify(eventPayload)).catch(() => {});
+    }
+
+    wss.clients.forEach((client) => {
+      const sess = sessions.get(client);
+      if (sess && sess.isAuthenticated) {
+        client.send(
+          JSON.stringify({
+            op: GATEWAY_OPCODES.DISPATCH,
+            t: 'VOICE_STATE_UPDATE',
+            d: eventPayload,
+          })
+        );
+      }
+    });
+  }
 
   /**
    * Ghost Mode Presence Transformation Engine:
