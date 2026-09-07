@@ -46,7 +46,16 @@ import {
   Terminal,
   Network,
   Pencil,
-  GripVertical
+  GripVertical,
+  Gamepad2,
+  Music,
+  Tv,
+  Atom,
+  GraduationCap,
+  School,
+  BellOff,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { 
   Modal, 
@@ -107,6 +116,9 @@ interface Channel {
   type: 'text' | 'voice' | 'announcement' | 'archive' | 'gallery';
   description?: string;
   unread?: boolean;
+  isHidden?: boolean;
+  isMuted?: boolean;
+  notifSetting?: 'all' | 'mentions' | 'nothing';
 }
 
 interface VoiceUser {
@@ -199,6 +211,7 @@ function categorizeRelays(relays: ApiRelay[]): ChannelCategory[] {
       name: r.name,
       type: chanType,
       description: r.topic || undefined,
+      isHidden: r.isHidden ?? false,
     };
 
     if (chanType === 'voice') {
@@ -407,7 +420,35 @@ export const AppContent: React.FC = () => {
   const [serverData, setServerData] = useState<Record<string, { name: string; categories: ChannelCategory[] }>>({});
   const [discoverableBeacons, setDiscoverableBeacons] = useState<ApiBeacon[]>([]);
 
-  // Channel & Category Drag-and-Drop Reorder State
+  // Discovery Page State
+  const [discoveryTab, setDiscoveryTab] = useState<string>('Home');
+  const [discoverySearchQuery, setDiscoverySearchQuery] = useState<string>('');
+
+  // Channel Muting, Visibility & Notification Customizations (persisted per channelId)
+  const [mutedChannels, setMutedChannels] = useState<Record<string, { mutedUntil: number | 'indefinite' }>>(() => {
+    try {
+      const saved = localStorage.getItem('subspace_muted_channels');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [channelNotifSettings, setChannelNotifSettings] = useState<Record<string, 'all' | 'mentions' | 'nothing'>>(() => {
+    try {
+      const saved = localStorage.getItem('subspace_channel_notifs');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [showHiddenChannels, setShowHiddenChannels] = useState(false);
+
+  // Relay Topic Editing State
+  const [isEditingTopicModalOpen, setIsEditingTopicModalOpen] = useState(false);
+  const [editingTopicChannel, setEditingTopicChannel] = useState<Channel | null>(null);
+  const [editingTopicText, setEditingTopicText] = useState('');
+
+  // Channel Drag & Drop Reorder State
   const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
   const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null);
   const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
@@ -1273,11 +1314,46 @@ export const AppContent: React.FC = () => {
     },
   ];
 
-  const getChannelContextMenu = (channel: Channel): ContextMenuItem[] => [
-    {
-      label: 'Mark As Read',
-      icon: <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" />,
-      onClick: () => {
+  const getChannelContextMenu = (channel: Channel): ContextMenuItem[] => {
+    const isMuted = Boolean(mutedChannels[channel.id]);
+    const currentNotif = channelNotifSettings[channel.id] || 'all';
+    const isHidden = Boolean(channel.isHidden);
+
+    const handleSetMute = (duration: '15m' | '1h' | '8h' | '24h' | 'indefinite' | 'unmute') => {
+      setMutedChannels(prev => {
+        const next = { ...prev };
+        if (duration === 'unmute') {
+          delete next[channel.id];
+          showToast(`Unmuted #${channel.name}`);
+        } else {
+          const msMap = {
+            '15m': 15 * 60 * 1000,
+            '1h': 60 * 60 * 1000,
+            '8h': 8 * 60 * 60 * 1000,
+            '24h': 24 * 60 * 60 * 1000,
+          };
+          const until = duration === 'indefinite' ? 'indefinite' : Date.now() + msMap[duration];
+          next[channel.id] = { mutedUntil: until };
+          showToast(`Muted #${channel.name}`);
+        }
+        localStorage.setItem('subspace_muted_channels', JSON.stringify(next));
+        return next;
+      });
+    };
+
+    const handleSetNotif = (level: 'all' | 'mentions' | 'nothing') => {
+      setChannelNotifSettings(prev => {
+        const next = { ...prev, [channel.id]: level };
+        localStorage.setItem('subspace_channel_notifs', JSON.stringify(next));
+        showToast(`Notification settings updated for #${channel.name}`);
+        return next;
+      });
+    };
+
+    const handleToggleVisibility = async () => {
+      try {
+        const newHidden = !isHidden;
+        await api.toggleRelayVisibility(selectedBeaconId, channel.id, newHidden);
         setServerData(prev => {
           const s = prev[selectedBeaconId];
           if (!s) return prev;
@@ -1287,23 +1363,86 @@ export const AppContent: React.FC = () => {
               ...s,
               categories: s.categories.map(cat => ({
                 ...cat,
-                channels: cat.channels.map(c => c.id === channel.id ? { ...c, unread: false } : c),
+                channels: cat.channels.map(c => c.id === channel.id ? { ...c, isHidden: newHidden } : c),
               })),
             },
           };
         });
-        showToast(`Marked #${channel.name} as read`);
+        showToast(newHidden ? `Hidden #${channel.name}` : `Unhid #${channel.name}`);
+      } catch (err: any) {
+        showToast(`Failed to toggle visibility: ${err.message}`);
+      }
+    };
+
+    return [
+      {
+        label: 'Mark As Read',
+        icon: <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" />,
+        onClick: () => {
+          setServerData(prev => {
+            const s = prev[selectedBeaconId];
+            if (!s) return prev;
+            return {
+              ...prev,
+              [selectedBeaconId]: {
+                ...s,
+                categories: s.categories.map(cat => ({
+                  ...cat,
+                  channels: cat.channels.map(c => c.id === channel.id ? { ...c, unread: false } : c),
+                })),
+              },
+            };
+          });
+          showToast(`Marked #${channel.name} as read`);
+        },
       },
-    },
-    {
-      label: 'Copy Channel ID',
-      icon: <Copy className="w-3.5 h-3.5" />,
-      onClick: () => {
-        navigator.clipboard?.writeText(channel.id);
-        showToast(`Copied #${channel.id}`);
+      {
+        label: isMuted ? 'Unmute Channel' : 'Mute Channel',
+        icon: isMuted ? <Bell className="w-3.5 h-3.5 text-[#23a55a]" /> : <BellOff className="w-3.5 h-3.5 text-[#f23f43]" />,
+        children: isMuted ? [
+          { label: 'Unmute Channel', onClick: () => handleSetMute('unmute') }
+        ] : [
+          { label: 'For 15 Minutes', onClick: () => handleSetMute('15m') },
+          { label: 'For 1 Hour', onClick: () => handleSetMute('1h') },
+          { label: 'For 8 Hours', onClick: () => handleSetMute('8h') },
+          { label: 'For 24 Hours', onClick: () => handleSetMute('24h') },
+          { label: 'Until I turn it back on', onClick: () => handleSetMute('indefinite') },
+        ],
       },
-    },
-  ];
+      {
+        label: 'Notification Settings',
+        icon: <Bell className="w-3.5 h-3.5 text-[#dbdee1]" />,
+        children: [
+          { label: `${currentNotif === 'all' ? '✓ ' : ''}All Messages`, onClick: () => handleSetNotif('all') },
+          { label: `${currentNotif === 'mentions' ? '✓ ' : ''}Only @mentions`, onClick: () => handleSetNotif('mentions') },
+          { label: `${currentNotif === 'nothing' ? '✓ ' : ''}Nothing`, onClick: () => handleSetNotif('nothing') },
+        ],
+      },
+      {
+        label: isHidden ? 'Unhide Channel' : 'Hide Channel',
+        icon: isHidden ? <Eye className="w-3.5 h-3.5 text-[#23a55a]" /> : <EyeOff className="w-3.5 h-3.5 text-[#949ba4]" />,
+        onClick: handleToggleVisibility,
+      },
+      {
+        label: 'Edit Channel Topic',
+        icon: <Pencil className="w-3.5 h-3.5 text-[#00f0ff]" />,
+        onClick: () => {
+          setEditingTopicChannel(channel);
+          setEditingTopicText(channel.description || '');
+          setIsEditingTopicModalOpen(true);
+        },
+      },
+      { separator: true },
+      {
+        label: 'Copy Channel ID',
+        icon: <Copy className="w-3.5 h-3.5" />,
+        onClick: () => {
+          navigator.clipboard?.writeText(channel.id);
+          showToast(`Copied #${channel.id}`);
+        },
+      },
+    ];
+  };
 
   const getMessageContextMenu = (message: Message): ContextMenuItem[] => {
     const isAuthor = message.callsign === currentUser.callsign || message.author === currentUser.name;
@@ -2024,7 +2163,7 @@ export const AppContent: React.FC = () => {
             </div>
 
             {/* Channels & Roles / Browse Channels Header Item */}
-            <div className="px-2 pt-3 pb-1">
+            <div className="px-2 pt-3 pb-1 space-y-1">
               <button
                 onClick={() => setSelectedChannelId('browse-channels')}
                 className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[6px] text-sm font-medium transition-colors ${
@@ -2034,7 +2173,24 @@ export const AppContent: React.FC = () => {
                 }`}
               >
                 <BrowseIcon className="w-4 h-4 text-[#00f0ff]" />
-                <span>Channels & Roles</span>
+                <span className="flex-1 text-left">Channels & Roles</span>
+              </button>
+
+              {/* Show Hidden Channels Toggle Button */}
+              <button
+                onClick={() => setShowHiddenChannels(p => !p)}
+                className={`w-full flex items-center justify-between px-2.5 py-1 rounded-[4px] text-xs transition-colors ${
+                  showHiddenChannels ? 'bg-[#1a1b1e] text-[#00f0ff]' : 'text-[#80848e] hover:text-[#dbdee1] hover:bg-[#16171a]'
+                }`}
+                title={showHiddenChannels ? "Hide hidden channels from list" : "Reveal hidden channels in list"}
+              >
+                <div className="flex items-center gap-1.5">
+                  {showHiddenChannels ? <Eye className="w-3.5 h-3.5 text-[#00f0ff]" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  <span>{showHiddenChannels ? 'Showing Hidden' : 'Show Hidden'}</span>
+                </div>
+                <span className="text-[10px] font-mono px-1 rounded bg-[#16171a]">
+                  {allCurrentChannels.filter(c => c.isHidden).length}
+                </span>
               </button>
             </div>
 
@@ -2043,6 +2199,8 @@ export const AppContent: React.FC = () => {
               {currentCategories.map((cat) => {
                 const isCollapsed = collapsedCategories[cat.id];
                 const isCategoryDragOver = dragOverCategoryId === cat.id;
+
+                const visibleChannels = cat.channels.filter(c => showHiddenChannels || !c.isHidden);
 
                 return (
                   <div
@@ -2062,10 +2220,13 @@ export const AppContent: React.FC = () => {
                         handleCategoryDrop(cat.id);
                       }
                     }}
-                    className={`rounded transition-colors ${
-                      isCategoryDragOver ? 'bg-[#00f0ff]/10 border-t-2 border-[#00f0ff]' : ''
-                    }`}
+                    className="relative rounded transition-colors"
                   >
+                    {/* Clean Drop Insertion Indicator for Category */}
+                    {isCategoryDragOver && (
+                      <div className="h-0.5 bg-[#00f0ff] rounded-full mx-1 mb-1 shadow-[0_0_8px_#00f0ff]" />
+                    )}
+
                     {/* Category Header (Draggable) */}
                     <div
                       draggable
@@ -2102,10 +2263,11 @@ export const AppContent: React.FC = () => {
                     {/* Channel Items */}
                     {!isCollapsed && (
                       <div className="space-y-0.5 mt-0.5">
-                        {cat.channels.map((chan) => {
+                        {visibleChannels.map((chan) => {
                           const isSelected = selectedChannelId === chan.id;
                           const isChannelDragOver = dragOverChannelId === chan.id;
                           const usersInThisVoice = chan.type === 'voice' ? (voiceUsers[chan.id] || []) : [];
+                          const isChannelMuted = Boolean(mutedChannels[chan.id]);
 
                           return (
                             <div
@@ -2139,10 +2301,13 @@ export const AppContent: React.FC = () => {
                                   handleChannelDrop(chan.id, cat.id);
                                 }
                               }}
-                              className={`flex flex-col rounded transition-all ${
-                                isChannelDragOver ? 'border-t-2 border-[#00f0ff] bg-[#00f0ff]/10' : ''
-                              }`}
+                              className="relative flex flex-col rounded"
                             >
+                              {/* Clean Drop Insertion Indicator Line for Channel */}
+                              {isChannelDragOver && (
+                                <div className="h-0.5 bg-[#00f0ff] rounded-full mx-2 my-0.5 shadow-[0_0_8px_#00f0ff]" />
+                              )}
+
                               <div
                                 data-channel-id={chan.id}
                                 onClick={() => {
@@ -2156,12 +2321,20 @@ export const AppContent: React.FC = () => {
                                 className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[6px] text-sm font-medium transition-colors cursor-pointer ${
                                   isSelected
                                     ? 'bg-[#1a1b1e] text-white font-semibold'
+                                    : isChannelMuted
+                                    ? 'text-[#50545c] hover:bg-[#16171a] hover:text-[#949ba4]'
                                     : 'text-[#949ba4] hover:bg-[#16171a] hover:text-[#dbdee1]'
-                                }`}
+                                } ${chan.isHidden ? 'opacity-60 italic' : ''}`}
                               >
                                 <GripVertical className="w-3 h-3 text-[#4e5058] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-grab active:cursor-grabbing" />
                                 {getChannelIcon(chan.type)}
                                 <span className="truncate flex-1">{chan.name}</span>
+                                {isChannelMuted && (
+                                  <span title="Muted"><BellOff className="w-3 h-3 text-[#50545c] shrink-0" /></span>
+                                )}
+                                {chan.isHidden && (
+                                  <span title="Hidden Channel"><EyeOff className="w-3 h-3 text-[#50545c] shrink-0" /></span>
+                                )}
                                 {chan.type === 'voice' && usersInThisVoice.length > 0 && (
                                   <span className="text-[11px] text-[#23a55a] font-mono px-1 bg-[#23a55a]/10 rounded">
                                     {usersInThisVoice.length}
@@ -2360,81 +2533,206 @@ export const AppContent: React.FC = () => {
 
         {/* 4. Main Viewport Area */}
         {selectedBeaconId === 'explore' ? (
-          /* Explore Public Beacons View - Jet Black */
-          <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full overflow-y-auto p-8 select-none">
-            <div className="max-w-4xl mx-auto w-full space-y-6">
+          /* Discord-Authentic Discovery Page (matching media_1788778130451.jpg) */
+          <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full overflow-y-auto select-none">
+            {/* Top Categories Bar */}
+            <div className="h-12 px-6 border-b border-[#141518] flex items-center justify-between shrink-0 bg-[#0b0c0e]">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 text-sm font-medium">
+                {[
+                  { id: 'Home', icon: <Compass className="w-4 h-4" /> },
+                  { id: 'Gaming', icon: <Gamepad2 className="w-4 h-4" /> },
+                  { id: 'Music', icon: <Music className="w-4 h-4" /> },
+                  { id: 'Entertainment', icon: <Tv className="w-4 h-4" /> },
+                  { id: 'Science & Tech', icon: <Atom className="w-4 h-4" /> },
+                  { id: 'Education', icon: <GraduationCap className="w-4 h-4" /> },
+                  { id: 'Student Hubs', icon: <School className="w-4 h-4" /> },
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setDiscoveryTab(cat.id)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-[4px] whitespace-nowrap transition-colors text-xs font-semibold ${
+                      discoveryTab === cat.id
+                        ? 'bg-[#1a1b1e] text-white'
+                        : 'text-[#949ba4] hover:text-[#dbdee1] hover:bg-[#16171a]'
+                    }`}
+                  >
+                    {cat.icon}
+                    <span>{cat.id}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Main Discovery Body Container */}
+            <div className="flex-1 p-8 max-w-7xl mx-auto w-full space-y-8">
+              {/* Discord-style Hero Banner Container */}
+              <div className="relative rounded-[16px] overflow-hidden min-h-[240px] flex flex-col items-center justify-center text-center p-8 bg-gradient-to-br from-[#121829] via-[#0b0c10] to-[#040507] border border-[#1f2024] shadow-2xl">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(0,240,255,0.18),transparent_60%)] pointer-events-none" />
+                <div className="relative z-10 max-w-2xl mx-auto space-y-3">
+                  <span className="text-[11px] font-mono tracking-widest uppercase text-[#00f0ff] font-bold px-2 py-0.5 rounded bg-[#00f0ff]/10 border border-[#00f0ff]/20 inline-block">
+                    EXPLORE SUBSPACE NETWORK
+                  </span>
+                  <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
+                    FIND YOUR COMMUNITY ON SUBSPACE
+                  </h1>
+                  <p className="text-sm text-[#949ba4]">
+                    From gaming, music, quantum hacking, to research outposts — find your place across the galaxy.
+                  </p>
+
+                  {/* Search Bar pill */}
+                  <div className="pt-2">
+                    <div className="relative max-w-lg mx-auto">
+                      <input
+                        type="text"
+                        value={discoverySearchQuery}
+                        onChange={(e) => setDiscoverySearchQuery(e.target.value)}
+                        placeholder="Explore communities, topics, or beacons..."
+                        className="w-full bg-[#000000]/80 border border-[#2b2d33] focus:border-[#00f0ff] text-white text-sm rounded-full pl-11 pr-4 py-3 outline-none shadow-inner placeholder-[#80848e] transition-all"
+                      />
+                      <Search className="w-5 h-5 text-[#80848e] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      {discoverySearchQuery && (
+                        <button
+                          onClick={() => setDiscoverySearchQuery('')}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#80848e] hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category Subheading */}
               <div>
-                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                  <Compass className="w-7 h-7 text-[#00f0ff]" />
-                  <span>Discover Subspace Beacons</span>
-                </h1>
-                <p className="text-sm text-[#949ba4] mt-1">
-                  Connect to public beacons and orbital outposts across the galaxy.
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <span>{discoveryTab === 'Home' ? 'Featured Communities' : `${discoveryTab} Communities`}</span>
+                  <span className="text-xs font-mono font-normal text-[#80848e]">
+                    ({
+                      discoverableBeacons.filter(b => {
+                        const matchTab = discoveryTab === 'Home' || ((b as any).category || 'Gaming') === discoveryTab;
+                        const matchQuery = !discoverySearchQuery || b.name.toLowerCase().includes(discoverySearchQuery.toLowerCase()) || ((b.description || '').toLowerCase().includes(discoverySearchQuery.toLowerCase()));
+                        return matchTab && matchQuery;
+                      }).length
+                    })
+                  </span>
+                </h2>
+                <p className="text-xs text-[#949ba4] mt-0.5">
+                  Verified public relays transmitting unhindered frequencies.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {discoverableBeacons.map((b) => {
-                  const isJoined = beacons.some((jb) => jb.id === b.id);
-                  return (
-                    <div
-                      key={b.id}
-                      className="p-5 rounded-[12px] bg-[#0b0c0e] border border-[#1f2024] hover:border-[#00f0ff]/50 transition-all flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex items-center gap-3 mb-2">
-                          <div
-                            style={{ background: getBeaconGradient(b.id) }}
-                            className="w-10 h-10 rounded-[12px] flex items-center justify-center font-bold text-white text-sm"
-                          >
-                            {getBeaconInitials(b.name)}
+              {/* 4-Column Responsive Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-12">
+                {discoverableBeacons
+                  .filter(b => {
+                    const matchTab = discoveryTab === 'Home' || ((b as any).category || 'Gaming') === discoveryTab;
+                    const matchQuery = !discoverySearchQuery || b.name.toLowerCase().includes(discoverySearchQuery.toLowerCase()) || ((b.description || '').toLowerCase().includes(discoverySearchQuery.toLowerCase()));
+                    return matchTab && matchQuery;
+                  })
+                  .map((b) => {
+                    const isJoined = beacons.some((jb) => jb.id === b.id);
+                    const banner = b.bannerUrl || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=80';
+                    const onlineCount = ((b.id.charCodeAt(0) * 7) % 40) + 12;
+                    const totalMembers = onlineCount * 4 + ((b.id.charCodeAt(1) || 5) * 8);
+
+                    return (
+                      <div
+                        key={b.id}
+                        className="rounded-[14px] bg-[#0b0c0e] border border-[#1f2024] hover:border-[#00f0ff]/50 transition-all flex flex-col justify-between overflow-hidden group shadow-lg hover:shadow-[0_8px_30px_rgba(0,240,255,0.12)]"
+                      >
+                        <div>
+                          {/* Banner Image Container */}
+                          <div className="relative h-36 w-full bg-[#16171a] overflow-hidden">
+                            <img
+                              src={banner}
+                              alt={b.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#0b0c0e] via-transparent to-black/30" />
                           </div>
-                          <div>
-                            <h3 className="text-base font-bold text-white">{b.name}</h3>
-                            <span className="text-[11px] text-[#00f0ff] font-mono">Public Outpost</span>
+
+                          {/* Overlapping Server Avatar Icon */}
+                          <div className="-mt-8 px-4 flex items-end justify-between relative z-10">
+                            <div
+                              style={{ background: getBeaconGradient(b.id) }}
+                              className="w-14 h-14 rounded-[14px] flex items-center justify-center font-extrabold text-white text-base border-4 border-[#0b0c0e] shadow-md shrink-0"
+                            >
+                              {getBeaconInitials(b.name)}
+                            </div>
+                            <span className="text-[10px] font-mono text-[#00f0ff] bg-[#00f0ff]/10 border border-[#00f0ff]/20 px-2 py-0.5 rounded-full mb-1">
+                              {(b as any).category || 'PUBLIC'}
+                            </span>
+                          </div>
+
+                          {/* Title & Verified Badge */}
+                          <div className="px-4 pt-2.5">
+                            <div className="flex items-center gap-1.5">
+                              <h3 className="text-base font-bold text-white truncate group-hover:text-[#00f0ff] transition-colors">
+                                {b.name}
+                              </h3>
+                              <span title="Verified Subspace Beacon">
+                                <CheckCircle2 className="w-4 h-4 text-[#23a55a] shrink-0" />
+                              </span>
+                            </div>
+
+                            {/* Description snippet */}
+                            <p className="text-xs text-[#949ba4] line-clamp-2 mt-1 min-h-[32px] leading-relaxed">
+                              {b.description || 'Welcome to this public orbital beacon. Join to connect and transmit with operatives.'}
+                            </p>
                           </div>
                         </div>
-                        <p className="text-xs text-[#949ba4] line-clamp-2">
-                          {b.description || 'No description provided.'}
-                        </p>
-                      </div>
 
-                      <div className="mt-4 pt-3 border-t border-[#1f2024] flex items-center justify-between">
-                        <span className="text-[11px] font-mono text-[#80848e]">{b.id.slice(0, 8)}</span>
-                        {isJoined ? (
-                          <button
-                            onClick={() => setSelectedBeaconId(b.id)}
-                            className="bg-[#16171a] text-white px-3 py-1.5 rounded-[4px] text-xs font-semibold hover:bg-[#202226] transition-colors border border-[#2b2d33]"
-                          >
-                            Enter Beacon
-                          </button>
-                        ) : (
-                          <button
-                            onClick={async () => {
-                              try {
-                                await api.joinBeacon(b.id);
-                                const joined = await api.getJoinedBeacons();
-                                setBeacons(joined.map(jb => ({
-                                  id: jb.id,
-                                  name: jb.name,
-                                  iconText: getBeaconInitials(jb.name),
-                                  gradient: getBeaconGradient(jb.id),
-                                })));
-                                setSelectedBeaconId(b.id);
-                                showToast(`Joined ${b.name}!`);
-                              } catch (err: any) {
-                                showToast(`Failed to join: ${err.message}`);
-                              }
-                            }}
-                            className="bg-[#23a55a] text-white px-3 py-1.5 rounded-[4px] text-xs font-semibold hover:bg-[#1f934f] transition-colors"
-                          >
-                            Join Beacon
-                          </button>
-                        )}
+                        {/* Footer: Member stats & Join/Enter Button */}
+                        <div className="p-4 pt-3 mt-2 border-t border-[#1f2024] flex items-center justify-between">
+                          <div className="flex items-center gap-3 text-[11px] text-[#949ba4]">
+                            <span className="flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-[#23a55a]" />
+                              <span>{onlineCount} Online</span>
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-[#80848e]" />
+                              <span>{totalMembers} Members</span>
+                            </span>
+                          </div>
+
+                          {isJoined ? (
+                            <button
+                              onClick={() => setSelectedBeaconId(b.id)}
+                              className="bg-[#16171a] text-white px-3 py-1.5 rounded-[6px] text-xs font-semibold hover:bg-[#202226] transition-colors border border-[#2b2d33]"
+                            >
+                              Enter
+                            </button>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await api.joinBeacon(b.id);
+                                  const joined = await api.getJoinedBeacons();
+                                  setBeacons(joined.map(jb => ({
+                                    id: jb.id,
+                                    name: jb.name,
+                                    iconText: getBeaconInitials(jb.name),
+                                    gradient: getBeaconGradient(jb.id),
+                                  })));
+                                  setSelectedBeaconId(b.id);
+                                  showToast(`Joined ${b.name}!`);
+                                } catch (err: any) {
+                                  showToast(`Failed to join: ${err.message}`);
+                                }
+                              }}
+                              className="bg-[#23a55a] text-white px-3 py-1.5 rounded-[6px] text-xs font-semibold hover:bg-[#1f934f] transition-colors"
+                            >
+                              Join
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
           </div>
@@ -3054,15 +3352,28 @@ export const AppContent: React.FC = () => {
           <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full relative">
             {/* Top Channel Header Bar */}
             <div className="h-12 px-4 border-b border-[#141518] flex items-center justify-between shrink-0 bg-[#0b0c0e] shadow-sm">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1 mr-4">
                 {getChannelIcon(currentChannel.type)}
                 <span className="font-bold text-white text-base truncate">
                   {currentChannel.name}
                 </span>
-                <div className="w-[1px] h-4 bg-[#232428] mx-2 hidden sm:block" />
-                <span className="text-xs text-[#949ba4] truncate hidden sm:inline">
-                  {currentChannel.description || `${currentServer.name} channel`}
-                </span>
+                <div className="w-[1px] h-4 bg-[#232428] mx-2 hidden sm:block shrink-0" />
+                
+                {/* Editable Channel Topic */}
+                <div 
+                  onClick={() => {
+                    setEditingTopicChannel(currentChannel);
+                    setEditingTopicText(currentChannel.description || '');
+                    setIsEditingTopicModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 min-w-0 group cursor-pointer hover:bg-[#16171a] px-2 py-1 rounded-[4px] transition-colors"
+                  title="Click to edit channel topic"
+                >
+                  <span className="text-xs text-[#949ba4] truncate group-hover:text-[#dbdee1]">
+                    {currentChannel.description || 'Set a channel topic...'}
+                  </span>
+                  <Pencil className="w-3 h-3 text-[#00f0ff] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </div>
               </div>
 
               {/* Right Action Icons */}
@@ -4411,6 +4722,86 @@ export const AppContent: React.FC = () => {
           setSelectedDmId(dm.id);
         }}
       />
+
+      {/* 25. Edit Channel Topic Modal */}
+      {isEditingTopicModalOpen && editingTopicChannel && (
+        <Modal
+          isOpen={isEditingTopicModalOpen}
+          onClose={() => {
+            setIsEditingTopicModalOpen(false);
+            setEditingTopicChannel(null);
+          }}
+          title={`Edit Topic — #${editingTopicChannel.name}`}
+        >
+          <div className="space-y-4 text-xs">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#949ba4] mb-1.5">
+                Channel Topic
+              </label>
+              <textarea
+                value={editingTopicText}
+                onChange={(e) => setEditingTopicText(e.target.value)}
+                placeholder="Let operatives know what this channel is for..."
+                rows={4}
+                maxLength={1024}
+                className="w-full bg-[#111214] border border-[#1f2024] focus:border-[#00f0ff] rounded-[8px] p-3 text-white text-xs outline-none resize-none leading-relaxed transition-colors placeholder-[#4e5058]"
+              />
+              <div className="flex justify-end text-[10px] text-[#80848e] mt-1 font-mono">
+                {editingTopicText.length} / 1024
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#1f2024]">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingTopicModalOpen(false);
+                  setEditingTopicChannel(null);
+                }}
+                className="px-4 py-2 rounded-[4px] text-xs font-semibold text-[#dbdee1] hover:bg-[#1f2024] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await api.updateRelay(selectedBeaconId, editingTopicChannel.id, {
+                      topic: editingTopicText.trim() || undefined,
+                    });
+                    setServerData(prev => {
+                      const s = prev[selectedBeaconId];
+                      if (!s) return prev;
+                      return {
+                        ...prev,
+                        [selectedBeaconId]: {
+                          ...s,
+                          categories: s.categories.map(cat => ({
+                            ...cat,
+                            channels: cat.channels.map(c => 
+                              c.id === editingTopicChannel.id 
+                                ? { ...c, description: editingTopicText.trim() || undefined }
+                                : c
+                            ),
+                          })),
+                        },
+                      };
+                    });
+                    showToast(`Updated topic for #${editingTopicChannel.name}`);
+                    setIsEditingTopicModalOpen(false);
+                    setEditingTopicChannel(null);
+                  } catch (err: any) {
+                    showToast(`Failed to update topic: ${err.message}`);
+                  }
+                }}
+                className="px-4 py-2 rounded-[4px] text-xs font-semibold text-white bg-[#5865f2] hover:bg-[#4752c4] transition-colors"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

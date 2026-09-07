@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Upload, Plus, Edit2, Check, X, Users, Eye, Bell, Shield, Activity } from 'lucide-react';
+import { Trash2, Upload, Plus, Edit2, Check, X, Users, Eye, Bell, Shield, Activity, HelpCircle, Image as ImageIcon, Hash } from 'lucide-react';
 import { Modal } from '@subspace/ui';
 import { api } from './services/api';
 
@@ -77,9 +77,24 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   const [rulesText, setRulesText] = useState('Welcome to this Beacon. Please read and agree to the rules before participating.');
   const [requiresOnboarding, setRequiresOnboarding] = useState(true);
   const [onboardingSaved, setOnboardingSaved] = useState(false);
+  const [defaultChannels, setDefaultChannels] = useState<string[]>(['general', 'announcements', 'welcome']);
+  const [onboardingQuestions, setOnboardingQuestions] = useState<{ id: string; title: string; options: { label: string; roleId?: string }[] }[]>([
+    {
+      id: 'q1',
+      title: 'What is your primary operational role?',
+      options: [
+        { label: 'Tactical Pilot', roleId: 'c3' },
+        { label: 'Cartographer & Scout', roleId: 'c3' },
+        { label: 'Communications Specialist', roleId: 'c2' },
+      ],
+    },
+  ]);
 
   // Discovery state
   const [isDiscoverable, setIsDiscoverable] = useState(false);
+  const [discoveryDescription, setDiscoveryDescription] = useState('A public Subspace outpost dedicated to frequency relays, galactic exploration, and orbital strategy.');
+  const [discoveryBannerUrl, setDiscoveryBannerUrl] = useState('');
+  const [discoveryCategory, setDiscoveryCategory] = useState('Gaming');
   const [discoverySaved, setDiscoverySaved] = useState(false);
 
   const selectedClearance = clearancesList.find(c => c.id === selectedClearanceId) || clearancesList[0];
@@ -160,6 +175,12 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   const handleSaveOnboarding = async () => {
     try {
       await api.updateBeacon(serverId, { rulesText });
+      localStorage.setItem(`subspace_onboarding_${serverId}`, JSON.stringify({
+        requiresOnboarding,
+        rulesText,
+        defaultChannels,
+        onboardingQuestions,
+      }));
       setOnboardingSaved(true);
       setTimeout(() => setOnboardingSaved(false), 2000);
     } catch { /* noop */ }
@@ -167,7 +188,18 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
 
   const handleSaveDiscovery = async () => {
     try {
-      await api.updateBeacon(serverId, { isDiscoverable });
+      await api.updateBeacon(serverId, { 
+        isDiscoverable, 
+        description: discoveryDescription, 
+        bannerUrl: discoveryBannerUrl.trim() || null,
+        category: discoveryCategory
+      });
+      localStorage.setItem(`subspace_discovery_${serverId}`, JSON.stringify({
+        isDiscoverable,
+        description: discoveryDescription,
+        bannerUrl: discoveryBannerUrl,
+        category: discoveryCategory,
+      }));
       setDiscoverySaved(true);
       setTimeout(() => setDiscoverySaved(false), 2000);
     } catch { /* noop */ }
@@ -531,7 +563,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                               onChange={() => handleToggleHoist(role.id)}
                               className="sr-only peer"
                             />
-                            <div className="w-7 h-3.5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-[#23a55a] peer-disabled:opacity-40" />
+                            <div className="w-8 h-4 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:bg-[#23a55a] peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-disabled:opacity-40" />
                           </label>
                         </div>
                       </div>
@@ -576,7 +608,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                               onChange={() => handleTogglePermission(item.bit)}
                               className="sr-only peer"
                             />
-                            <div className="w-8 h-4 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#23a55a]"></div>
+                            <div className="w-8 h-4 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:bg-[#23a55a] peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all" />
                           </label>
                         </div>
                       );
@@ -725,19 +757,19 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
 
           {/* ─── Onboarding Tab ──────────────────────────────── */}
           {activeTab === 'onboarding' && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               <div>
-                <h3 className="text-sm font-bold text-white mb-1">Member Onboarding</h3>
+                <h3 className="text-sm font-bold text-white mb-1">Community Onboarding</h3>
                 <p className="text-xs text-[#949ba4]">
-                  Control the new member experience. When enabled, members must acknowledge your rules before accessing the beacon.
+                  Design the new member experience with default channels, starter questions for roles, and server rules.
                 </p>
               </div>
 
               {/* Enable / Disable Toggle */}
               <div className="flex items-center justify-between p-3.5 bg-[#111214] border border-[#1f2024] rounded-[8px]">
                 <div>
-                  <div className="text-xs font-semibold text-white">Require Onboarding</div>
-                  <div className="text-[10px] text-[#949ba4] mt-0.5">New members must read and accept your rules before joining.</div>
+                  <div className="text-xs font-semibold text-white">Enable Community Onboarding</div>
+                  <div className="text-[10px] text-[#949ba4] mt-0.5">Prompt new recruits with role selection and channel discovery upon joining.</div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0">
                   <input
@@ -746,11 +778,140 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                     onChange={() => setRequiresOnboarding(v => !v)}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                  <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
                 </label>
               </div>
 
-              {/* Rules Text */}
+              {/* Section 1: Default Channels */}
+              <div className="space-y-2 p-4 bg-[#111214] border border-[#1f2024] rounded-[8px]">
+                <div className="flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-[#00f0ff]" />
+                  <label className="text-xs font-bold uppercase tracking-wider text-white">
+                    Default Channels
+                  </label>
+                </div>
+                <p className="text-xs text-[#949ba4]">
+                  Channels that all members are automatically assigned to upon joining.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap pt-2">
+                  {['welcome', 'announcements', 'rules', 'general', 'bot-commands', 'voice-lounge'].map(chan => {
+                    const isSelected = defaultChannels.includes(chan);
+                    return (
+                      <button
+                        key={chan}
+                        type="button"
+                        onClick={() => {
+                          setDefaultChannels(prev => 
+                            isSelected ? prev.filter(c => c !== chan) : [...prev, chan]
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-[6px] text-xs font-medium border flex items-center gap-1.5 transition-colors ${
+                          isSelected
+                            ? 'bg-[#5865f2]/20 border-[#5865f2] text-white'
+                            : 'bg-[#16171a] border-[#1f2024] text-[#949ba4] hover:text-white'
+                        }`}
+                      >
+                        <Hash className="w-3 h-3 text-[#00f0ff]" />
+                        <span>{chan}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-[#5865f2]" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Section 2: Custom Questions (Role and Channel Selection) */}
+              <div className="space-y-3 p-4 bg-[#111214] border border-[#1f2024] rounded-[8px]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 text-[#00f0ff]" />
+                    <label className="text-xs font-bold uppercase tracking-wider text-white">
+                      Custom Onboarding Questions
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newQ = {
+                        id: `q-${Date.now()}`,
+                        title: 'What notifications would you like to receive?',
+                        options: [
+                          { label: 'Major Mission Announcements', roleId: 'c2' },
+                          { label: 'Casual Fleet Hangouts', roleId: 'c3' },
+                        ],
+                      };
+                      setOnboardingQuestions(prev => [...prev, newQ]);
+                    }}
+                    className="px-2.5 py-1 bg-[#5865f2] hover:bg-[#4752c4] text-white text-[11px] font-semibold rounded-[4px] flex items-center gap-1 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Question</span>
+                  </button>
+                </div>
+                <p className="text-xs text-[#949ba4]">
+                  Ask questions to automatically assign roles or unlock specific frequency relays based on answers.
+                </p>
+
+                <div className="space-y-3 pt-2">
+                  {onboardingQuestions.map((q, qIndex) => (
+                    <div key={q.id} className="p-3 bg-[#0c0d0e] border border-[#1f2024] rounded-[6px] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full bg-[#1f2024] text-[10px] text-[#00f0ff] flex items-center justify-center">
+                            {qIndex + 1}
+                          </span>
+                          <input
+                            type="text"
+                            value={q.title}
+                            onChange={(e) => {
+                              const updatedTitle = e.target.value;
+                              setOnboardingQuestions(prev => prev.map(item => item.id === q.id ? { ...item, title: updatedTitle } : item));
+                            }}
+                            className="bg-transparent border-b border-transparent hover:border-[#35363c] focus:border-[#00f0ff] text-xs font-semibold text-white px-1 outline-none flex-1"
+                          />
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOnboardingQuestions(prev => prev.filter(item => item.id !== q.id))}
+                          className="text-[#80848e] hover:text-[#f23f43] p-1"
+                          title="Remove Question"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5 pl-6">
+                        {q.options.map((opt, optIndex) => (
+                          <div key={optIndex} className="flex items-center gap-2 text-xs">
+                            <span className="text-[#80848e]">•</span>
+                            <span className="text-[#dbdee1] font-medium">{opt.label}</span>
+                            <span className="text-[10px] text-[#80848e]">→ Grants role:</span>
+                            <select
+                              value={opt.roleId || ''}
+                              onChange={(e) => {
+                                const targetRoleId = e.target.value;
+                                setOnboardingQuestions(prev => prev.map(item => {
+                                  if (item.id !== q.id) return item;
+                                  const updatedOpts = [...item.options];
+                                  updatedOpts[optIndex] = { ...updatedOpts[optIndex], roleId: targetRoleId };
+                                  return { ...item, options: updatedOpts };
+                                }));
+                              }}
+                              className="bg-[#16171a] border border-[#1f2024] text-[#00f0ff] text-[10px] rounded px-1.5 py-0.5 outline-none"
+                            >
+                              {clearancesList.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section 3: Rules & Welcome Text */}
               <div className="space-y-2">
                 <label className="block text-xs font-semibold text-[#949ba4] uppercase tracking-wider">
                   Rules &amp; Welcome Text
@@ -758,12 +919,12 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                 <textarea
                   value={rulesText}
                   onChange={e => setRulesText(e.target.value)}
-                  rows={8}
-                  className="w-full bg-[#111214] border border-[#1f2024] rounded-[6px] px-3 py-2.5 text-sm text-[#dbdee1] placeholder-[#80848e] focus:outline-none focus:border-[#00f0ff] resize-none transition-colors leading-relaxed"
+                  rows={4}
+                  className="w-full bg-[#111214] border border-[#1f2024] rounded-[6px] px-3 py-2 text-xs text-[#dbdee1] placeholder-[#80848e] focus:outline-none focus:border-[#00f0ff] resize-none transition-colors leading-relaxed"
                   placeholder="Enter your server rules and welcome message here…"
                 />
                 <div className="text-[10px] text-[#80848e]">
-                  Supports markdown. Members will see this text before being granted access.
+                  Supports markdown. Members must read and accept this before gaining send clearance.
                 </div>
               </div>
 
@@ -786,11 +947,11 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
 
           {/* ─── Discovery Tab ────────────────────────────────── */}
           {activeTab === 'discovery' && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               <div>
                 <h3 className="text-sm font-bold text-white mb-1">Beacon Discovery</h3>
                 <p className="text-xs text-[#949ba4]">
-                  Control whether your beacon appears in the public Subspace discovery listing.
+                  Make your community visible in public discovery with banners, descriptions, and category tags.
                 </p>
               </div>
 
@@ -803,7 +964,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                   <div>
                     <div className="text-xs font-semibold text-white">List in Public Discovery</div>
                     <div className="text-[10px] text-[#949ba4] mt-0.5">
-                      When enabled, anyone can find and join this beacon via the Explore Beacons feature.
+                      When enabled, anyone across Subspace can find and join this beacon in Explore Communities.
                     </div>
                   </div>
                 </div>
@@ -814,24 +975,96 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                     onChange={() => setIsDiscoverable(v => !v)}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                  <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
                 </label>
               </div>
 
-              {/* Status Pill */}
-              <div className={`flex items-center gap-2 p-3 rounded-[6px] border text-xs font-medium ${
-                isDiscoverable
-                  ? 'bg-[#23a55a]/10 border-[#23a55a]/30 text-[#23a55a]'
-                  : 'bg-[#111214] border-[#1f2024] text-[#80848e]'
-              }`}>
-                <span className={`w-2 h-2 rounded-full shrink-0 ${isDiscoverable ? 'bg-[#23a55a]' : 'bg-[#80848e]'}`} />
-                {isDiscoverable
-                  ? 'This beacon is publicly listed and discoverable.'
-                  : 'This beacon is private and not listed in discovery.'}
+              {/* Discovery Description */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#949ba4]">
+                  Server Description
+                </label>
+                <textarea
+                  value={discoveryDescription}
+                  onChange={e => setDiscoveryDescription(e.target.value)}
+                  maxLength={250}
+                  rows={3}
+                  className="w-full bg-[#111214] border border-[#1f2024] rounded-[6px] p-3 text-xs text-white placeholder-[#80848e] focus:outline-none focus:border-[#00f0ff] resize-none leading-relaxed"
+                  placeholder="Briefly describe what your server is about for prospective recruits in Discovery..."
+                />
+                <div className="flex justify-between text-[10px] text-[#80848e]">
+                  <span>Appears on your discovery card and server overview.</span>
+                  <span>{discoveryDescription.length} / 250</span>
+                </div>
+              </div>
+
+              {/* Server Banner URL with Live Preview */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#949ba4]">
+                  Server Banner Image
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <ImageIcon className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#80848e]" />
+                    <input
+                      type="text"
+                      value={discoveryBannerUrl}
+                      onChange={e => setDiscoveryBannerUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/... (16:9 banner image URL)"
+                      className="w-full bg-[#111214] border border-[#1f2024] rounded-[6px] pl-9 pr-3 py-2 text-xs text-white placeholder-[#80848e] focus:outline-none focus:border-[#00f0ff]"
+                    />
+                  </div>
+                </div>
+
+                {/* Banner Live Preview Card */}
+                <div className="mt-2 rounded-[12px] overflow-hidden border border-[#1f2024] bg-[#0c0d0e] max-w-sm">
+                  <div className="h-28 w-full bg-[#16171a] relative overflow-hidden">
+                    {discoveryBannerUrl ? (
+                      <img
+                        src={discoveryBannerUrl}
+                        alt="Banner Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e: any) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[#80848e] text-xs font-mono">
+                        <span>No banner image set</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <div className="text-xs font-bold text-white truncate">{serverName}</div>
+                    <div className="text-[11px] text-[#949ba4] line-clamp-2 mt-0.5">
+                      {discoveryDescription || 'No description provided.'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Primary Category Selector */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#949ba4]">
+                  Primary Category
+                </label>
+                <select
+                  value={discoveryCategory}
+                  onChange={e => setDiscoveryCategory(e.target.value)}
+                  className="w-full max-w-xs bg-[#111214] border border-[#1f2024] rounded-[6px] px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00f0ff]"
+                >
+                  <option value="Gaming">Gaming</option>
+                  <option value="Music">Music</option>
+                  <option value="Entertainment">Entertainment</option>
+                  <option value="Science & Tech">Science &amp; Tech</option>
+                  <option value="Education">Education</option>
+                  <option value="Student Hubs">Student Hubs</option>
+                  <option value="General">General Community</option>
+                </select>
               </div>
 
               {/* Save Button */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={handleSaveDiscovery}
                   className="px-5 py-2 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold text-xs rounded-[6px] transition-colors"
@@ -908,7 +1141,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                       onChange={() => setSuppressEveryone(v => !v)}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
                   </label>
                 </div>
 
@@ -924,7 +1157,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                       onChange={() => setSuppressRoles(v => !v)}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
                   </label>
                 </div>
 
@@ -940,7 +1173,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                       onChange={() => setMuteServer(v => !v)}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#f23f43]" />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#f23f43]" />
                   </label>
                 </div>
               </div>
@@ -986,7 +1219,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                       onChange={() => setAllowDms(v => !v)}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
                   </label>
                 </div>
               </div>
@@ -1045,7 +1278,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                       onChange={() => setRestrictedActivity(v => !v)}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
                   </label>
                 </div>
               </div>

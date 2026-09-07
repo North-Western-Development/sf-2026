@@ -247,6 +247,31 @@ class SubspaceApiClient {
     return data.relay;
   }
 
+  public async updateRelay(beaconId: string, relayId: string, updates: Record<string, any>): Promise<ApiRelay> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/relays/${relayId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error('Failed to update relay');
+    const data = await res.json();
+    return data.relay;
+  }
+
+  public async toggleRelayVisibility(beaconId: string, relayId: string, isHidden: boolean): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/relays/${relayId}/visibility`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isHidden }),
+    });
+    if (!res.ok) throw new Error('Failed to update relay visibility');
+  }
+
+  public async deleteRelay(beaconId: string, relayId: string): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/relays/${relayId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete relay');
+  }
+
   public async updateProfile(profileData: {
     displayName?: string;
     bio?: string;

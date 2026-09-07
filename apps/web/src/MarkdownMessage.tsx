@@ -128,105 +128,310 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, suffi
 };
 
 function renderContentBody(content: string, suffix?: React.ReactNode): React.ReactNode {
-  // If content contains code blocks ```...```
+  // If content contains code blocks ```lang ... ```
   if (content.includes('```')) {
     const parts = content.split(/(```[\s\S]*?```)/g);
     return (
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {parts.map((part, i) => {
           if (part.startsWith('```') && part.endsWith('```')) {
-            const inner = part.slice(3, -3).replace(/^[a-z0-9]+\n/i, '');
+            const raw = part.slice(3, -3);
+            const firstLineBreak = raw.indexOf('\n');
+            let lang = '';
+            let code = raw;
+            if (firstLineBreak !== -1) {
+              const possibleLang = raw.slice(0, firstLineBreak).trim();
+              if (possibleLang && !possibleLang.includes(' ') && possibleLang.length < 15) {
+                lang = possibleLang;
+                code = raw.slice(firstLineBreak + 1);
+              }
+            }
             return (
-              <pre
-                key={i}
-                className="bg-[#111214] border border-[#1f2024] rounded-[6px] p-3 font-mono text-xs text-[#00f0ff] overflow-x-auto my-1 selection:bg-[#5865f2]"
-              >
-                <code>{inner}</code>
-              </pre>
+              <div key={i} className="my-1.5 rounded-[8px] overflow-hidden border border-[#1f2024] bg-[#0c0d0e]">
+                {lang && (
+                  <div className="px-3 py-1 bg-[#141518] text-[10px] uppercase font-mono text-[#80848e] border-b border-[#1f2024] flex items-center justify-between">
+                    <span>{lang}</span>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(code)}
+                      className="hover:text-white transition-colors"
+                      title="Copy code"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
+                <pre className="p-3 font-mono text-xs text-[#00f0ff] overflow-x-auto selection:bg-[#5865f2] selection:text-white leading-relaxed">
+                  <code>{code}</code>
+                </pre>
+              </div>
             );
           }
           const isLast = i === parts.length - 1;
           return (
-            <span key={i}>
-              {renderInlineMarkdown(part)}
+            <React.Fragment key={i}>
+              {renderMarkdownLines(part)}
               {isLast && suffix}
-            </span>
+            </React.Fragment>
           );
         })}
       </div>
     );
   }
 
-  // If quote block
-  if (content.startsWith('> ')) {
-    const lines = content.split('\n');
-    const quotes = lines.filter(l => l.startsWith('> ')).map(l => l.slice(2)).join('\n');
-    const rest = lines.filter(l => !l.startsWith('> ')).join('\n');
-    return (
-      <div>
-        <blockquote className="border-l-4 border-[#35373c] pl-3 text-[#949ba4] italic text-xs mb-1 bg-[#111214]/50 py-0.5 rounded-r">
-          {renderInlineMarkdown(quotes)}
-        </blockquote>
-        {rest ? (
-          <div>
-            {renderInlineMarkdown(rest)}
-            {suffix}
-          </div>
-        ) : (
-          suffix
-        )}
-      </div>
-    );
-  }
-
   return (
     <>
-      {renderInlineMarkdown(content)}
+      {renderMarkdownLines(content)}
       {suffix}
     </>
   );
 }
 
-function renderInlineMarkdown(text: string): React.ReactNode {
-  // Parse inline `code`, **bold**, *italic*, ~~strikethrough~~, __underline__, and URLs
-  const tokens = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~|__[^_]+__|https?:\/\/[^\s]+)/g);
+function renderMarkdownLines(text: string): React.ReactNode {
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  let i = 0;
 
-  return tokens.map((token, idx) => {
-    if (token.startsWith('`') && token.endsWith('`')) {
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Subtext: -# text
+    if (line.startsWith('-# ')) {
+      elements.push(
+        <div key={`line-${i}`} className="text-xs text-[#949ba4] mt-0.5 leading-normal">
+          {renderInlineMarkdown(line.slice(3))}
+        </div>
+      );
+      i++;
+      continue;
+    }
+
+    // Headers: # Header, ## Header, ### Header
+    if (line.startsWith('# ')) {
+      elements.push(
+        <h1 key={`line-${i}`} className="text-xl font-extrabold text-white my-1 leading-tight">
+          {renderInlineMarkdown(line.slice(2))}
+        </h1>
+      );
+      i++;
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      elements.push(
+        <h2 key={`line-${i}`} className="text-lg font-bold text-white my-1 leading-tight">
+          {renderInlineMarkdown(line.slice(3))}
+        </h2>
+      );
+      i++;
+      continue;
+    }
+    if (line.startsWith('### ')) {
+      elements.push(
+        <h3 key={`line-${i}`} className="text-base font-bold text-white my-0.5 leading-snug">
+          {renderInlineMarkdown(line.slice(4))}
+        </h3>
+      );
+      i++;
+      continue;
+    }
+
+    // Blockquotes: consecutive lines starting with >
+    if (line.startsWith('> ') || line === '>') {
+      const quoteLines: string[] = [];
+      while (i < lines.length && (lines[i].startsWith('> ') || lines[i] === '>')) {
+        quoteLines.push(lines[i].startsWith('> ') ? lines[i].slice(2) : '');
+        i++;
+      }
+      elements.push(
+        <blockquote
+          key={`quote-${i}`}
+          className="border-l-4 border-[#4e5058] pl-3 py-0.5 my-1 text-[#dbdee1] bg-[#111214]/50 rounded-r text-xs leading-relaxed"
+        >
+          {quoteLines.map((ql, qidx) => (
+            <div key={qidx}>{renderInlineMarkdown(ql) || '\u00A0'}</div>
+          ))}
+        </blockquote>
+      );
+      continue;
+    }
+
+    // Unordered lists: - item or * item
+    if (/^[-*]\s+/.test(line)) {
+      const listItems: string[] = [];
+      while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
+        listItems.push(lines[i].replace(/^[-*]\s+/, ''));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i}`} className="list-disc list-inside space-y-0.5 my-1 pl-1 text-xs text-[#dbdee1]">
+          {listItems.map((item, lidx) => (
+            <li key={lidx}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    // Ordered lists: 1. item
+    if (/^\d+\.\s+/.test(line)) {
+      const listItems: string[] = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+        listItems.push(lines[i].replace(/^\d+\.\s+/, ''));
+        i++;
+      }
+      elements.push(
+        <ol key={`ol-${i}`} className="list-decimal list-inside space-y-0.5 my-1 pl-1 text-xs text-[#dbdee1]">
+          {listItems.map((item, lidx) => (
+            <li key={lidx}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+
+    // Normal line
+    elements.push(
+      <React.Fragment key={`line-${i}`}>
+        {renderInlineMarkdown(line)}
+        {i < lines.length - 1 && <br />}
+      </React.Fragment>
+    );
+    i++;
+  }
+
+  return elements;
+}
+
+const SpoilerBox: React.FC<{ content: string }> = ({ content }) => {
+  const [revealed, setRevealed] = React.useState(false);
+  return (
+    <span
+      onClick={(e) => {
+        e.stopPropagation();
+        setRevealed(!revealed);
+      }}
+      className={`rounded px-1.5 py-0.5 cursor-pointer transition-all inline-block font-sans ${
+        revealed
+          ? 'bg-[#2b2d31] text-[#dbdee1]'
+          : 'bg-[#202225] hover:bg-[#27292d] text-transparent select-none shadow-sm'
+      }`}
+      title={revealed ? 'Click to conceal spoiler' : 'Click to reveal spoiler'}
+    >
+      {renderInlineMarkdown(content)}
+    </span>
+  );
+};
+
+function renderInlineMarkdown(text: string): React.ReactNode {
+  if (!text) return null;
+
+  // Regex tokens:
+  // 1. Spoilers: ||spoiler||
+  // 2. Code: `code`
+  // 3. Bold: **bold**
+  // 4. Underline: __underline__
+  // 5. Italic: *italic* or _italic_
+  // 6. Strikethrough: ~~strikethrough~~
+  // 7. Markdown Link: [label](url)
+  // 8. Raw URL: https://...
+  // 9. Mentions: @username, @everyone, @here, #channel
+  const tokenRegex = /((\|\|[\s\S]+?\|\|)|(`[^`]+`)|(\*\*[^*]+\*\*)|(__[^_]+__)|(\*[^*]+\*)|(_[^_]+_)|(~~[^~]+~~)|(\[[^\]]+\]\([^)]+\))|(https?:\/\/[^\s]+)|(@(?:everyone|here|[a-zA-Z0-9_.-]+))|(#[a-zA-Z0-9_.-]+))/g;
+
+  const parts = text.split(tokenRegex).filter(p => p !== undefined && p !== '');
+
+  return parts.map((part, idx) => {
+    // Spoilers: ||text||
+    if (part.startsWith('||') && part.endsWith('||') && part.length >= 4) {
+      return <SpoilerBox key={idx} content={part.slice(2, -2)} />;
+    }
+
+    // Inline Code: `code`
+    if (part.startsWith('`') && part.endsWith('`') && part.length >= 2) {
       return (
         <code
           key={idx}
-          className="bg-[#1e1f22] text-[#e0e1e5] px-1.5 py-0.5 rounded font-mono text-xs border border-[#2b2d31]"
+          className="bg-[#1e1f22] text-[#00f0ff] px-1.5 py-0.5 rounded font-mono text-xs border border-[#2b2d31]"
         >
-          {token.slice(1, -1)}
+          {part.slice(1, -1)}
         </code>
       );
     }
-    if (token.startsWith('**') && token.endsWith('**')) {
-      return <strong key={idx} className="font-bold text-white">{token.slice(2, -2)}</strong>;
+
+    // Bold: **bold**
+    if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+      return <strong key={idx} className="font-bold text-white">{renderInlineMarkdown(part.slice(2, -2))}</strong>;
     }
-    if (token.startsWith('__') && token.endsWith('__')) {
-      return <span key={idx} className="underline underline-offset-2">{token.slice(2, -2)}</span>;
+
+    // Underline: __underline__
+    if (part.startsWith('__') && part.endsWith('__') && part.length >= 4) {
+      return <span key={idx} className="underline underline-offset-2">{renderInlineMarkdown(part.slice(2, -2))}</span>;
     }
-    if (token.startsWith('*') && token.endsWith('*')) {
-      return <em key={idx} className="italic text-[#dbdee1]">{token.slice(1, -1)}</em>;
+
+    // Strikethrough: ~~strikethrough~~
+    if (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) {
+      return <del key={idx} className="line-through text-[#80848e]">{renderInlineMarkdown(part.slice(2, -2))}</del>;
     }
-    if (token.startsWith('~~') && token.endsWith('~~')) {
-      return <del key={idx} className="line-through text-[#80848e]">{token.slice(2, -2)}</del>;
+
+    // Italic: *italic* or _italic_
+    if ((part.startsWith('*') && part.endsWith('*') && part.length >= 2) ||
+        (part.startsWith('_') && part.endsWith('_') && part.length >= 2)) {
+      return <em key={idx} className="italic text-[#dbdee1]">{renderInlineMarkdown(part.slice(1, -1))}</em>;
     }
-    if (token.startsWith('http://') || token.startsWith('https://')) {
+
+    // Markdown link: [label](url)
+    const mdLinkMatch = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+    if (mdLinkMatch) {
       return (
         <a
           key={idx}
-          href={token}
+          href={mdLinkMatch[2]}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[#00f0ff] hover:underline"
+        >
+          {mdLinkMatch[1]}
+        </a>
+      );
+    }
+
+    // Raw autolink: https://...
+    if (part.startsWith('http://') || part.startsWith('https://')) {
+      return (
+        <a
+          key={idx}
+          href={part}
           target="_blank"
           rel="noreferrer"
           className="text-[#00f0ff] hover:underline break-all"
         >
-          {token}
+          {part}
         </a>
       );
     }
-    return token;
+
+    // Mentions: @user, @role, @everyone, @here
+    if (part.startsWith('@')) {
+      return (
+        <span
+          key={idx}
+          className="bg-[#5865f2]/20 hover:bg-[#5865f2]/30 text-[#c9cdfb] font-medium px-1 py-0.5 rounded cursor-pointer transition-colors"
+        >
+          {part}
+        </span>
+      );
+    }
+
+    // Channel mentions: #channel
+    if (part.startsWith('#')) {
+      return (
+        <span
+          key={idx}
+          className="bg-[#00f0ff]/10 hover:bg-[#00f0ff]/20 text-[#00f0ff] font-medium px-1 py-0.5 rounded cursor-pointer transition-colors font-mono text-xs"
+        >
+          {part}
+        </span>
+      );
+    }
+
+    return part;
   });
 }

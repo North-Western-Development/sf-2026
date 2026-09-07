@@ -179,9 +179,9 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
         ) : items.length === 0 ? (
           <div className="text-center py-20 text-[#949ba4] bg-[#080809] border border-[#1f2024] rounded-[12px] max-w-lg mx-auto">
             <Camera className="w-10 h-10 text-[#3f4147] mx-auto mb-2" />
-            <h3 className="text-white font-bold text-sm">Visual Relay Synchronized</h3>
+            <h3 className="text-white font-bold text-sm">This relay is currently empty</h3>
             <p className="text-xs mt-1 text-[#80848e]">
-              No media captures uploaded yet. Broadcast tactical charts, diagrams, or stellar cartography captures here.
+              Be the first to send something over the air!
             </p>
           </div>
         ) : (
