@@ -114,6 +114,7 @@ interface Message {
   id: string;
   author: string;
   callsign: string;
+  discriminator?: string;
   avatar: string;
   content: string;
   timestamp: string;
@@ -706,18 +707,32 @@ export const AppContent: React.FC = () => {
         const txs = await api.getTransmissions(selectedChannelId);
         if (!mounted) return;
 
-        const mapped: Message[] = txs.map(tx => ({
-          id: tx.id,
-          author: tx.author?.displayName || tx.author?.username || 'Transmitter',
-          callsign: tx.author?.username || 'transmitter',
-          avatar: tx.author?.avatarUrl || '⚡',
-          content: tx.content,
-          timestamp: new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          roleColor: tx.author?.displayColor || '#00f0ff',
-          staffRank: tx.author?.staffRank || 0,
-          roleBadge: tx.author?.staffRank && tx.author?.staffRank >= 2 ? 'COMMAND STAFF' : undefined,
-          isPinned: tx.isPinned,
-        }));
+        // Ensure chronological ascending order
+        const sortedTxs = [...txs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+        const mapped: Message[] = sortedTxs.map(tx => {
+          const authorObj = tx.author || (tx as any).authorProfile;
+          const authorName = authorObj?.displayName || (tx as any).authorName || authorObj?.username || (tx as any).authorUsername || 'Transmitter';
+          const callsign = authorObj?.username || (tx as any).authorUsername || 'transmitter';
+          const discriminator = authorObj?.discriminator || (tx as any).authorDiscriminator || '0001';
+          const avatar = authorObj?.avatarUrl || (tx as any).authorAvatar || '⚡';
+          const displayColor = authorObj?.displayColor || (tx as any).authorDisplayColor || '#00f0ff';
+          const staffRank = authorObj?.staffRank ?? (tx as any).authorStaffRank ?? 0;
+
+          return {
+            id: tx.id,
+            author: authorName,
+            callsign,
+            discriminator,
+            avatar,
+            content: tx.content,
+            timestamp: new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            roleColor: displayColor,
+            staffRank,
+            roleBadge: staffRank >= 2 ? 'COMMAND STAFF' : undefined,
+            isPinned: tx.isPinned,
+          };
+        });
 
         setChannelMessages(prev => ({
           ...prev,
@@ -939,16 +954,18 @@ export const AppContent: React.FC = () => {
     // Real API dispatch for server channels
     try {
       const tx = await api.sendTransmission(selectedChannelId, content);
+      const authorObj = tx.author || (tx as any).authorProfile;
       const newMsg: Message = {
         id: tx.id,
-        author: currentUser.name,
-        callsign: currentUser.callsign,
-        avatar: currentUser.avatar,
+        author: authorObj?.displayName || currentUser.name,
+        callsign: authorObj?.username || currentUser.callsign,
+        discriminator: authorObj?.discriminator || currentUser.discriminator || '0001',
+        avatar: authorObj?.avatarUrl || currentUser.avatar,
         content: tx.content,
         timestamp: 'Today at ' + new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        roleColor: (currentUser as any).displayColor || '#00f0ff',
-        staffRank: currentUser.staffRank,
-        roleBadge: currentUser.staffRank && currentUser.staffRank >= 2 ? 'COMMAND STAFF' : undefined,
+        roleColor: authorObj?.displayColor || (currentUser as any).displayColor || '#00f0ff',
+        staffRank: authorObj?.staffRank ?? currentUser.staffRank,
+        roleBadge: (authorObj?.staffRank ?? currentUser.staffRank ?? 0) >= 2 ? 'COMMAND STAFF' : undefined,
       };
       setChannelMessages(prev => ({
         ...prev,
@@ -2673,10 +2690,11 @@ export const AppContent: React.FC = () => {
                     {/* Messages */}
                     <div className="space-y-0.5">
                       {activeMessages.map((m) => {
-                        const authorMember = members.find(mem => mem.name === m.author) || {
-                          id: `u-${m.author}`,
+                        const authorMember = members.find(mem => mem.callsign === m.callsign || mem.name === m.author) || {
+                          id: `u-${m.callsign || m.author}`,
                           name: m.author,
                           callsign: m.callsign,
+                          discriminator: m.discriminator || '0001',
                           avatar: m.avatar,
                           status: 'online' as const,
                           staffRank: m.staffRank,

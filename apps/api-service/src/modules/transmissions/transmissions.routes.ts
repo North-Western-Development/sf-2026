@@ -87,9 +87,29 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       })
       .returning();
 
+    const [authorProfile] = await db
+      .select({
+        id: transmitters.id,
+        username: transmitters.username,
+        discriminator: transmitters.discriminator,
+        displayName: transmitters.displayName,
+        displayColor: transmitters.displayColor,
+        avatarUrl: transmitters.avatarUrl,
+        staffRank: transmitters.staffRank,
+      })
+      .from(transmitters)
+      .where(eq(transmitters.id, token.transmitterId))
+      .limit(1);
+
     return reply.status(201).send({
       message: 'Transmission dispatched',
-      transmission: newTransmission,
+      transmission: {
+        ...newTransmission,
+        author: authorProfile || null,
+        authorName: authorProfile?.displayName || authorProfile?.username || 'Transmitter',
+        authorUsername: authorProfile?.username || 'transmitter',
+        authorAvatar: authorProfile?.avatarUrl || null,
+      },
     });
   });
 
@@ -143,9 +163,13 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
         isEdited: transmissions.isEdited,
         createdAt: transmissions.createdAt,
         updatedAt: transmissions.updatedAt,
-        authorName: transmitters.displayName,
+        authorId: transmitters.id,
         authorUsername: transmitters.username,
+        authorDiscriminator: transmitters.discriminator,
+        authorDisplayName: transmitters.displayName,
+        authorDisplayColor: transmitters.displayColor,
         authorAvatar: transmitters.avatarUrl,
+        authorStaffRank: transmitters.staffRank,
       })
       .from(transmissions)
       .innerJoin(transmitters, eq(transmissions.transmitterId, transmitters.id))
@@ -153,7 +177,33 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       .orderBy(desc(transmissions.createdAt))
       .limit(50);
 
-    const filtered = messages.filter((m: any) => !blockedIds.has(m.transmitterId));
+    const filtered = messages
+      .filter((m: any) => !blockedIds.has(m.transmitterId))
+      .map((m: any) => ({
+        id: m.id,
+        relayId: m.relayId,
+        transmitterId: m.transmitterId,
+        authorId: m.authorId,
+        content: m.content,
+        attachments: m.attachments,
+        isEdited: m.isEdited,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+        authorName: m.authorDisplayName,
+        authorUsername: m.authorUsername,
+        authorAvatar: m.authorAvatar,
+        author: {
+          id: m.authorId,
+          username: m.authorUsername,
+          discriminator: m.authorDiscriminator,
+          displayName: m.authorDisplayName,
+          displayColor: m.authorDisplayColor,
+          avatarUrl: m.authorAvatar,
+          staffRank: m.authorStaffRank,
+        },
+      }))
+      // Return chronologically (oldest to newest) for client message feed
+      .reverse();
 
     return reply.send({ transmissions: filtered });
   });
