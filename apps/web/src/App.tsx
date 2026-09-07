@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Radio, 
   Hash, 
@@ -318,6 +318,8 @@ export const AppContent: React.FC = () => {
 
   const [isVoiceChatOpen, setIsVoiceChatOpen] = useState(false);
   const [isUserPopoutOpen, setIsUserPopoutOpen] = useState(false);
+  const userPopoutRef = useRef<HTMLDivElement>(null);
+  const userIslandTriggerRef = useRef<HTMLDivElement>(null);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'profile' | 'appearance' | 'voice' | 'badges' | 'security'>('appearance');
 
   // Floating Popover for clicking users anywhere in Chat or Member List
@@ -326,6 +328,34 @@ export const AppContent: React.FC = () => {
     x: number;
     y: number;
   } | null>(null);
+  const hoverUserPopoutRef = useRef<HTMLDivElement>(null);
+
+  // Close profile popups when clicking outside
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (isUserPopoutOpen) {
+        if (
+          userPopoutRef.current &&
+          !userPopoutRef.current.contains(target) &&
+          userIslandTriggerRef.current &&
+          !userIslandTriggerRef.current.contains(target)
+        ) {
+          setIsUserPopoutOpen(false);
+        }
+      }
+      if (hoverUserPopout) {
+        if (hoverUserPopoutRef.current && !hoverUserPopoutRef.current.contains(target)) {
+          setHoverUserPopout(null);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, [isUserPopoutOpen, hoverUserPopout]);
 
   // Audio / RTC Comm-Link State
   const [inVoiceRoom, setInVoiceRoom] = useState<string | null>(null);
@@ -1488,6 +1518,7 @@ export const AppContent: React.FC = () => {
       style={{ fontFamily: currentFontFamily }}
       onClick={() => {
         if (hoverUserPopout) setHoverUserPopout(null);
+        if (isUserPopoutOpen) setIsUserPopoutOpen(false);
         if (isServerMenuOpen) setIsServerMenuOpen(false);
       }}
     >
@@ -2176,6 +2207,7 @@ export const AppContent: React.FC = () => {
       {/* Floating User Display Island spanning the full width! */}
       <div className="p-1.5 rounded-[8px] bg-[#111214] border border-[#1f2024] shadow-lg flex items-center justify-between relative">
         <div
+          ref={userIslandTriggerRef}
           onClick={() => setIsUserPopoutOpen(p => !p)}
           className="flex items-center gap-2.5 p-1 rounded-[6px] hover:bg-[#1a1b1e] cursor-pointer min-w-0 flex-1 transition-colors"
         >
@@ -2220,7 +2252,11 @@ export const AppContent: React.FC = () => {
 
         {/* User Island Popout */}
         {isUserPopoutOpen && (
-          <div className="absolute bottom-[56px] left-2 z-50">
+          <div 
+            ref={userPopoutRef} 
+            className="absolute bottom-[56px] left-2 z-50"
+            onClick={(e) => e.stopPropagation()}
+          >
             <ProfileCard
               user={currentUser}
               hideRoles={true}
@@ -3650,6 +3686,7 @@ export const AppContent: React.FC = () => {
       {/* 7. Hovering User Profile Popover (Rendered Adjacent to Click Target, NOT Fullscreen Modal!) */}
       {hoverUserPopout && (
         <div 
+          ref={hoverUserPopoutRef}
           className="fixed z-[9999] animate-in fade-in zoom-in-95 duration-100"
           style={{
             left: hoverUserPopout.x > window.innerWidth / 2 
