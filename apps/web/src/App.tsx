@@ -44,7 +44,9 @@ import {
   ShieldAlert,
   HardDrive,
   Terminal,
-  Network
+  Network,
+  Pencil,
+  GripVertical
 } from 'lucide-react';
 import { 
   Modal, 
@@ -128,10 +130,13 @@ interface Message {
   avatar: string;
   content: string;
   timestamp: string;
+  timestampMs?: number;
   roleColor?: string;
   staffRank?: number;
   roleBadge?: string;
   isPinned?: boolean;
+  isEdited?: boolean;
+  editedAt?: string;
   reactions?: MessageReaction[];
 }
 
@@ -223,9 +228,32 @@ function categorizeRelays(relays: ApiRelay[]): ChannelCategory[] {
   return categories;
 }
 
+// 5-minute message grouping helper: messages by same transmitter within 5 minutes collapse into a unified block
+function isGroupedWithPrevious(currentMsg: Message, prevMsg: Message | undefined): boolean {
+  if (!prevMsg) return false;
+  const sameAuthor =
+    (Boolean(currentMsg.callsign) && Boolean(prevMsg.callsign) && currentMsg.callsign === prevMsg.callsign) ||
+    (Boolean(currentMsg.author) && Boolean(prevMsg.author) && currentMsg.author === prevMsg.author);
+  if (!sameAuthor) return false;
+
+  const currTime = currentMsg.timestampMs || 0;
+  const prevTime = prevMsg.timestampMs || 0;
+  if (currTime && prevTime) {
+    return Math.abs(currTime - prevTime) <= 5 * 60 * 1000;
+  }
+  return currentMsg.timestamp === prevMsg.timestamp;
+}
+
 export const AppContent: React.FC = () => {
   const platform = usePlatformEnvironment();
   const { openContextMenu } = useContextMenu();
+
+  // Initial App Telemetry & Synchronizing State (Loading Screen)
+  const [isAppInitializing, setIsAppInitializing] = useState<boolean>(true);
+
+  // Inline Message Editing State
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState<string>('');
 
   // Navigation & Active Selections
   const [selectedBeaconId, setSelectedBeaconId] = useState<string>('beacon-aegis');
@@ -338,6 +366,13 @@ export const AppContent: React.FC = () => {
   const [beacons, setBeacons] = useState<Beacon[]>([]);
   const [serverData, setServerData] = useState<Record<string, { name: string; categories: ChannelCategory[] }>>({});
   const [discoverableBeacons, setDiscoverableBeacons] = useState<ApiBeacon[]>([]);
+
+  // Channel & Category Drag-and-Drop Reorder State
+  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
+  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null);
+  const [draggedChannelId, setDraggedChannelId] = useState<string | null>(null);
+  const [draggedChannelCategoryId, setDraggedChannelCategoryId] = useState<string | null>(null);
+  const [dragOverChannelId, setDragOverChannelId] = useState<string | null>(null);
 
   // Voice Channel Inhabitant Directory (dynamic from real gateway)
   const [voiceUsers, setVoiceUsers] = useState<Record<string, VoiceUser[]>>({});
@@ -461,111 +496,8 @@ export const AppContent: React.FC = () => {
     },
   ]);
 
-  // Messages Map
-  const [channelMessages, setChannelMessages] = useState<Record<string, Message[]>>({
-    'chan-quantum': [
-      {
-        id: 'm1',
-        author: 'Fleet Admiral Vance',
-        callsign: 'adm_vance',
-        avatar: '👨‍🚀',
-        content: 'All subspace arrays report nominal frequency resonance across orbital sector 7.',
-        timestamp: 'Today at 2:22 PM',
-        roleColor: '#00f0ff',
-        staffRank: 3,
-        roleBadge: 'ROOT STAFF',
-        isPinned: true,
-        reactions: [
-          { emoji: '⚡', count: 4, users: ['Echo-4', 'Nova'] },
-          { emoji: '👍', count: 2, users: ['You'] },
-        ],
-      },
-      {
-        id: 'm2',
-        author: 'Echo-4 Specialist',
-        callsign: 'echo_four',
-        avatar: '🛰️',
-        content: 'Acknowledged Admiral. Telemetry synchronized with quantum bitfield. Vault S3 presigned gateway active.',
-        timestamp: 'Today at 2:25 PM',
-        roleColor: '#23a55a',
-        staffRank: 1,
-        roleBadge: 'MODERATOR',
-        reactions: [{ emoji: '🚀', count: 3, users: ['Vance'] }],
-      },
-    ],
-    'chan-announcements': [
-      {
-        id: 'm-ann-1',
-        author: 'Fleet Admiral Vance',
-        callsign: 'adm_vance',
-        avatar: '👨‍🚀',
-        content: 'ATTENTION ALL STATIONS: Subspace Frequency Protocol v2.4 upgrade is complete. Multi-platform clients are operational.',
-        timestamp: 'Yesterday at 9:00 AM',
-        roleColor: '#00f0ff',
-        staffRank: 3,
-        roleBadge: 'ROOT STAFF',
-        isPinned: true,
-      },
-    ],
-    'chan-rules': [
-      {
-        id: 'm-rules-1',
-        author: 'Fleet Admiral Vance',
-        callsign: 'adm_vance',
-        avatar: '👨‍🚀',
-        content: 'Protocol Directives: 1) Maintain clear comms on bridge frequencies. 2) Encrypt all private transmissions via Quantum Double Ratchet. 3) Report solar interference immediately.',
-        timestamp: 'Aug 15, 2026',
-        roleColor: '#00f0ff',
-        staffRank: 3,
-        roleBadge: 'ROOT STAFF',
-        isPinned: true,
-      },
-    ],
-    'chan-scout': [
-      {
-        id: 'm-scout-1',
-        author: 'Nova Pilot',
-        callsign: 'nova_star',
-        avatar: '🛸',
-        content: 'Vanguard reconnaissance report: Wormhole threshold stabilized. No hostile radiation detected.',
-        timestamp: 'Today at 1:15 PM',
-        roleColor: '#f0b232',
-      },
-    ],
-    'dm-vance': [
-      {
-        id: 'dm-v1',
-        author: 'Fleet Admiral Vance',
-        callsign: 'adm_vance',
-        avatar: '👨‍🚀',
-        content: 'Officer, our direct channel is protected by Quantum Double Ratchet E2EE. What is the status of the orbital relay?',
-        timestamp: 'Today at 2:10 PM',
-        roleColor: '#00f0ff',
-        staffRank: 3,
-      },
-      {
-        id: 'dm-v2',
-        author: 'Command Officer (You)',
-        callsign: 'cmdr_you',
-        avatar: '⚡',
-        content: 'Admiral, telemetry resonance is calibrated to 99.8%. Key ratchet exchange confirmed.',
-        timestamp: 'Today at 2:12 PM',
-        roleColor: '#00f0ff',
-        staffRank: 2,
-      },
-    ],
-    'dm-echo': [
-      {
-        id: 'dm-e1',
-        author: 'Echo-4 Specialist',
-        callsign: 'echo_four',
-        avatar: '🛰️',
-        content: 'Hey Commander, uploaded the latest S3 telemetry logs to Vault. Check the archive when you can.',
-        timestamp: 'Today at 11:40 AM',
-        roleColor: '#23a55a',
-      },
-    ],
-  });
+  // Messages Map (populated dynamically from real backend transmissions)
+  const [channelMessages, setChannelMessages] = useState<Record<string, Message[]>>({});
 
   // Transmitters / Members of Current Server (dynamic from real backend)
   const [members, setMembers] = useState<UserProfile[]>([]);
@@ -611,7 +543,82 @@ export const AppContent: React.FC = () => {
         setServerOrder(mappedBeacons.map(b => b.id));
 
         if (mappedBeacons.length > 0) {
-          setSelectedBeaconId(mappedBeacons[0].id);
+          const firstBeaconId = mappedBeacons[0].id;
+          setSelectedBeaconId(firstBeaconId);
+
+          try {
+            const [relays, membersList] = await Promise.all([
+              api.getBeaconRelays(firstBeaconId),
+              api.getBeaconMembers(firstBeaconId),
+            ]);
+
+            const cats = categorizeRelays(relays);
+            setServerData(prev => ({
+              ...prev,
+              [firstBeaconId]: {
+                name: mappedBeacons[0].name,
+                categories: cats,
+              },
+            }));
+
+            const mappedMembers: UserProfile[] = membersList.map(m => ({
+              id: m.transmitterId,
+              name: m.displayName || m.username,
+              callsign: m.username,
+              discriminator: m.discriminator || '0001',
+              avatar: m.avatarUrl || '👨‍🚀',
+              bannerGradient: m.bannerColor ? `linear-gradient(135deg, ${m.bannerColor} 0%, #1a1a24 50%, #00f0ff22 100%)` : undefined,
+              status: (m.presence as any) || 'online',
+              statusText: m.isOwner ? 'Beacon Commander' : 'Active Transmitter',
+              staffRank: m.isOwner ? 3 : (m.staffRank || 0),
+              roles: m.isOwner ? ['Beacon Owner', 'Command Staff'] : ['Transmitter'],
+              bio: m.bio || 'Subspace Beacon Member',
+              memberSince: 'Sep 2026',
+              quantumKeyFingerprint: `SF-QKD-${m.transmitterId.slice(0, 4).toUpperCase()}`,
+              isSelf: m.transmitterId === user.id,
+            }));
+            setMembers(mappedMembers);
+
+            const allChans = cats.flatMap(c => c.channels);
+            if (allChans.length > 0) {
+              const firstChan = allChans[0];
+              setSelectedChannelId(firstChan.id);
+
+              const txs = await api.getTransmissions(firstChan.id);
+              const sortedTxs = [...txs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+              const mappedMessages: Message[] = sortedTxs.map(tx => {
+                const authorObj = tx.author || (tx as any).authorProfile;
+                const authorName = authorObj?.displayName || (tx as any).authorName || authorObj?.username || (tx as any).authorUsername || 'Transmitter';
+                const callsign = authorObj?.username || (tx as any).authorUsername || 'transmitter';
+                const discriminator = authorObj?.discriminator || (tx as any).authorDiscriminator || '0001';
+                const avatar = authorObj?.avatarUrl || (tx as any).authorAvatar || '⚡';
+                const displayColor = authorObj?.displayColor || (tx as any).authorDisplayColor || '#00f0ff';
+                const staffRank = authorObj?.staffRank ?? (tx as any).authorStaffRank ?? 0;
+                const createdDate = new Date(tx.createdAt);
+
+                return {
+                  id: tx.id,
+                  author: authorName,
+                  callsign,
+                  discriminator,
+                  avatar,
+                  content: tx.content,
+                  timestamp: createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  timestampMs: createdDate.getTime(),
+                  roleColor: displayColor,
+                  staffRank,
+                  roleBadge: staffRank >= 2 ? 'COMMAND STAFF' : undefined,
+                  isPinned: tx.isPinned,
+                  isEdited: (tx as any).isEdited ?? false,
+                  editedAt: (tx as any).editedAt || (tx as any).updatedAt,
+                };
+              });
+
+              setChannelMessages({ [firstChan.id]: mappedMessages });
+            }
+          } catch (loadErr) {
+            console.warn('Preload initial channel error:', loadErr);
+          }
         }
 
         // Fetch discoverable beacons
@@ -619,6 +626,12 @@ export const AppContent: React.FC = () => {
         if (mounted) setDiscoverableBeacons(disc);
       } catch (err: any) {
         console.warn('Real backend connection warning:', err);
+      } finally {
+        if (mounted) {
+          setTimeout(() => {
+            if (mounted) setIsAppInitializing(false);
+          }, 350);
+        }
       }
     }
 
@@ -742,6 +755,7 @@ export const AppContent: React.FC = () => {
           const displayColor = authorObj?.displayColor || (tx as any).authorDisplayColor || '#00f0ff';
           const staffRank = authorObj?.staffRank ?? (tx as any).authorStaffRank ?? 0;
 
+          const createdDate = new Date(tx.createdAt);
           return {
             id: tx.id,
             author: authorName,
@@ -749,11 +763,14 @@ export const AppContent: React.FC = () => {
             discriminator,
             avatar,
             content: tx.content,
-            timestamp: new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestamp: createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestampMs: createdDate.getTime(),
             roleColor: displayColor,
             staffRank,
             roleBadge: staffRank >= 2 ? 'COMMAND STAFF' : undefined,
             isPinned: tx.isPinned,
+            isEdited: (tx as any).isEdited ?? false,
+            editedAt: (tx as any).editedAt || (tx as any).updatedAt,
           };
         });
 
@@ -896,6 +913,50 @@ export const AppContent: React.FC = () => {
     description: 'Subspace transmissions',
   };
 
+  // ─── Category Reorder ─────────────────────────────────────────────────
+  const handleCategoryDrop = (targetCategoryId: string) => {
+    if (!draggedCategoryId || draggedCategoryId === targetCategoryId) return;
+    setServerData(prev => {
+      const server = prev[selectedBeaconId];
+      if (!server) return prev;
+      const cats = [...server.categories];
+      const fromIdx = cats.findIndex(c => c.id === draggedCategoryId);
+      const toIdx = cats.findIndex(c => c.id === targetCategoryId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const [moved] = cats.splice(fromIdx, 1);
+      cats.splice(toIdx, 0, moved);
+      return { ...prev, [selectedBeaconId]: { ...server, categories: cats } };
+    });
+    setDraggedCategoryId(null);
+    setDragOverCategoryId(null);
+  };
+
+  // ─── Channel Reorder (within/across categories) ───────────────────────
+  const handleChannelDrop = (targetChannelId: string, targetCategoryId: string) => {
+    if (!draggedChannelId || !draggedChannelCategoryId) return;
+    if (draggedChannelId === targetChannelId) { setDraggedChannelId(null); return; }
+    setServerData(prev => {
+      const server = prev[selectedBeaconId];
+      if (!server) return prev;
+      const cats = server.categories.map(c => ({ ...c, channels: [...c.channels] }));
+      // Remove dragged channel from its source category
+      const srcCat = cats.find(c => c.id === draggedChannelCategoryId);
+      if (!srcCat) return prev;
+      const chanIdx = srcCat.channels.findIndex(ch => ch.id === draggedChannelId);
+      if (chanIdx === -1) return prev;
+      const [movedChan] = srcCat.channels.splice(chanIdx, 1);
+      // Insert into target category at target position
+      const tgtCat = cats.find(c => c.id === targetCategoryId);
+      if (!tgtCat) return prev;
+      const tgtIdx = tgtCat.channels.findIndex(ch => ch.id === targetChannelId);
+      tgtCat.channels.splice(tgtIdx === -1 ? tgtCat.channels.length : tgtIdx, 0, movedChan);
+      return { ...prev, [selectedBeaconId]: { ...server, categories: cats } };
+    });
+    setDraggedChannelId(null);
+    setDraggedChannelCategoryId(null);
+    setDragOverChannelId(null);
+  };
+
   // Switch server handler
   const handleSelectServer = (beaconId: string) => {
     setSelectedBeaconId(beaconId);
@@ -957,15 +1018,19 @@ export const AppContent: React.FC = () => {
 
     if (selectedBeaconId === 'home') {
       // Local DM simulation with E2EE double-ratchet indicator
+      const now = new Date();
       const newMsg: Message = {
         id: `dm-${Date.now()}`,
         author: currentUser.name,
         callsign: currentUser.callsign,
+        discriminator: currentUser.discriminator || '0001',
         avatar: currentUser.avatar,
         content,
-        timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: 'Today at ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestampMs: now.getTime(),
         roleColor: '#00f0ff',
         staffRank: currentUser.staffRank,
+        isEdited: false,
       };
       setChannelMessages(prev => ({
         ...prev,
@@ -978,6 +1043,7 @@ export const AppContent: React.FC = () => {
     try {
       const tx = await api.sendTransmission(selectedChannelId, content);
       const authorObj = tx.author || (tx as any).authorProfile;
+      const createdDate = new Date(tx.createdAt || Date.now());
       const newMsg: Message = {
         id: tx.id,
         author: authorObj?.displayName || currentUser.name,
@@ -985,10 +1051,12 @@ export const AppContent: React.FC = () => {
         discriminator: authorObj?.discriminator || currentUser.discriminator || '0001',
         avatar: authorObj?.avatarUrl || currentUser.avatar,
         content: tx.content,
-        timestamp: 'Today at ' + new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: 'Today at ' + createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestampMs: createdDate.getTime(),
         roleColor: authorObj?.displayColor || (currentUser as any).displayColor || '#00f0ff',
         staffRank: authorObj?.staffRank ?? currentUser.staffRank,
         roleBadge: (authorObj?.staffRank ?? currentUser.staffRank ?? 0) >= 2 ? 'COMMAND STAFF' : undefined,
+        isEdited: false,
       };
       setChannelMessages(prev => ({
         ...prev,
@@ -996,6 +1064,54 @@ export const AppContent: React.FC = () => {
       }));
     } catch (err: any) {
       showToast(`Failed to dispatch transmission: ${err.message}`);
+    }
+  };
+
+  const handleStartEdit = (message: Message) => {
+    setEditingMessageId(message.id);
+    setEditingContent(message.content);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingContent('');
+  };
+
+  const handleSaveEdit = async (messageId: string) => {
+    if (!editingContent.trim()) {
+      showToast('Transmission content cannot be empty');
+      return;
+    }
+
+    const trimmed = editingContent.trim();
+    const targetKey = selectedBeaconId === 'home' ? selectedDmId : selectedChannelId;
+
+    try {
+      if (selectedBeaconId !== 'home') {
+        await api.updateTransmission(messageId, trimmed);
+      }
+
+      setChannelMessages(prev => {
+        const list = prev[targetKey] || [];
+        return {
+          ...prev,
+          [targetKey]: list.map(m => {
+            if (m.id !== messageId) return m;
+            return {
+              ...m,
+              content: trimmed,
+              isEdited: true,
+              editedAt: new Date().toISOString(),
+            };
+          }),
+        };
+      });
+
+      setEditingMessageId(null);
+      setEditingContent('');
+      showToast('Transmission updated');
+    } catch (err: any) {
+      showToast(`Failed to update transmission: ${err.message}`);
     }
   };
 
@@ -1042,8 +1158,15 @@ export const AppContent: React.FC = () => {
     });
   };
 
-  const handleDeleteMessage = (messageId: string) => {
+  const handleDeleteMessage = async (messageId: string) => {
     const targetKey = selectedBeaconId === 'home' ? selectedDmId : selectedChannelId;
+    if (selectedBeaconId !== 'home') {
+      try {
+        await api.deleteTransmission(messageId);
+      } catch (err) {
+        console.warn('Delete transmission warning:', err);
+      }
+    }
     setChannelMessages(prev => ({
       ...prev,
       [targetKey]: (prev[targetKey] || []).filter(m => m.id !== messageId),
@@ -1116,56 +1239,66 @@ export const AppContent: React.FC = () => {
     },
   ];
 
-  const getMessageContextMenu = (message: Message): ContextMenuItem[] => [
-    {
-      label: 'Add Reaction',
-      icon: <Sparkles className="w-3.5 h-3.5 text-[#5865f2]" />,
-      children: [
-        { label: '👍 Thumbs Up', onClick: () => handleAddReaction(message.id, '👍') },
-        { label: '🚀 Rocket', onClick: () => handleAddReaction(message.id, '🚀') },
-        { label: '⚡ Pulse', onClick: () => handleAddReaction(message.id, '⚡') },
-        { label: '❤️ Heart', onClick: () => handleAddReaction(message.id, '❤️') },
-      ],
-    },
-    {
-      label: 'Reply',
-      icon: <MessageSquare className="w-3.5 h-3.5" />,
-      onClick: () => setMessageInput(`> ${message.content}\n@${message.author} `),
-    },
-    {
-      label: message.isPinned ? 'Unpin Message' : 'Pin Message',
-      icon: <Pin className="w-3.5 h-3.5" />,
-      onClick: () => handleTogglePin(message.id),
-    },
-    {
-      label: 'Copy Text',
-      icon: <Copy className="w-3.5 h-3.5" />,
-      onClick: () => {
-        navigator.clipboard?.writeText(message.content);
-        showToast('Message text copied');
+  const getMessageContextMenu = (message: Message): ContextMenuItem[] => {
+    const isAuthor = message.callsign === currentUser.callsign || message.author === currentUser.name;
+    return [
+      {
+        label: 'Add Reaction',
+        icon: <Sparkles className="w-3.5 h-3.5 text-[#5865f2]" />,
+        children: [
+          { label: '👍 Thumbs Up', onClick: () => handleAddReaction(message.id, '👍') },
+          { label: '🚀 Rocket', onClick: () => handleAddReaction(message.id, '🚀') },
+          { label: '⚡ Pulse', onClick: () => handleAddReaction(message.id, '⚡') },
+          { label: '❤️ Heart', onClick: () => handleAddReaction(message.id, '❤️') },
+        ],
       },
-    },
-    {
-      label: 'Report Transmission (Incident Flare)',
-      danger: true,
-      icon: <ShieldAlert className="w-3.5 h-3.5 text-[#f23f43]" />,
-      onClick: () => {
-        setIncidentFlareTarget({
-          targetType: 'transmission',
-          targetId: message.id,
-          targetLabel: `Transmission from ${message.author}`,
-          snippet: message.content,
-        });
+      ...(isAuthor ? [
+        {
+          label: 'Edit Message',
+          icon: <Pencil className="w-3.5 h-3.5 text-[#dbdee1]" />,
+          onClick: () => handleStartEdit(message),
+        },
+      ] : []),
+      {
+        label: 'Reply',
+        icon: <MessageSquare className="w-3.5 h-3.5" />,
+        onClick: () => setMessageInput(`> ${message.content}\n@${message.author} `),
       },
-    },
-    { separator: true },
-    {
-      label: 'Delete Message',
-      danger: true,
-      icon: <Trash2 className="w-3.5 h-3.5" />,
-      onClick: () => handleDeleteMessage(message.id),
-    },
-  ];
+      {
+        label: message.isPinned ? 'Unpin Message' : 'Pin Message',
+        icon: <Pin className="w-3.5 h-3.5" />,
+        onClick: () => handleTogglePin(message.id),
+      },
+      {
+        label: 'Copy Text',
+        icon: <Copy className="w-3.5 h-3.5" />,
+        onClick: () => {
+          navigator.clipboard?.writeText(message.content);
+          showToast('Message text copied');
+        },
+      },
+      {
+        label: 'Report Transmission (Incident Flare)',
+        danger: true,
+        icon: <ShieldAlert className="w-3.5 h-3.5 text-[#f23f43]" />,
+        onClick: () => {
+          setIncidentFlareTarget({
+            targetType: 'transmission',
+            targetId: message.id,
+            targetLabel: `Transmission from ${message.author}`,
+            snippet: message.content,
+          });
+        },
+      },
+      { separator: true },
+      {
+        label: 'Delete Message',
+        danger: true,
+        icon: <Trash2 className="w-3.5 h-3.5" />,
+        onClick: () => handleDeleteMessage(message.id),
+      },
+    ];
+  };
 
   const getUserContextMenu = (user: UserProfile): ContextMenuItem[] => [
     {
@@ -1305,6 +1438,50 @@ export const AppContent: React.FC = () => {
   const activeMessages = channelMessages[activeMessageKey] || [];
   const activeDm = directConversations.find(d => d.id === selectedDmId);
 
+  // Fullscreen Loading Screen on Initial Boot / Refresh
+  if (isAppInitializing) {
+    return (
+      <div 
+        className="h-screen w-screen bg-[#080809] flex flex-col items-center justify-center select-none relative overflow-hidden font-sans"
+        style={{ fontFamily: currentFontFamily }}
+      >
+        {/* Subtle background quantum radial gradient */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,240,255,0.08)_0%,transparent_70%)] pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col items-center">
+          {/* Pulsing Quantum Icon */}
+          <div className="relative mb-6">
+            <div className="w-20 h-20 rounded-3xl bg-[#111214] border border-[#1f2024] flex items-center justify-center text-[#00f0ff] shadow-[0_0_40px_rgba(0,240,255,0.25)] animate-pulse">
+              <Radio className="w-10 h-10" />
+            </div>
+            <div className="absolute -inset-1 rounded-3xl border border-[#00f0ff]/30 animate-ping opacity-25" />
+          </div>
+
+          {/* Title */}
+          <h1 className="text-white text-xl font-black tracking-[0.3em] uppercase font-mono mb-2 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#00f0ff] animate-ping" />
+            Subspace Frequency
+          </h1>
+
+          {/* Animated Status Telemetry */}
+          <p className="text-[#80848e] text-xs font-mono tracking-wider flex items-center gap-2">
+            Synchronizing Quantum Subspace Telemetry...
+          </p>
+
+          {/* Progress bar */}
+          <div className="w-48 h-1 bg-[#16171a] rounded-full mt-5 overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-[#00f0ff] to-[#5865f2] rounded-full animate-[pulse_1.5s_ease-in-out_infinite]" style={{ width: '80%' }} />
+          </div>
+        </div>
+
+        {/* Bottom Terminal Hash */}
+        <div className="absolute bottom-6 text-[10px] text-[#4e5058] font-mono tracking-widest uppercase">
+          PROTOCOL V2.4 • ENCRYPTION: QUANTUM DOUBLE RATCHET • STATUS: SECURE
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
       className="flex flex-col h-screen w-screen bg-[#000000] text-[#dbdee1] select-none overflow-hidden"
@@ -1356,7 +1533,7 @@ export const AppContent: React.FC = () => {
           {/* Subspace Gateway / Home DM Button */}
           <div className="relative flex items-center justify-center w-full group">
             <span 
-              className={`absolute -left-1 w-1.5 bg-white rounded-r-full transition-all duration-200 z-40 ${
+              className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
                 selectedBeaconId === 'home' ? 'h-10' : 'h-0 group-hover:h-5'
               }`} 
             />
@@ -1383,7 +1560,7 @@ export const AppContent: React.FC = () => {
           <div className="w-8 h-[2px] bg-[#1f2024] rounded-[1px] my-1" />
 
           {/* Servers / Beacons List (Supports Drag-and-Drop Reordering and Folders!) */}
-          <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto px-3 scrollbar-none">
+          <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto scrollbar-none">
             {/* Folder Clusters */}
             {serverFolders.map((folder) => {
               const folderBeacons = beacons.filter(b => folder.beaconIds.includes(b.id));
@@ -1418,7 +1595,7 @@ export const AppContent: React.FC = () => {
                         return (
                           <div key={beacon.id} className="relative flex items-center justify-center w-full group">
                             <span 
-                              className={`absolute -left-1 w-1.5 bg-white rounded-r-full transition-all duration-200 z-40 ${
+                              className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
                                 isSelected ? 'h-10' : 'h-0 group-hover:h-5'
                               }`} 
                             />
@@ -1464,9 +1641,9 @@ export const AppContent: React.FC = () => {
                     onDragLeave={() => setDragOverTargetId(null)}
                     onDrop={(e) => handleServerDrop(e, beacon.id)}
                   >
-                    {/* White Indicator Pill - Positioned strictly on the outside left (-left-1) */}
+                    {/* White Indicator Pill - Positioned strictly flush against the outer railing (left: 0) */}
                     <span 
-                      className={`absolute -left-1 w-1.5 bg-white rounded-r-full transition-all duration-200 z-40 ${
+                      className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
                         isSelected 
                           ? 'h-10' 
                           : beacon.unreadCount 
@@ -1501,7 +1678,7 @@ export const AppContent: React.FC = () => {
 
             {/* Add Server & Discovery Buttons */}
             <div className="relative flex items-center justify-center w-full group mt-1">
-              <span className="absolute -left-1 w-1.5 bg-white rounded-r-full h-0 group-hover:h-5 transition-all z-40" />
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full h-0 group-hover:h-5 transition-all z-40" />
               <button
                 onClick={() => setIsCreateServerOpen(true)}
                 className="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#16171a] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center transition-all duration-200"
@@ -1512,7 +1689,7 @@ export const AppContent: React.FC = () => {
             </div>
 
             <div className="relative flex items-center justify-center w-full group">
-              <span className={`absolute -left-1 w-1.5 bg-white rounded-r-full transition-all duration-200 z-40 ${
+              <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
                 selectedBeaconId === 'explore' ? 'h-10' : 'h-0 group-hover:h-5'
               }`} />
               <button
@@ -1775,23 +1952,55 @@ export const AppContent: React.FC = () => {
             <div className="flex-1 overflow-y-auto px-2 py-2 space-y-4">
               {currentCategories.map((cat) => {
                 const isCollapsed = collapsedCategories[cat.id];
+                const isCategoryDragOver = dragOverCategoryId === cat.id;
+
                 return (
-                  <div key={cat.id}>
-                    {/* Category Header */}
+                  <div
+                    key={cat.id}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggedCategoryId && draggedCategoryId !== cat.id) {
+                        setDragOverCategoryId(cat.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverCategoryId === cat.id) setDragOverCategoryId(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedCategoryId) {
+                        handleCategoryDrop(cat.id);
+                      }
+                    }}
+                    className={`rounded transition-colors ${
+                      isCategoryDragOver ? 'bg-[#00f0ff]/10 border-t-2 border-[#00f0ff]' : ''
+                    }`}
+                  >
+                    {/* Category Header (Draggable) */}
                     <div
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', cat.id);
+                        setDraggedCategoryId(cat.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedCategoryId(null);
+                        setDragOverCategoryId(null);
+                      }}
                       onClick={() => setCollapsedCategories(p => ({ ...p, [cat.id]: !p[cat.id] }))}
-                      className="flex items-center justify-between text-[11px] font-bold tracking-wider text-[#949ba4] uppercase px-1 py-1 hover:text-white cursor-pointer group"
+                      className="flex items-center justify-between text-[11px] font-bold tracking-wider text-[#949ba4] uppercase px-1 py-1 hover:text-white cursor-grab active:cursor-grabbing group"
                     >
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <GripVertical className="w-3 h-3 text-[#4e5058] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                         {isCollapsed ? (
-                          <ChevronRight className="w-3 h-3 text-[#949ba4]" />
+                          <ChevronRight className="w-3 h-3 text-[#949ba4] shrink-0" />
                         ) : (
-                          <ChevronDown className="w-3 h-3 text-[#949ba4]" />
+                          <ChevronDown className="w-3 h-3 text-[#949ba4] shrink-0" />
                         )}
-                        <span>{cat.name}</span>
+                        <span className="truncate">{cat.name}</span>
                       </div>
                       <Plus 
-                        className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 hover:text-white transition-opacity" 
+                        className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 hover:text-white transition-opacity shrink-0" 
                         onClick={(e) => {
                           e.stopPropagation();
                           setCreateChannelCategory(cat.name);
@@ -1805,10 +2014,45 @@ export const AppContent: React.FC = () => {
                       <div className="space-y-0.5 mt-0.5">
                         {cat.channels.map((chan) => {
                           const isSelected = selectedChannelId === chan.id;
+                          const isChannelDragOver = dragOverChannelId === chan.id;
                           const usersInThisVoice = chan.type === 'voice' ? (voiceUsers[chan.id] || []) : [];
 
                           return (
-                            <div key={chan.id} className="flex flex-col">
+                            <div
+                              key={chan.id}
+                              draggable
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                e.dataTransfer.setData('text/plain', chan.id);
+                                setDraggedChannelId(chan.id);
+                                setDraggedChannelCategoryId(cat.id);
+                              }}
+                              onDragEnd={() => {
+                                setDraggedChannelId(null);
+                                setDraggedChannelCategoryId(null);
+                                setDragOverChannelId(null);
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (draggedChannelId && draggedChannelId !== chan.id) {
+                                  setDragOverChannelId(chan.id);
+                                }
+                              }}
+                              onDragLeave={() => {
+                                if (dragOverChannelId === chan.id) setDragOverChannelId(null);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (draggedChannelId) {
+                                  handleChannelDrop(chan.id, cat.id);
+                                }
+                              }}
+                              className={`flex flex-col rounded transition-all ${
+                                isChannelDragOver ? 'border-t-2 border-[#00f0ff] bg-[#00f0ff]/10' : ''
+                              }`}
+                            >
                               <div
                                 data-channel-id={chan.id}
                                 onClick={() => {
@@ -1819,12 +2063,13 @@ export const AppContent: React.FC = () => {
                                   }
                                 }}
                                 onContextMenu={(e) => openContextMenu(e, getChannelContextMenu(chan))}
-                                className={`group flex items-center gap-2 px-2 py-1.5 rounded-[6px] text-sm font-medium transition-colors cursor-pointer ${
+                                className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[6px] text-sm font-medium transition-colors cursor-pointer ${
                                   isSelected
                                     ? 'bg-[#1a1b1e] text-white font-semibold'
                                     : 'text-[#949ba4] hover:bg-[#16171a] hover:text-[#dbdee1]'
                                 }`}
                               >
+                                <GripVertical className="w-3 h-3 text-[#4e5058] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-grab active:cursor-grabbing" />
                                 {getChannelIcon(chan.type)}
                                 <span className="truncate flex-1">{chan.name}</span>
                                 {chan.type === 'voice' && usersInThisVoice.length > 0 && (
@@ -2312,66 +2557,232 @@ export const AppContent: React.FC = () => {
 
               {/* Messages list */}
               <div className="space-y-0.5">
-                {activeMessages.map((m) => (
-                  <div
-                    key={m.id}
-                    data-message-id={m.id}
-                    onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                    className="px-4 py-1.5 hover:bg-[#0b0c0e] transition-colors relative group flex items-start gap-4"
-                  >
-                    <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                      <MessageActionBar
-                        onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
-                        onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
-                        onPin={() => handleTogglePin(m.id)}
-                        onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                      />
-                    </div>
+                {activeMessages.map((m, idx) => {
+                  const prevMsg = idx > 0 ? activeMessages[idx - 1] : undefined;
+                  const isGrouped = isGroupedWithPrevious(m, prevMsg);
+                  const isSelf = m.callsign === currentUser.callsign || m.author === currentUser.name;
 
+                  return isGrouped ? (
+                    /* Grouped Consecutive Message (Within 5 minutes by same sender) */
                     <div
-                      onClick={(e) => handleOpenUserPopout(e, activeDm.user)}
-                      className="w-10 h-10 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-lg shrink-0 cursor-pointer hover:opacity-80 transition-opacity mt-0.5"
+                      key={m.id}
+                      data-message-id={m.id}
+                      onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                      className="px-4 py-0.5 hover:bg-[#0b0c0e] transition-colors relative group flex items-start gap-4"
                     >
-                      {m.avatar}
-                    </div>
+                      <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <MessageActionBar
+                          onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
+                          onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
+                          onPin={() => handleTogglePin(m.id)}
+                          onEdit={isSelf ? () => handleStartEdit(m) : undefined}
+                          onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                        />
+                      </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <span
-                          onClick={(e) => handleOpenUserPopout(e, activeDm.user)}
-                          className="font-medium text-[15px] text-white hover:underline cursor-pointer"
-                        >
-                          {m.author}
+                      {/* Left Gutter: subtle timestamp on hover instead of avatar */}
+                      <div className="w-10 flex items-center justify-end shrink-0 select-none pr-1" style={{ minHeight: '1.375rem' }}>
+                        <span className="text-[10px] text-[#80848e] opacity-0 group-hover:opacity-100 font-mono transition-opacity whitespace-nowrap">
+                          {m.timestamp.replace(/^(Today at |Yesterday at )/, '')}
                         </span>
-                        <span className="text-[11px] text-[#80848e]">{m.timestamp}</span>
-                        {m.isPinned && (
-                          <span className="text-[10px] text-[#00f0ff] font-mono flex items-center gap-0.5">
-                            <Pin className="w-2.5 h-2.5" /> Pinned
-                          </span>
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        {editingMessageId === m.id ? (
+                          <div className="w-full mt-0.5">
+                            <div className="bg-[#2b2d31] rounded-[8px] p-2.5 border border-[#3f4147] focus-within:border-[#00f0ff] transition-colors">
+                              <input
+                                type="text"
+                                value={editingContent}
+                                onChange={(e) => setEditingContent(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSaveEdit(m.id);
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    handleCancelEdit();
+                                  }
+                                }}
+                                autoFocus
+                                className="w-full bg-transparent text-[#dbdee1] text-[15px] outline-none"
+                              />
+                            </div>
+                            <div className="text-[11px] text-[#949ba4] mt-1.5 flex items-center justify-between">
+                              <span>
+                                escape to <button type="button" onClick={handleCancelEdit} className="text-[#00f0ff] hover:underline">cancel</button> • enter to <button type="button" onClick={() => handleSaveEdit(m.id)} className="text-[#00f0ff] hover:underline">save</button>
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEdit}
+                                  className="px-3 py-1 rounded-[4px] text-xs text-white hover:underline"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEdit(m.id)}
+                                  className="px-3 py-1 rounded-[4px] bg-[#5865f2] hover:bg-[#4752c4] text-xs font-semibold text-white transition-colors"
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] break-words">
+                            <MarkdownMessage
+                              content={m.content}
+                              suffix={
+                                m.isEdited ? (
+                                  <span
+                                    className="text-[10px] text-[#80848e] select-none ml-1.5 font-normal inline"
+                                    title={m.editedAt ? `Edited: ${new Date(m.editedAt).toLocaleString()}` : 'Edited'}
+                                  >
+                                    (edited)
+                                  </span>
+                                ) : undefined
+                              }
+                            />
+                          </div>
+                        )}
+
+                        {m.reactions && m.reactions.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {m.reactions.map((r, rIdx) => (
+                              <button
+                                key={rIdx}
+                                onClick={() => handleAddReaction(m.id, r.emoji)}
+                                className="rounded-[8px] bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1]"
+                              >
+                                <span>{r.emoji}</span>
+                                <span className="font-semibold text-[11px] text-[#dbdee1]">{r.count}</span>
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </div>
-
-                      <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
-                        {m.content}
+                    </div>
+                  ) : (
+                    /* Full Header Message Block */
+                    <div
+                      key={m.id}
+                      data-message-id={m.id}
+                      onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                      className="px-4 py-1.5 mt-2 hover:bg-[#0b0c0e] transition-colors relative group flex items-start gap-4"
+                    >
+                      <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <MessageActionBar
+                          onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
+                          onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
+                          onPin={() => handleTogglePin(m.id)}
+                          onEdit={isSelf ? () => handleStartEdit(m) : undefined}
+                          onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                        />
                       </div>
 
-                      {m.reactions && m.reactions.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {m.reactions.map((r, rIdx) => (
-                            <button
-                              key={rIdx}
-                              onClick={() => handleAddReaction(m.id, r.emoji)}
-                              className="rounded-[8px] bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1]"
-                            >
-                              <span>{r.emoji}</span>
-                              <span className="font-semibold text-[11px] text-[#dbdee1]">{r.count}</span>
-                            </button>
-                          ))}
+                      <div
+                        onClick={(e) => handleOpenUserPopout(e, activeDm.user)}
+                        className="w-10 h-10 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-lg shrink-0 cursor-pointer hover:opacity-80 transition-opacity mt-0.5"
+                      >
+                        {m.avatar}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <span
+                            onClick={(e) => handleOpenUserPopout(e, activeDm.user)}
+                            className="font-medium text-[15px] text-white hover:underline cursor-pointer"
+                          >
+                            {m.author}
+                          </span>
+                          <span className="text-[11px] text-[#80848e]">{m.timestamp}</span>
+                          {m.isPinned && (
+                            <span className="text-[10px] text-[#00f0ff] font-mono flex items-center gap-0.5">
+                              <Pin className="w-2.5 h-2.5" /> Pinned
+                            </span>
+                          )}
                         </div>
-                      )}
+
+                        {editingMessageId === m.id ? (
+                          <div className="w-full mt-1">
+                            <div className="bg-[#2b2d31] rounded-[8px] p-2.5 border border-[#3f4147] focus-within:border-[#00f0ff] transition-colors">
+                              <input
+                                type="text"
+                                value={editingContent}
+                                onChange={(e) => setEditingContent(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSaveEdit(m.id);
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    handleCancelEdit();
+                                  }
+                                }}
+                                autoFocus
+                                className="w-full bg-transparent text-[#dbdee1] text-[15px] outline-none"
+                              />
+                            </div>
+                            <div className="text-[11px] text-[#949ba4] mt-1.5 flex items-center justify-between">
+                              <span>
+                                escape to <button type="button" onClick={handleCancelEdit} className="text-[#00f0ff] hover:underline">cancel</button> • enter to <button type="button" onClick={() => handleSaveEdit(m.id)} className="text-[#00f0ff] hover:underline">save</button>
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEdit}
+                                  className="px-3 py-1 rounded-[4px] text-xs text-white hover:underline"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEdit(m.id)}
+                                  className="px-3 py-1 rounded-[4px] bg-[#5865f2] hover:bg-[#4752c4] text-xs font-semibold text-white transition-colors"
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
+                            <MarkdownMessage
+                              content={m.content}
+                              suffix={
+                                m.isEdited ? (
+                                  <span
+                                    className="text-[10px] text-[#80848e] select-none ml-1.5 font-normal inline"
+                                    title={m.editedAt ? `Edited: ${new Date(m.editedAt).toLocaleString()}` : 'Edited'}
+                                  >
+                                    (edited)
+                                  </span>
+                                ) : undefined
+                              }
+                            />
+                          </div>
+                        )}
+
+                        {m.reactions && m.reactions.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {m.reactions.map((r, rIdx) => (
+                              <button
+                                key={rIdx}
+                                onClick={() => handleAddReaction(m.id, r.emoji)}
+                                className="rounded-[8px] bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1]"
+                              >
+                                <span>{r.emoji}</span>
+                                <span className="font-semibold text-[11px] text-[#dbdee1]">{r.count}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -2779,7 +3190,10 @@ export const AppContent: React.FC = () => {
 
                     {/* Messages */}
                     <div className="space-y-0.5">
-                      {activeMessages.map((m) => {
+                      {activeMessages.map((m, idx) => {
+                        const prevMsg = idx > 0 ? activeMessages[idx - 1] : undefined;
+                        const isGrouped = isGroupedWithPrevious(m, prevMsg);
+                        const isSelf = m.callsign === currentUser.callsign || m.author === currentUser.name;
                         const authorMember = members.find(mem => mem.callsign === m.callsign || mem.name === m.author) || {
                           id: `u-${m.callsign || m.author}`,
                           name: m.author,
@@ -2790,12 +3204,13 @@ export const AppContent: React.FC = () => {
                           staffRank: m.staffRank,
                         };
 
-                        return (
+                        return isGrouped ? (
+                          /* Grouped Consecutive Message (within 5 minutes by same transmitter) */
                           <div
                             key={m.id}
                             data-message-id={m.id}
                             onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                            className="px-4 py-1.5 hover:bg-[#0b0c0e] transition-colors relative group flex items-start gap-4"
+                            className="px-4 py-0.5 hover:bg-[#0b0c0e] transition-colors relative group flex items-start gap-4"
                           >
                             {/* Floating Hover Action Bar */}
                             <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -2803,6 +3218,112 @@ export const AppContent: React.FC = () => {
                                 onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
                                 onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
                                 onPin={() => handleTogglePin(m.id)}
+                                onEdit={isSelf ? () => handleStartEdit(m) : undefined}
+                                onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                              />
+                            </div>
+
+                            {/* Left Gutter: Compact timestamp on hover instead of avatar */}
+                            <div className="w-10 flex items-center justify-end shrink-0 select-none pr-1" style={{ minHeight: '1.375rem' }}>
+                              <span className="text-[10px] text-[#80848e] opacity-0 group-hover:opacity-100 font-mono transition-opacity whitespace-nowrap">
+                                {m.timestamp.replace(/^(Today at |Yesterday at )/, '')}
+                              </span>
+                            </div>
+
+                            {/* Message Body & Edit Field */}
+                            <div className="flex-1 min-w-0">
+                              {editingMessageId === m.id ? (
+                                <div className="w-full mt-0.5">
+                                  <div className="bg-[#2b2d31] rounded-[8px] p-2.5 border border-[#3f4147] focus-within:border-[#00f0ff] transition-colors">
+                                    <input
+                                      type="text"
+                                      value={editingContent}
+                                      onChange={(e) => setEditingContent(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                          e.preventDefault();
+                                          handleSaveEdit(m.id);
+                                        } else if (e.key === 'Escape') {
+                                          e.preventDefault();
+                                          handleCancelEdit();
+                                        }
+                                      }}
+                                      autoFocus
+                                      className="w-full bg-transparent text-[#dbdee1] text-[15px] outline-none"
+                                    />
+                                  </div>
+                                  <div className="text-[11px] text-[#949ba4] mt-1.5 flex items-center justify-between">
+                                    <span>
+                                      escape to <button type="button" onClick={handleCancelEdit} className="text-[#00f0ff] hover:underline">cancel</button> • enter to <button type="button" onClick={() => handleSaveEdit(m.id)} className="text-[#00f0ff] hover:underline">save</button>
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={handleCancelEdit}
+                                        className="px-3 py-1 rounded-[4px] text-xs text-white hover:underline"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSaveEdit(m.id)}
+                                        className="px-3 py-1 rounded-[4px] bg-[#5865f2] hover:bg-[#4752c4] text-xs font-semibold text-white transition-colors"
+                                      >
+                                        Save
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] break-words">
+                                  <MarkdownMessage
+                                    content={m.content}
+                                    suffix={
+                                      m.isEdited ? (
+                                        <span
+                                          className="text-[10px] text-[#80848e] select-none ml-1.5 font-normal inline"
+                                          title={m.editedAt ? `Edited: ${new Date(m.editedAt).toLocaleString()}` : 'Edited'}
+                                        >
+                                          (edited)
+                                        </span>
+                                      ) : undefined
+                                    }
+                                  />
+                                </div>
+                              )}
+
+                              {/* Reaction Pills */}
+                              {m.reactions && m.reactions.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {m.reactions.map((r, rIdx) => (
+                                    <button
+                                      key={rIdx}
+                                      onClick={() => handleAddReaction(m.id, r.emoji)}
+                                      className="rounded-[8px] bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] px-2 py-0.5 flex items-center gap-1.5 text-xs text-[#b5bac1] transition-colors"
+                                    >
+                                      <span>{r.emoji}</span>
+                                      <span className="font-semibold text-[11px] text-[#dbdee1]">{r.count}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          /* Full Header Message Block */
+                          <div
+                            key={m.id}
+                            data-message-id={m.id}
+                            onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
+                            className="px-4 py-1.5 mt-2 hover:bg-[#0b0c0e] transition-colors relative group flex items-start gap-4"
+                          >
+                            {/* Floating Hover Action Bar */}
+                            <div className="absolute right-4 -top-3.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                              <MessageActionBar
+                                onAddReaction={(emoji) => handleAddReaction(m.id, emoji)}
+                                onReply={() => setMessageInput(`> ${m.content}\n@${m.author} `)}
+                                onPin={() => handleTogglePin(m.id)}
+                                onEdit={isSelf ? () => handleStartEdit(m) : undefined}
                                 onMore={(e) => openContextMenu(e, getMessageContextMenu(m))}
                               />
                             </div>
@@ -2826,7 +3347,7 @@ export const AppContent: React.FC = () => {
                                   {m.author}
                                 </span>
 
-                                {(m.roleBadge || authorMember.staffRank && authorMember.staffRank >= 2 || (authorMember.callsign === 'command_officer' || m.callsign === 'command_officer')) && (
+                                {(m.roleBadge || (authorMember.staffRank && authorMember.staffRank >= 2) || (authorMember.callsign === 'command_officer' || m.callsign === 'command_officer')) && (
                                   <span className="bg-[#5865f2] text-white text-[10px] font-bold px-1 rounded uppercase">
                                     {m.roleBadge || 'COMMAND STAFF'}
                                   </span>
@@ -2841,9 +3362,65 @@ export const AppContent: React.FC = () => {
                                 )}
                               </div>
 
-                              <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
-                                <MarkdownMessage content={m.content} />
-                              </div>
+                              {editingMessageId === m.id ? (
+                                <div className="w-full mt-1">
+                                  <div className="bg-[#2b2d31] rounded-[8px] p-2.5 border border-[#3f4147] focus-within:border-[#00f0ff] transition-colors">
+                                    <input
+                                      type="text"
+                                      value={editingContent}
+                                      onChange={(e) => setEditingContent(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                          e.preventDefault();
+                                          handleSaveEdit(m.id);
+                                        } else if (e.key === 'Escape') {
+                                          e.preventDefault();
+                                          handleCancelEdit();
+                                        }
+                                      }}
+                                      autoFocus
+                                      className="w-full bg-transparent text-[#dbdee1] text-[15px] outline-none"
+                                    />
+                                  </div>
+                                  <div className="text-[11px] text-[#949ba4] mt-1.5 flex items-center justify-between">
+                                    <span>
+                                      escape to <button type="button" onClick={handleCancelEdit} className="text-[#00f0ff] hover:underline">cancel</button> • enter to <button type="button" onClick={() => handleSaveEdit(m.id)} className="text-[#00f0ff] hover:underline">save</button>
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={handleCancelEdit}
+                                        className="px-3 py-1 rounded-[4px] text-xs text-white hover:underline"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSaveEdit(m.id)}
+                                        className="px-3 py-1 rounded-[4px] bg-[#5865f2] hover:bg-[#4752c4] text-xs font-semibold text-white transition-colors"
+                                      >
+                                        Save
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
+                                  <MarkdownMessage
+                                    content={m.content}
+                                    suffix={
+                                      m.isEdited ? (
+                                        <span
+                                          className="text-[10px] text-[#80848e] select-none ml-1.5 font-normal inline"
+                                          title={m.editedAt ? `Edited: ${new Date(m.editedAt).toLocaleString()}` : 'Edited'}
+                                        >
+                                          (edited)
+                                        </span>
+                                      ) : undefined
+                                    }
+                                  />
+                                </div>
+                              )}
 
                               {/* Reaction Pills */}
                               {m.reactions && m.reactions.length > 0 && (

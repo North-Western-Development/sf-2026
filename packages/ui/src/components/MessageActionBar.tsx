@@ -1,10 +1,11 @@
 import React from 'react';
-import { Smile, CornerUpLeft, Pin, MoreHorizontal } from 'lucide-react';
+import { Smile, CornerUpLeft, Pin, Pencil, MoreHorizontal } from 'lucide-react';
 
 interface MessageActionBarProps {
   onAddReaction?: (emoji: string) => void;
   onReply?: () => void;
   onPin?: () => void;
+  onEdit?: () => void;
   onMore?: (e: React.MouseEvent) => void;
 }
 
@@ -12,6 +13,7 @@ export const MessageActionBar: React.FC<MessageActionBarProps> = ({
   onAddReaction,
   onReply,
   onPin,
+  onEdit,
   onMore,
 }) => {
   const quickEmojis = ['👍', '🚀', '⚡', '❤️'];
@@ -48,6 +50,21 @@ export const MessageActionBar: React.FC<MessageActionBarProps> = ({
       >
         <Smile className="w-4 h-4" />
       </button>
+
+      {/* Edit */}
+      {onEdit && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="w-7 h-7 rounded-[4px] flex items-center justify-center hover:text-white hover:bg-[#35373c] transition-colors"
+          title="Edit Transmission"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      )}
 
       {/* Reply */}
       {onReply && (

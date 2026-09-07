@@ -156,6 +156,7 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     if (body.color !== undefined) updates.color = body.color;
     if (body.permissions !== undefined) updates.permissions = BigInt(body.permissions);
     if (body.allowDelegation !== undefined) updates.allowDelegation = Boolean(body.allowDelegation);
+    if (body.hoist !== undefined) updates.hoist = Boolean(body.hoist);
 
     if (body.position !== undefined) {
       const newPos = Number(body.position);

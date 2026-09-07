@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Upload, Plus, Edit2, Check, X } from 'lucide-react';
+import { Trash2, Upload, Plus, Edit2, Check, X, Users, Eye } from 'lucide-react';
 import { Modal } from '@subspace/ui';
+import { api } from './services/api';
 
 export interface CustomServerEmoji {
   id: string;
@@ -33,7 +34,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   onRenameEmoji,
   onDeleteEmoji,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'channels' | 'emojis' | 'audit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'channels' | 'emojis' | 'onboarding' | 'discovery' | 'audit'>('overview');
   const [nameInput, setNameInput] = useState(serverName);
 
   // Emoji management state
@@ -44,14 +45,27 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
 
   // Clearances / Roles state
   const [clearancesList, setClearancesList] = useState<any[]>([
-    { id: 'c1', name: 'Fleet Admiral', color: '#00f0ff', position: 3, permissions: (1n << 29n).toString(), count: 1 },
-    { id: 'c2', name: 'Command Staff', color: '#5865f2', position: 2, permissions: ((1n << 0n) | (1n << 1n) | (1n << 8n)).toString(), count: 2 },
-    { id: 'c3', name: 'Transmitter', color: '#23a55a', position: 1, permissions: ((1n << 0n) | (1n << 1n) | (1n << 5n)).toString(), count: 8 },
-    { id: 'c4', name: '@everyone', color: '#949ba4', position: 0, permissions: (1n << 0n).toString(), count: 11 },
+    { id: 'c1', name: 'Fleet Admiral', color: '#00f0ff', position: 3, permissions: (1n << 29n).toString(), count: 1, hoist: true },
+    { id: 'c2', name: 'Command Staff', color: '#5865f2', position: 2, permissions: ((1n << 0n) | (1n << 1n) | (1n << 8n)).toString(), count: 2, hoist: false },
+    { id: 'c3', name: 'Transmitter', color: '#23a55a', position: 1, permissions: ((1n << 0n) | (1n << 1n) | (1n << 5n)).toString(), count: 8, hoist: false },
+    { id: 'c4', name: '@everyone', color: '#949ba4', position: 0, permissions: (1n << 0n).toString(), count: 11, hoist: false },
   ]);
   const [selectedClearanceId, setSelectedClearanceId] = useState<string>('c2');
   const [newClearanceName, setNewClearanceName] = useState('');
   const [newClearanceColor, setNewClearanceColor] = useState('#00f0ff');
+
+  // Role rename state
+  const [renamingRoleId, setRenamingRoleId] = useState<string | null>(null);
+  const [renameRoleInput, setRenameRoleInput] = useState('');
+
+  // Onboarding state
+  const [rulesText, setRulesText] = useState('Welcome to this Beacon. Please read and agree to the rules before participating.');
+  const [requiresOnboarding, setRequiresOnboarding] = useState(true);
+  const [onboardingSaved, setOnboardingSaved] = useState(false);
+
+  // Discovery state
+  const [isDiscoverable, setIsDiscoverable] = useState(false);
+  const [discoverySaved, setDiscoverySaved] = useState(false);
 
   const selectedClearance = clearancesList.find(c => c.id === selectedClearanceId) || clearancesList[0];
 
@@ -91,10 +105,57 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
       position: clearancesList.length,
       permissions: ((1n << 0n) | (1n << 1n)).toString(),
       count: 0,
+      hoist: false,
     };
     setClearancesList(prev => [newRole, ...prev]);
     setSelectedClearanceId(newRole.id);
     setNewClearanceName('');
+  };
+
+  const handleStartRenameRole = (roleId: string, currentName: string) => {
+    setRenamingRoleId(roleId);
+    setRenameRoleInput(currentName);
+  };
+
+  const handleSaveRenameRole = async (roleId: string) => {
+    const trimmed = renameRoleInput.trim();
+    if (!trimmed) return;
+    setClearancesList(prev => prev.map(c =>
+      c.id === roleId ? { ...c, name: trimmed } : c
+    ));
+    setRenamingRoleId(null);
+    setRenameRoleInput('');
+    try {
+      await api.updateClearance(serverId, roleId, { name: trimmed });
+    } catch { /* optimistic — local state already updated */ }
+  };
+
+  const handleToggleHoist = async (roleId: string) => {
+    const role = clearancesList.find(c => c.id === roleId);
+    if (!role) return;
+    const newHoist = !role.hoist;
+    setClearancesList(prev => prev.map(c =>
+      c.id === roleId ? { ...c, hoist: newHoist } : c
+    ));
+    try {
+      await api.updateClearance(serverId, roleId, { hoist: newHoist });
+    } catch { /* optimistic */ }
+  };
+
+  const handleSaveOnboarding = async () => {
+    try {
+      await api.updateBeacon(serverId, { rulesText });
+      setOnboardingSaved(true);
+      setTimeout(() => setOnboardingSaved(false), 2000);
+    } catch { /* noop */ }
+  };
+
+  const handleSaveDiscovery = async () => {
+    try {
+      await api.updateBeacon(serverId, { isDiscoverable });
+      setDiscoverySaved(true);
+      setTimeout(() => setDiscoverySaved(false), 2000);
+    } catch { /* noop */ }
   };
 
   useEffect(() => {
@@ -111,7 +172,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
     setNewEmojiUrl('');
   };
 
-  const handleSaveRename = (emojiId: string) => {
+  const handleSaveEmojiRename = (emojiId: string) => {
     if (!editEmojiName.trim()) return;
     if (onRenameEmoji) {
       onRenameEmoji(emojiId, editEmojiName.trim());
@@ -164,6 +225,22 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
             }`}
           >
             Signal Glyphs (Emojis)
+          </button>
+          <button
+            onClick={() => setActiveTab('onboarding')}
+            className={`text-left px-2.5 py-1.5 rounded-[4px] transition-colors ${
+              activeTab === 'onboarding' ? 'bg-[#1f2024] text-white font-semibold' : 'text-[#949ba4] hover:bg-[#16171a]'
+            }`}
+          >
+            Onboarding
+          </button>
+          <button
+            onClick={() => setActiveTab('discovery')}
+            className={`text-left px-2.5 py-1.5 rounded-[4px] transition-colors ${
+              activeTab === 'discovery' ? 'bg-[#1f2024] text-white font-semibold' : 'text-[#949ba4] hover:bg-[#16171a]'
+            }`}
+          >
+            Discovery
           </button>
           <button
             onClick={() => setActiveTab('audit')}
@@ -283,18 +360,91 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                     return (
                       <div
                         key={role.id}
-                        onClick={() => setSelectedClearanceId(role.id)}
-                        className={`p-2.5 rounded-[6px] border flex items-center justify-between cursor-pointer transition-colors ${
+                        className={`p-2.5 rounded-[6px] border transition-colors ${
                           isSelected
-                            ? 'border-[#00f0ff] bg-[#00f0ff]/10 text-white font-semibold'
-                            : 'border-[#1f2024] bg-[#111214] text-[#949ba4] hover:border-[#35363c]'
+                            ? 'border-[#00f0ff] bg-[#00f0ff]/10'
+                            : 'border-[#1f2024] bg-[#111214] hover:border-[#35363c]'
                         }`}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
-                          <span className="truncate text-xs text-white">{role.name}</span>
+                        {/* Name row */}
+                        <div
+                          className="flex items-center justify-between cursor-pointer"
+                          onClick={() => setSelectedClearanceId(role.id)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+                            {renamingRoleId === role.id ? (
+                              <input
+                                type="text"
+                                value={renameRoleInput}
+                                onChange={e => setRenameRoleInput(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') { e.preventDefault(); handleSaveRenameRole(role.id); }
+                                  if (e.key === 'Escape') { setRenamingRoleId(null); }
+                                }}
+                                onClick={e => e.stopPropagation()}
+                                autoFocus
+                                className="flex-1 bg-[#080809] border border-[#00f0ff] rounded px-1.5 py-0.5 text-xs text-white outline-none min-w-0"
+                              />
+                            ) : (
+                              <span className="truncate text-xs text-white">{role.name}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 ml-1 shrink-0">
+                            {renamingRoleId === role.id ? (
+                              <>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleSaveRenameRole(role.id); }}
+                                  className="p-0.5 text-[#23a55a] hover:text-[#23a55a]/80 transition-colors"
+                                  title="Save name"
+                                >
+                                  <Check className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setRenamingRoleId(null); }}
+                                  className="p-0.5 text-[#f23f43] hover:text-[#f23f43]/80 transition-colors"
+                                  title="Cancel"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                {role.position !== 0 && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); handleStartRenameRole(role.id, role.name); }}
+                                    className="p-0.5 text-[#80848e] hover:text-white transition-colors"
+                                    title="Rename role"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                                <span className="text-[10px] text-[#80848e] font-mono">P{role.position}</span>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <span className="text-[10px] text-[#80848e] font-mono">Pos {role.position}</span>
+
+                        {/* Hoist (Display Separately) toggle */}
+                        <div
+                          className="flex items-center justify-between mt-2 pt-2 border-t border-[#1f2024]"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <Users className="w-3 h-3 text-[#80848e]" />
+                            <span className="text-[10px] text-[#80848e]">Display separately</span>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={role.hoist || false}
+                              disabled={role.position === 0}
+                              onChange={() => handleToggleHoist(role.id)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-7 h-3.5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-[#23a55a] peer-disabled:opacity-40" />
+                          </label>
+                        </div>
                       </div>
                     );
                   })}
@@ -436,7 +586,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                                 className="bg-[#1e1f22] border border-[#00f0ff] rounded px-1.5 py-0.5 text-xs text-white outline-none w-24"
                               />
                               <button
-                                onClick={() => handleSaveRename(emoji.id)}
+                                onClick={() => handleSaveEmojiRename(emoji.id)}
                                 className="p-1 hover:text-[#23a55a]"
                               >
                                 <Check className="w-3.5 h-3.5" />
@@ -479,6 +629,130 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Onboarding Tab ──────────────────────────────── */}
+          {activeTab === 'onboarding' && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-sm font-bold text-white mb-1">Member Onboarding</h3>
+                <p className="text-xs text-[#949ba4]">
+                  Control the new member experience. When enabled, members must acknowledge your rules before accessing the beacon.
+                </p>
+              </div>
+
+              {/* Enable / Disable Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-[#111214] border border-[#1f2024] rounded-[8px]">
+                <div>
+                  <div className="text-xs font-semibold text-white">Require Onboarding</div>
+                  <div className="text-[10px] text-[#949ba4] mt-0.5">New members must read and accept your rules before joining.</div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={requiresOnboarding}
+                    onChange={() => setRequiresOnboarding(v => !v)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                </label>
+              </div>
+
+              {/* Rules Text */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-[#949ba4] uppercase tracking-wider">
+                  Rules &amp; Welcome Text
+                </label>
+                <textarea
+                  value={rulesText}
+                  onChange={e => setRulesText(e.target.value)}
+                  rows={8}
+                  className="w-full bg-[#111214] border border-[#1f2024] rounded-[6px] px-3 py-2.5 text-sm text-[#dbdee1] placeholder-[#80848e] focus:outline-none focus:border-[#00f0ff] resize-none transition-colors leading-relaxed"
+                  placeholder="Enter your server rules and welcome message here…"
+                />
+                <div className="text-[10px] text-[#80848e]">
+                  Supports markdown. Members will see this text before being granted access.
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleSaveOnboarding}
+                  className="px-5 py-2 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold text-xs rounded-[6px] transition-colors"
+                >
+                  Save Onboarding Settings
+                </button>
+                {onboardingSaved && (
+                  <span className="text-xs text-[#23a55a] flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Saved
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Discovery Tab ────────────────────────────────── */}
+          {activeTab === 'discovery' && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-sm font-bold text-white mb-1">Beacon Discovery</h3>
+                <p className="text-xs text-[#949ba4]">
+                  Control whether your beacon appears in the public Subspace discovery listing.
+                </p>
+              </div>
+
+              {/* Discoverable Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-[#111214] border border-[#1f2024] rounded-[8px]">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-[8px] bg-[#1f2024] flex items-center justify-center shrink-0">
+                    <Eye className="w-4 h-4 text-[#00f0ff]" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-white">List in Public Discovery</div>
+                    <div className="text-[10px] text-[#949ba4] mt-0.5">
+                      When enabled, anyone can find and join this beacon via the Explore Beacons feature.
+                    </div>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                  <input
+                    type="checkbox"
+                    checked={isDiscoverable}
+                    onChange={() => setIsDiscoverable(v => !v)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                </label>
+              </div>
+
+              {/* Status Pill */}
+              <div className={`flex items-center gap-2 p-3 rounded-[6px] border text-xs font-medium ${
+                isDiscoverable
+                  ? 'bg-[#23a55a]/10 border-[#23a55a]/30 text-[#23a55a]'
+                  : 'bg-[#111214] border-[#1f2024] text-[#80848e]'
+              }`}>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${isDiscoverable ? 'bg-[#23a55a]' : 'bg-[#80848e]'}`} />
+                {isDiscoverable
+                  ? 'This beacon is publicly listed and discoverable.'
+                  : 'This beacon is private and not listed in discovery.'}
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleSaveDiscovery}
+                  className="px-5 py-2 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold text-xs rounded-[6px] transition-colors"
+                >
+                  Save Discovery Settings
+                </button>
+                {discoverySaved && (
+                  <span className="text-xs text-[#23a55a] flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Saved
+                  </span>
                 )}
               </div>
             </div>

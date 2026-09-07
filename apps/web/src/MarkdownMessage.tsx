@@ -3,9 +3,10 @@ import { ExternalLink, FileText, Download } from 'lucide-react';
 
 interface MarkdownMessageProps {
   content: string;
+  suffix?: React.ReactNode;
 }
 
-export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content }) => {
+export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, suffix }) => {
   // Check for CloudTether tag: [CloudTether:google|Quantum Telemetry.pdf|https://...|1.4 MB]
   const cloudTetherRegex = /\[CloudTether:([a-z]+)\|([^|]+)\|([^|]+)\|([^\]]+)\]/g;
   const cloudMatches = Array.from(content.matchAll(cloudTetherRegex));
@@ -20,9 +21,12 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content }) => 
     .replace(attachmentRegex, '')
     .trim();
 
+  const hasCards = cloudMatches.length > 0 || attachmentMatches.length > 0;
+
   return (
-    <div className="space-y-2">
-      {cleanedContent && renderContentBody(cleanedContent)}
+    <div className={hasCards ? "space-y-2" : "inline"}>
+      {cleanedContent && renderContentBody(cleanedContent, suffix)}
+      {!cleanedContent && suffix}
 
       {/* Render Cloud Drive Tethers */}
       {cloudMatches.map((match, idx) => {
@@ -123,7 +127,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content }) => 
   );
 };
 
-function renderContentBody(content: string): React.ReactNode {
+function renderContentBody(content: string, suffix?: React.ReactNode): React.ReactNode {
   // If content contains code blocks ```...```
   if (content.includes('```')) {
     const parts = content.split(/(```[\s\S]*?```)/g);
@@ -141,7 +145,13 @@ function renderContentBody(content: string): React.ReactNode {
               </pre>
             );
           }
-          return <span key={i}>{renderInlineMarkdown(part)}</span>;
+          const isLast = i === parts.length - 1;
+          return (
+            <span key={i}>
+              {renderInlineMarkdown(part)}
+              {isLast && suffix}
+            </span>
+          );
         })}
       </div>
     );
@@ -157,12 +167,24 @@ function renderContentBody(content: string): React.ReactNode {
         <blockquote className="border-l-4 border-[#35373c] pl-3 text-[#949ba4] italic text-xs mb-1 bg-[#111214]/50 py-0.5 rounded-r">
           {renderInlineMarkdown(quotes)}
         </blockquote>
-        {rest && <div>{renderInlineMarkdown(rest)}</div>}
+        {rest ? (
+          <div>
+            {renderInlineMarkdown(rest)}
+            {suffix}
+          </div>
+        ) : (
+          suffix
+        )}
       </div>
     );
   }
 
-  return <>{renderInlineMarkdown(content)}</>;
+  return (
+    <>
+      {renderInlineMarkdown(content)}
+      {suffix}
+    </>
+  );
 }
 
 function renderInlineMarkdown(text: string): React.ReactNode {

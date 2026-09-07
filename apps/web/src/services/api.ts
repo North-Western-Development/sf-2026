@@ -194,6 +194,39 @@ class SubspaceApiClient {
     return data.transmission;
   }
 
+  public async updateTransmission(transmissionId: string, content: string): Promise<ApiTransmission> {
+    const res = await this.fetchAuth(`${API_BASE}/transmissions/${transmissionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error(`Failed to edit transmission`);
+    const data = await res.json();
+    return data.transmission;
+  }
+
+  public async deleteTransmission(transmissionId: string): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/transmissions/${transmissionId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error(`Failed to delete transmission`);
+  }
+
+  public async updateBeacon(beaconId: string, updates: Record<string, any>): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error(`Failed to update beacon`);
+  }
+
+  public async updateClearance(beaconId: string, clearanceId: string, updates: Record<string, any>): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/clearances/${clearanceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error(`Failed to update clearance`);
+  }
+
   public async createBeacon(name: string, description?: string): Promise<ApiBeacon> {
     const res = await this.fetchAuth(`${API_BASE}/beacons`, {
       method: 'POST',

@@ -103,6 +103,7 @@ export const clearances = pgTable('clearances', {
   position: integer('position').notNull(), // Higher = higher rank
   permissions: bigint('permissions', { mode: 'bigint' }).default(sql`0`).notNull(),
   allowDelegation: boolean('allow_delegation').default(false).notNull(),
+  hoist: boolean('hoist').default(false).notNull(), // Display members with this role separately in the member list
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
