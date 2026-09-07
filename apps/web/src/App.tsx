@@ -18,6 +18,7 @@ import {
   Pin,
   X,
   CheckCircle2,
+  Check,
   Copy,
   Trash2,
   MessageSquare,
@@ -119,6 +120,15 @@ interface Channel {
   isHidden?: boolean;
   isMuted?: boolean;
   notifSetting?: 'all' | 'mentions' | 'nothing';
+  isUnhideable?: boolean;
+}
+
+export interface ServerFolder {
+  id: string;
+  name: string;
+  color?: string;
+  beaconIds: string[];
+  isExpanded?: boolean;
 }
 
 interface VoiceUser {
@@ -212,6 +222,7 @@ function categorizeRelays(relays: ApiRelay[]): ChannelCategory[] {
       type: chanType,
       description: r.topic || undefined,
       isHidden: r.isHidden ?? false,
+      isUnhideable: Boolean(r.isUnhideable),
     };
 
     if (chanType === 'voice') {
@@ -284,10 +295,29 @@ export const AppContent: React.FC = () => {
   const [isResizingMemberPanel, setIsResizingMemberPanel] = useState(false);
 
   // Server Folders & Drag-and-Drop Reordering State
-  const [serverOrder, setServerOrder] = useState<string[]>([]);
-  const [serverFolders, setServerFolders] = useState<{ id: string; name: string; beaconIds: string[]; isExpanded?: boolean }[]>([]);
-  const [draggedBeaconId, setDraggedBeaconId] = useState<string | null>(null);
+  const [serverOrder, setServerOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('subspace_server_order');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [serverFolders, setServerFolders] = useState<ServerFolder[]>(() => {
+    try {
+      const saved = localStorage.getItem('subspace_server_folders');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [draggedItem, setDraggedItem] = useState<{ type: 'beacon' | 'folder'; id: string; sourceFolderId?: string } | null>(null);
   const [dragOverTargetId, setDragOverTargetId] = useState<string | null>(null);
+
+  // Folder Settings Modal State
+  const [editingFolder, setEditingFolder] = useState<ServerFolder | null>(null);
+  const [folderNameInput, setFolderNameInput] = useState('');
+  const [folderColorInput, setFolderColorInput] = useState('#00F0FF');
 
   // Modals & Popovers
   const [isQuickScanOpen, setIsQuickScanOpen] = useState(false);
@@ -896,66 +926,456 @@ export const AppContent: React.FC = () => {
     };
   }, [isResizingChannelSidebar, isResizingMemberPanel]);
 
-  // Drag and Drop Server Reordering & Folder Clustering Handlers
-  const handleServerDragStart = (e: React.DragEvent, beaconId: string) => {
-    e.dataTransfer.setData('text/plain', beaconId);
-    setDraggedBeaconId(beaconId);
-  };
+  // Auto-persist server folders & rail order to localStorage
+  useEffect(() => {
+    localStorage.setItem('subspace_server_folders', JSON.stringify(serverFolders));
+  }, [serverFolders]);
 
-  const handleServerDragOver = (e: React.DragEvent, targetBeaconId: string) => {
-    e.preventDefault();
-    if (draggedBeaconId && draggedBeaconId !== targetBeaconId) {
-      setDragOverTargetId(targetBeaconId);
-    }
-  };
+  useEffect(() => {
+    localStorage.setItem('subspace_server_order', JSON.stringify(serverOrder));
+  }, [serverOrder]);
 
-  const handleServerDrop = (e: React.DragEvent, targetBeaconId: string) => {
-    e.preventDefault();
-    setDragOverTargetId(null);
-    if (!draggedBeaconId || draggedBeaconId === targetBeaconId) return;
-
-    // If dropped directly in the center, form/add to a cluster folder
-    const rect = e.currentTarget.getBoundingClientRect();
-    const isCenterDrop = e.clientY > rect.top + 10 && e.clientY < rect.bottom - 10;
-
-    if (isCenterDrop) {
-      // Check if target is already in a folder
-      const existingFolderIndex = serverFolders.findIndex(f => f.beaconIds.includes(targetBeaconId));
-      if (existingFolderIndex >= 0) {
-        setServerFolders(prev => prev.map((f, idx) => 
-          idx === existingFolderIndex && !f.beaconIds.includes(draggedBeaconId)
-            ? { ...f, beaconIds: [...f.beaconIds, draggedBeaconId] }
-            : f
-        ));
-      } else {
-        // Create new folder cluster
-        const newFolderId = `folder-${Date.now()}`;
-        setServerFolders(prev => [
-          ...prev,
-          {
-            id: newFolderId,
-            name: 'Beacon Cluster',
-            beaconIds: [targetBeaconId, draggedBeaconId],
-            isExpanded: true,
-          },
-        ]);
+  // Load server folders from backend clusters API on startup
+  useEffect(() => {
+    api.getClusters().then((clusters) => {
+      if (clusters && clusters.length > 0) {
+        setServerFolders(prev => {
+          return clusters.map(c => {
+            const local = prev.find(p => p.id === c.id);
+            return {
+              id: c.id,
+              name: c.name,
+              color: c.color || '#00F0FF',
+              beaconIds: c.beaconIds,
+              isExpanded: local ? local.isExpanded : false,
+            };
+          });
+        });
       }
-      showToast('Created / Updated Server Folder');
-    } else {
-      // Reorder in serverOrder
-      setServerOrder(prev => {
-        const order = prev.length > 0 ? [...prev] : beacons.map(b => b.id);
-        const sourceIndex = order.indexOf(draggedBeaconId);
-        const targetIndex = order.indexOf(targetBeaconId);
-        if (sourceIndex >= 0 && targetIndex >= 0) {
-          order.splice(sourceIndex, 1);
-          order.splice(targetIndex, 0, draggedBeaconId);
-        }
-        return order;
-      });
-      showToast('Reordered servers');
+    }).catch(() => {
+      // Offline fallback already loaded from localStorage
+    });
+  }, []);
+
+  // Folder Customization Handlers
+  const handleOpenFolderSettings = (folder: ServerFolder) => {
+    setEditingFolder(folder);
+    setFolderNameInput(folder.name);
+    setFolderColorInput(folder.color || '#00F0FF');
+  };
+
+  const handleSaveFolderSettings = async () => {
+    if (!editingFolder || !folderNameInput.trim()) return;
+    const updatedName = folderNameInput.trim();
+    const updatedColor = folderColorInput;
+
+    setServerFolders(prev => prev.map(f => f.id === editingFolder.id ? {
+      ...f,
+      name: updatedName,
+      color: updatedColor,
+    } : f));
+
+    try {
+      await api.updateCluster(editingFolder.id, { name: updatedName, color: updatedColor });
+    } catch {
+      // Local state and localStorage already updated
     }
-    setDraggedBeaconId(null);
+
+    setEditingFolder(null);
+    showToast(`Updated folder "${updatedName}"`);
+  };
+
+  const handleDissolveFolder = async (folderId: string) => {
+    const targetFolder = serverFolders.find(f => f.id === folderId);
+    if (!targetFolder) return;
+
+    // Unpack beacons into serverOrder at the folder's position
+    setServerOrder(prev => {
+      const idx = prev.indexOf(folderId);
+      if (idx === -1) return [...prev, ...targetFolder.beaconIds];
+      const next = [...prev];
+      next.splice(idx, 1, ...targetFolder.beaconIds);
+      return next;
+    });
+
+    setServerFolders(prev => prev.filter(f => f.id !== folderId));
+    try {
+      await api.deleteCluster(folderId);
+    } catch {
+      // Offline fallback
+    }
+    showToast(`Dissolved ${targetFolder.name}`);
+  };
+
+  const getFolderContextMenu = (folder: ServerFolder): ContextMenuItem[] => {
+    return [
+      {
+        label: 'Folder Settings',
+        icon: <Settings className="w-3.5 h-3.5 text-[#00f0ff]" />,
+        onClick: () => handleOpenFolderSettings(folder),
+      },
+      {
+        label: folder.isExpanded ? 'Collapse Folder' : 'Expand Folder',
+        icon: <ChevronDown className={`w-3.5 h-3.5 text-[#949ba4] transition-transform ${folder.isExpanded ? 'rotate-180' : ''}`} />,
+        onClick: () => {
+          setServerFolders(prev => prev.map(f => f.id === folder.id ? { ...f, isExpanded: !f.isExpanded } : f));
+        },
+      },
+      {
+        label: 'Mark as Read',
+        icon: <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" />,
+        onClick: () => {
+          setBeacons(prev => prev.map(b => folder.beaconIds.includes(b.id) ? { ...b, unreadCount: 0 } : b));
+          showToast(`Marked ${folder.name} as read`);
+        },
+      },
+      { separator: true },
+      {
+        label: 'Dissolve Folder',
+        danger: true,
+        icon: <Trash2 className="w-3.5 h-3.5" />,
+        onClick: () => handleDissolveFolder(folder.id),
+      },
+    ];
+  };
+
+  // Drag and Drop Server Reordering & Folder Clustering Handlers
+  const handleBeaconDragStart = (e: React.DragEvent, beaconId: string) => {
+    e.dataTransfer.setData('text/plain', beaconId);
+    setDraggedItem({ type: 'beacon', id: beaconId });
+  };
+
+  const handleFolderBeaconDragStart = (e: React.DragEvent, beaconId: string, folderId: string) => {
+    e.stopPropagation();
+    e.dataTransfer.setData('text/plain', beaconId);
+    setDraggedItem({ type: 'beacon', id: beaconId, sourceFolderId: folderId });
+  };
+
+  const handleFolderDragStart = (e: React.DragEvent, folderId: string) => {
+    e.dataTransfer.setData('text/plain', folderId);
+    setDraggedItem({ type: 'folder', id: folderId });
+  };
+
+  const handleRailDragOver = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (draggedItem && draggedItem.id !== targetId) {
+      setDragOverTargetId(targetId);
+    }
+  };
+
+  const handleRailDrop = async (
+    e: React.DragEvent, 
+    targetId: string, 
+    targetType: 'beacon' | 'folder', 
+    targetFolderId?: string
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverTargetId(null);
+    if (!draggedItem || draggedItem.id === targetId) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const isCenterDrop = e.clientY > rect.top + 8 && e.clientY < rect.bottom - 8;
+
+    // Helper: remove dragged beacon from source folder if any
+    const cleanupSourceFolder = (currentFolders: ServerFolder[]): ServerFolder[] => {
+      if (!draggedItem.sourceFolderId) return currentFolders;
+      return currentFolders
+        .map(f => {
+          if (f.id === draggedItem.sourceFolderId) {
+            const nextBeaconIds = f.beaconIds.filter(id => id !== draggedItem.id);
+            return { ...f, beaconIds: nextBeaconIds };
+          }
+          return f;
+        })
+        .filter(f => f.beaconIds.length > 0);
+    };
+
+    // CASE 1: Dropped onto a FOLDER
+    if (targetType === 'folder') {
+      if (draggedItem.type === 'beacon') {
+        // Add beacon to target folder
+        setServerFolders(prev => {
+          const cleaned = cleanupSourceFolder(prev);
+          return cleaned.map(f => {
+            if (f.id === targetId && !f.beaconIds.includes(draggedItem.id)) {
+              return { ...f, beaconIds: [...f.beaconIds, draggedItem.id] };
+            }
+            return f;
+          });
+        });
+        // Remove from standalone serverOrder if present
+        setServerOrder(prev => prev.filter(id => id !== draggedItem.id));
+        showToast('Added to folder');
+
+        try {
+          const targetF = serverFolders.find(f => f.id === targetId);
+          if (targetF && !targetF.beaconIds.includes(draggedItem.id)) {
+            await api.updateCluster(targetId, { beaconIds: [...targetF.beaconIds, draggedItem.id] });
+          }
+        } catch {
+          // offline
+        }
+      } else {
+        // Reordering folder relative to another folder in serverOrder
+        setServerOrder(prev => {
+          const order = prev.length > 0 ? [...prev] : beacons.map(b => b.id);
+          const sIdx = order.indexOf(draggedItem.id);
+          const tIdx = order.indexOf(targetId);
+          if (sIdx >= 0 && tIdx >= 0) {
+            order.splice(sIdx, 1);
+            order.splice(tIdx, 0, draggedItem.id);
+          }
+          return order;
+        });
+        showToast('Reordered folders');
+      }
+      setDraggedItem(null);
+      return;
+    }
+
+    // CASE 2: Dropped inside an expanded folder onto one of its beacon children
+    if (targetFolderId) {
+      if (draggedItem.type === 'beacon') {
+        setServerFolders(prev => {
+          const cleaned = cleanupSourceFolder(prev);
+          return cleaned.map(f => {
+            if (f.id === targetFolderId) {
+              const currentBeacons = f.beaconIds.filter(id => id !== draggedItem.id);
+              const targetIdx = currentBeacons.indexOf(targetId);
+              if (targetIdx >= 0) {
+                currentBeacons.splice(targetIdx, 0, draggedItem.id);
+              } else {
+                currentBeacons.push(draggedItem.id);
+              }
+              return { ...f, beaconIds: currentBeacons };
+            }
+            return f;
+          });
+        });
+        setServerOrder(prev => prev.filter(id => id !== draggedItem.id));
+        showToast('Reordered folder servers');
+      }
+      setDraggedItem(null);
+      return;
+    }
+
+    // CASE 3: Dropped onto a STANDALONE beacon on the rail
+    if (targetType === 'beacon') {
+      if (isCenterDrop && draggedItem.type === 'beacon') {
+        // Group together into a new cluster folder at target's exact position!
+        const newFolderId = `folder-${Date.now()}`;
+        const newClusterBeacons = [targetId, draggedItem.id];
+
+        setServerFolders(prev => {
+          const cleaned = cleanupSourceFolder(prev);
+          return [
+            ...cleaned,
+            {
+              id: newFolderId,
+              name: 'Beacon Cluster',
+              color: '#00F0FF',
+              beaconIds: newClusterBeacons,
+              isExpanded: true,
+            },
+          ];
+        });
+
+        // In serverOrder, replace targetId with newFolderId and remove draggedItem.id
+        setServerOrder(prev => {
+          const baseOrder = prev.length > 0 ? [...prev] : beacons.map(b => b.id);
+          const tIdx = baseOrder.indexOf(targetId);
+          const filtered = baseOrder.filter(id => id !== draggedItem.id && id !== targetId);
+          if (tIdx >= 0) {
+            filtered.splice(tIdx, 0, newFolderId);
+          } else {
+            filtered.push(newFolderId);
+          }
+          return filtered;
+        });
+
+        showToast('Created Server Folder');
+
+        try {
+          await api.createCluster('Beacon Cluster', '#00F0FF', 0, newClusterBeacons);
+        } catch {
+          // offline
+        }
+      } else {
+        // Reordering on rail (or dragging server OUT of folder onto rail!)
+        if (draggedItem.type === 'beacon' && draggedItem.sourceFolderId) {
+          // Dragged out of folder onto the rail!
+          setServerFolders(prev => cleanupSourceFolder(prev));
+          setServerOrder(prev => {
+            const baseOrder = prev.length > 0 ? [...prev] : beacons.map(b => b.id);
+            const tIdx = baseOrder.indexOf(targetId);
+            const filtered = baseOrder.filter(id => id !== draggedItem.id);
+            if (tIdx >= 0) {
+              filtered.splice(tIdx, 0, draggedItem.id);
+            } else {
+              filtered.push(draggedItem.id);
+            }
+            return filtered;
+          });
+          showToast('Moved server out of folder');
+        } else {
+          // Normal reordering of standalone beacon or folder on the rail
+          setServerOrder(prev => {
+            const baseOrder = prev.length > 0 ? [...prev] : beacons.map(b => b.id);
+            const sIdx = baseOrder.indexOf(draggedItem.id);
+            const tIdx = baseOrder.indexOf(targetId);
+            if (sIdx >= 0 && tIdx >= 0) {
+              baseOrder.splice(sIdx, 1);
+              baseOrder.splice(tIdx, 0, draggedItem.id);
+            }
+            return baseOrder;
+          });
+          showToast(draggedItem.type === 'folder' ? 'Reordered folder' : 'Reordered servers');
+        }
+      }
+    }
+
+    setDraggedItem(null);
+  };
+
+  // Server Settings Channel Manager Handlers
+  const handleUpdateRelayFromSettings = async (relayId: string, updates: { name?: string; topic?: string }) => {
+    try {
+      await api.updateRelay(selectedBeaconId, relayId, updates);
+      setServerData(prev => {
+        const s = prev[selectedBeaconId];
+        if (!s) return prev;
+        return {
+          ...prev,
+          [selectedBeaconId]: {
+            ...s,
+            categories: s.categories.map(cat => ({
+              ...cat,
+              channels: cat.channels.map(ch => ch.id === relayId ? {
+                ...ch,
+                name: updates.name ?? ch.name,
+                description: updates.topic !== undefined ? updates.topic : ch.description,
+              } : ch)
+            }))
+          }
+        };
+      });
+      showToast('Relay channel updated');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update relay');
+    }
+  };
+
+  const handleDeleteRelayFromSettings = async (relayId: string) => {
+    try {
+      await api.deleteRelay(selectedBeaconId, relayId);
+      setServerData(prev => {
+        const s = prev[selectedBeaconId];
+        if (!s) return prev;
+        return {
+          ...prev,
+          [selectedBeaconId]: {
+            ...s,
+            categories: s.categories.map(cat => ({
+              ...cat,
+              channels: cat.channels.filter(ch => ch.id !== relayId)
+            }))
+          }
+        };
+      });
+      if (selectedChannelId === relayId) {
+        const remaining = currentCategories.flatMap(c => c.channels).filter(ch => ch.id !== relayId);
+        if (remaining.length > 0) {
+          setSelectedChannelId(remaining[0].id);
+        }
+      }
+      showToast('Relay decommissioned');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete relay');
+    }
+  };
+
+  const handleCreateRelayFromSettings = async (name: string, type: string, topic?: string, categoryId?: string) => {
+    try {
+      const newRelay = await api.createRelay(selectedBeaconId, name, type, undefined, topic);
+      const mappedChannel: Channel = {
+        id: newRelay.id,
+        name: newRelay.name,
+        type: (newRelay.type === 'voice' ? 'voice' : newRelay.type === 'announcement' ? 'announcement' : newRelay.type === 'archive' || newRelay.type === 'archival' ? 'archive' : newRelay.type === 'gallery' || newRelay.type === 'visual' ? 'gallery' : 'text'),
+        description: newRelay.topic || undefined,
+        isHidden: false,
+        isUnhideable: Boolean(newRelay.isUnhideable),
+      };
+
+      setServerData(prev => {
+        const s = prev[selectedBeaconId];
+        if (!s) return prev;
+        const targetCatId = categoryId || (mappedChannel.type === 'voice' ? 'cat-voice' : mappedChannel.type === 'archive' || mappedChannel.type === 'gallery' ? 'cat-media' : 'cat-text');
+        const catExists = s.categories.some(c => c.id === targetCatId);
+        const updatedCats = s.categories.map(c => {
+          if (c.id === targetCatId) {
+            return { ...c, channels: [...c.channels, mappedChannel] };
+          }
+          return c;
+        });
+        if (!catExists) {
+          updatedCats.push({
+            id: targetCatId,
+            name: targetCatId === 'cat-voice' ? 'Voice Comm-Links' : targetCatId === 'cat-media' ? 'Archival & Media' : 'Text Relays',
+            channels: [mappedChannel],
+          });
+        }
+        return {
+          ...prev,
+          [selectedBeaconId]: {
+            ...s,
+            categories: updatedCats,
+          }
+        };
+      });
+      showToast(`Created channel #${newRelay.name}`);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create channel');
+    }
+  };
+
+  const handleCreateCategoryFromSettings = (name: string) => {
+    const newCatId = `cat-${Date.now()}`;
+    setServerData(prev => {
+      const s = prev[selectedBeaconId];
+      if (!s) return prev;
+      return {
+        ...prev,
+        [selectedBeaconId]: {
+          ...s,
+          categories: [...s.categories, { id: newCatId, name, channels: [] }],
+        }
+      };
+    });
+    showToast(`Created category ${name}`);
+  };
+
+  const handleToggleRelayVisibilityFromSettings = async (relayId: string, isHidden: boolean) => {
+    try {
+      await api.toggleRelayVisibility(selectedBeaconId, relayId, isHidden);
+      setServerData(prev => {
+        const s = prev[selectedBeaconId];
+        if (!s) return prev;
+        return {
+          ...prev,
+          [selectedBeaconId]: {
+            ...s,
+            categories: s.categories.map(cat => ({
+              ...cat,
+              channels: cat.channels.map(ch => ch.id === relayId ? { ...ch, isHidden } : ch)
+            }))
+          }
+        };
+      });
+      showToast(isHidden ? 'Channel hidden from your view' : 'Channel unhidden');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to toggle visibility');
+    }
   };
 
   // Quick Scan Hotkey & Click-outside listener
@@ -1420,8 +1840,10 @@ export const AppContent: React.FC = () => {
       },
       {
         label: isHidden ? 'Unhide Channel' : 'Hide Channel',
-        icon: isHidden ? <Eye className="w-3.5 h-3.5 text-[#23a55a]" /> : <EyeOff className="w-3.5 h-3.5 text-[#949ba4]" />,
-        onClick: handleToggleVisibility,
+        disabled: Boolean(channel.isUnhideable && !isHidden),
+        sublabel: channel.isUnhideable && !isHidden ? 'Core relay cannot be hidden' : undefined,
+        icon: isHidden ? <Eye className="w-3.5 h-3.5 text-[#23a55a]" /> : <EyeOff className={`w-3.5 h-3.5 ${channel.isUnhideable && !isHidden ? 'text-[#4e5058]' : 'text-[#949ba4]'}`} />,
+        onClick: channel.isUnhideable && !isHidden ? undefined : handleToggleVisibility,
       },
       {
         label: 'Edit Channel Topic',
@@ -1781,87 +2203,197 @@ export const AppContent: React.FC = () => {
 
           {/* Servers / Beacons List (Supports Drag-and-Drop Reordering and Folders!) */}
           <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto scrollbar-none">
-            {/* Folder Clusters */}
-            {serverFolders.map((folder) => {
-              const folderBeacons = beacons.filter(b => folder.beaconIds.includes(b.id));
-              const hasActiveInFolder = folder.beaconIds.includes(selectedBeaconId);
-              return (
-                <div key={folder.id} className="w-full flex flex-col items-center gap-1.5">
-                  <div
-                    onClick={() => {
-                      setServerFolders(prev => prev.map(f => f.id === folder.id ? { ...f, isExpanded: !f.isExpanded } : f));
-                    }}
-                    className={`w-12 h-12 rounded-[18px] bg-[#16171a] hover:bg-[#202226] flex flex-wrap items-center justify-center p-1.5 gap-1 cursor-pointer transition-all border ${
-                      hasActiveInFolder ? 'border-[#00f0ff]' : 'border-[#1f2024]'
-                    }`}
-                    title={folder.name}
-                  >
-                    {folderBeacons.slice(0, 4).map((fb) => (
-                      <span
-                        key={fb.id}
-                        style={{ background: fb.gradient }}
-                        className="w-4 h-4 rounded-[4px] text-[8px] font-bold text-white flex items-center justify-center"
-                      >
-                        {fb.iconText[0]}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Expanded Folder Children */}
-                  {folder.isExpanded && (
-                    <div className="w-full bg-[#111214] py-2 rounded-[20px] flex flex-col items-center gap-2 border border-[#1f2024]">
-                      {folderBeacons.map((beacon) => {
-                        const isSelected = selectedBeaconId === beacon.id;
-                        return (
-                          <div key={beacon.id} className="relative flex items-center justify-center w-full group">
-                            <span 
-                              className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
-                                isSelected ? 'h-10' : 'h-0 group-hover:h-5'
-                              }`} 
-                            />
-                            <button
-                              onClick={() => handleSelectServer(beacon.id)}
-                              onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
-                              style={{ background: isSelected ? beacon.gradient : undefined }}
-                              className={`w-10 h-10 flex items-center justify-center font-bold text-xs transition-all duration-200 relative ${
-                                isSelected 
-                                  ? 'rounded-[14px] text-white shadow-lg' 
-                                  : 'rounded-[20px] hover:rounded-[14px] bg-[#1c1d22] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
-                              }`}
-                            >
-                              {beacon.iconText}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Standalone Server Items */}
+            {/* Unified Rail Order (Interleaved Folders & Standalone Servers) */}
             {(() => {
               const clusteredIds = new Set(serverFolders.flatMap(f => f.beaconIds));
-              const orderedList = serverOrder.length > 0 
-                ? serverOrder.map(id => beacons.find(b => b.id === id)).filter(Boolean) as Beacon[]
-                : beacons;
-              const standaloneBeacons = orderedList.filter(b => !clusteredIds.has(b.id));
+              const standaloneBeaconsMap = new Map(beacons.filter(b => !clusteredIds.has(b.id)).map(b => [b.id, b]));
+              const foldersMap = new Map(serverFolders.map(f => [f.id, f]));
 
-              return standaloneBeacons.map((beacon) => {
+              // Build the ordered sequence of rail item IDs:
+              const renderedIds: string[] = [];
+              const seen = new Set<string>();
+
+              for (const id of serverOrder) {
+                if (foldersMap.has(id)) {
+                  renderedIds.push(id);
+                  seen.add(id);
+                } else if (standaloneBeaconsMap.has(id)) {
+                  renderedIds.push(id);
+                  seen.add(id);
+                }
+              }
+
+              for (const [id] of standaloneBeaconsMap) {
+                if (!seen.has(id)) {
+                  renderedIds.push(id);
+                  seen.add(id);
+                }
+              }
+
+              for (const [id] of foldersMap) {
+                if (!seen.has(id)) {
+                  renderedIds.push(id);
+                  seen.add(id);
+                }
+              }
+
+              return renderedIds.map((itemId) => {
+                // If this item is a folder:
+                if (foldersMap.has(itemId)) {
+                  const folder = foldersMap.get(itemId)!;
+                  const folderBeacons = beacons.filter(b => folder.beaconIds.includes(b.id));
+                  const hasActiveInFolder = folder.beaconIds.includes(selectedBeaconId);
+                  const isDragTarget = dragOverTargetId === folder.id;
+                  const totalUnread = folderBeacons.reduce((acc, b) => acc + (b.unreadCount || 0), 0);
+
+                  return (
+                    <div 
+                      key={folder.id} 
+                      className="w-full flex flex-col items-center gap-1.5 transition-all"
+                      draggable
+                      onDragStart={(e) => handleFolderDragStart(e, folder.id)}
+                      onDragOver={(e) => handleRailDragOver(e, folder.id)}
+                      onDragLeave={() => setDragOverTargetId(null)}
+                      onDrop={(e) => handleRailDrop(e, folder.id, 'folder')}
+                    >
+                      {/* Collapsed Folder Capsule */}
+                      {!folder.isExpanded ? (
+                        <div className="relative flex items-center justify-center w-full group">
+                          {/* White Indicator Pill for Folder */}
+                          <span 
+                            className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
+                              hasActiveInFolder 
+                                ? 'h-10' 
+                                : totalUnread > 0 
+                                ? 'h-2 group-hover:h-5' 
+                                : 'h-0 group-hover:h-5'
+                            }`} 
+                          />
+                          <div
+                            onClick={() => {
+                              setServerFolders(prev => prev.map(f => f.id === folder.id ? { ...f, isExpanded: true } : f));
+                            }}
+                            onContextMenu={(e) => openContextMenu(e, getFolderContextMenu(folder))}
+                            className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] flex items-center justify-center p-2 cursor-pointer transition-all duration-200 border relative ${
+                              isDragTarget ? 'ring-2 ring-[#00f0ff] scale-105' : ''
+                            } ${
+                              hasActiveInFolder ? 'border-[#00f0ff]/80 shadow-[0_0_12px_rgba(0,240,255,0.2)]' : 'border-[#1f2024] hover:border-white/20'
+                            }`}
+                            style={{
+                              backgroundColor: folder.color ? `${folder.color}25` : 'rgba(0, 240, 255, 0.15)',
+                            }}
+                            title={folder.name}
+                          >
+                            <div className="grid grid-cols-2 gap-1 w-full h-full items-center justify-center pointer-events-none">
+                              {folderBeacons.slice(0, 4).map((fb) => (
+                                <span
+                                  key={fb.id}
+                                  style={{ background: fb.gradient }}
+                                  className="w-3.5 h-3.5 rounded-[3px] text-[7px] font-bold text-white flex items-center justify-center shadow-xs"
+                                >
+                                  {fb.iconText[0]}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Total Unread Badge */}
+                            {totalUnread > 0 && (
+                              <span className="absolute -bottom-1 -right-1 bg-[#f23f43] text-white text-[10px] font-bold h-5 min-w-[20px] px-1 rounded-full flex items-center justify-center border-[3px] border-[#080809] z-20 pointer-events-none shadow-md">
+                                {totalUnread}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        /* Expanded Folder Accordion Container */
+                        <div 
+                          className="w-full rounded-[24px] flex flex-col items-center gap-2 py-2 px-1 border transition-all shadow-inner"
+                          style={{
+                            backgroundColor: folder.color ? `${folder.color}15` : 'rgba(255, 255, 255, 0.04)',
+                            borderColor: folder.color ? `${folder.color}40` : '#1f2024',
+                          }}
+                        >
+                          {/* Folder Header Icon / Collapse Button */}
+                          <div
+                            onClick={() => {
+                              setServerFolders(prev => prev.map(f => f.id === folder.id ? { ...f, isExpanded: false } : f));
+                            }}
+                            onContextMenu={(e) => openContextMenu(e, getFolderContextMenu(folder))}
+                            className="w-10 h-7 rounded-[12px] flex items-center justify-center cursor-pointer transition-all hover:scale-105 border border-white/10"
+                            style={{
+                              backgroundColor: folder.color ? `${folder.color}35` : 'rgba(0, 240, 255, 0.25)',
+                              color: folder.color || '#00F0FF',
+                            }}
+                            title={`Collapse ${folder.name} (Right-click for options)`}
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </div>
+
+                          {/* Children Beacons in Expanded Folder */}
+                          {folderBeacons.map((beacon) => {
+                            const isSelected = selectedBeaconId === beacon.id;
+                            const isTarget = dragOverTargetId === beacon.id;
+                            return (
+                              <div 
+                                key={beacon.id} 
+                                className="relative flex items-center justify-center w-full group"
+                                draggable
+                                onDragStart={(e) => handleFolderBeaconDragStart(e, beacon.id, folder.id)}
+                                onDragOver={(e) => handleRailDragOver(e, beacon.id)}
+                                onDragLeave={() => setDragOverTargetId(null)}
+                                onDrop={(e) => handleRailDrop(e, beacon.id, 'beacon', folder.id)}
+                              >
+                                <span 
+                                  className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
+                                    isSelected ? 'h-10' : beacon.unreadCount ? 'h-2 group-hover:h-5' : 'h-0 group-hover:h-5'
+                                  }`} 
+                                />
+                                <button
+                                  onClick={() => handleSelectServer(beacon.id)}
+                                  onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
+                                  style={{ background: isSelected ? beacon.gradient : undefined }}
+                                  className={`w-11 h-11 flex items-center justify-center font-bold text-xs transition-all duration-200 relative ${
+                                    isTarget ? 'ring-2 ring-[#00f0ff] scale-105' : ''
+                                  } ${
+                                    isSelected 
+                                      ? 'rounded-[14px] text-white shadow-lg' 
+                                      : 'rounded-[20px] hover:rounded-[14px] bg-[#1c1d22] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
+                                  }`}
+                                  title={beacon.name}
+                                >
+                                  {beacon.iconText}
+                                  {beacon.unreadCount && beacon.unreadCount > 0 && (
+                                    <span className="absolute -bottom-1 -right-1 bg-[#f23f43] text-white text-[10px] font-bold h-4 min-w-[18px] px-1 rounded-full flex items-center justify-center border-[2px] border-[#080809] z-20 pointer-events-none shadow-md">
+                                      {beacon.unreadCount}
+                                    </span>
+                                  )}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Else: Standalone Server Item
+                const beacon = standaloneBeaconsMap.get(itemId)!;
+                if (!beacon) return null;
                 const isSelected = selectedBeaconId === beacon.id;
                 const isDragTarget = dragOverTargetId === beacon.id;
+
                 return (
                   <div 
                     key={beacon.id} 
                     className="relative flex items-center justify-center w-full group"
                     draggable
-                    onDragStart={(e) => handleServerDragStart(e, beacon.id)}
-                    onDragOver={(e) => handleServerDragOver(e, beacon.id)}
+                    onDragStart={(e) => handleBeaconDragStart(e, beacon.id)}
+                    onDragOver={(e) => handleRailDragOver(e, beacon.id)}
                     onDragLeave={() => setDragOverTargetId(null)}
-                    onDrop={(e) => handleServerDrop(e, beacon.id)}
+                    onDrop={(e) => handleRailDrop(e, beacon.id, 'beacon')}
                   >
-                    {/* White Indicator Pill - Positioned strictly flush against the outer railing (left: 0) */}
+                    {/* White Indicator Pill */}
                     <span 
                       className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
                         isSelected 
@@ -1882,9 +2414,10 @@ export const AppContent: React.FC = () => {
                           ? 'rounded-[16px] text-white shadow-lg' 
                           : 'rounded-[24px] hover:rounded-[16px] bg-[#16171a] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
                       }`}
+                      title={beacon.name}
                     >
                       {beacon.iconText}
-                      {/* Unread Indicator Badge: Located at Bottom-Right to avoid top clipping! */}
+                      {/* Unread Indicator Badge */}
                       {beacon.unreadCount && beacon.unreadCount > 0 && (
                         <span className="absolute -bottom-1 -right-1 bg-[#f23f43] text-white text-[10px] font-bold h-5 min-w-[20px] px-1 rounded-full flex items-center justify-center border-[3px] border-[#080809] z-20 pointer-events-none shadow-md">
                           {beacon.unreadCount}
@@ -4469,6 +5002,12 @@ export const AppContent: React.FC = () => {
         serverName={currentServer.name}
         serverId={selectedBeaconId}
         initialTab={serverSettingsTab}
+        categories={currentCategories}
+        onUpdateRelay={handleUpdateRelayFromSettings}
+        onDeleteRelay={handleDeleteRelayFromSettings}
+        onCreateRelay={handleCreateRelayFromSettings}
+        onCreateCategory={handleCreateCategoryFromSettings}
+        onToggleRelayVisibility={handleToggleRelayVisibilityFromSettings}
         onUpdateServerName={(newName) => {
           setBeacons(prev => prev.map(b => b.id === selectedBeaconId ? { ...b, name: newName } : b));
           setServerData(prev => ({
@@ -4486,6 +5025,95 @@ export const AppContent: React.FC = () => {
           setIsServerSettingsOpen(false);
         }}
       />
+
+      {/* Folder Settings / Customization Modal */}
+      {editingFolder && (
+        <Modal
+          isOpen={Boolean(editingFolder)}
+          onClose={() => setEditingFolder(null)}
+          title="Folder Settings"
+          description="Customize folder name and color accent on your server rail."
+        >
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#949ba4] mb-1.5">
+                Folder Name
+              </label>
+              <Input
+                value={folderNameInput}
+                onChange={(e) => setFolderNameInput(e.target.value)}
+                placeholder="e.g. Operations, Allies, Gaming"
+                className="w-full"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[#949ba4] mb-1.5">
+                Folder Color
+              </label>
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {[
+                  { label: 'Cyan', color: '#00F0FF' },
+                  { label: 'Blurple', color: '#5865F2' },
+                  { label: 'Emerald', color: '#23A55A' },
+                  { label: 'Amber', color: '#F0B232' },
+                  { label: 'Crimson', color: '#F23F43' },
+                  { label: 'Fuchsia', color: '#EB459E' },
+                  { label: 'Violet', color: '#8B5CF6' },
+                  { label: 'Slate', color: '#4E5058' },
+                ].map((c) => (
+                  <button
+                    key={c.color}
+                    type="button"
+                    onClick={() => setFolderColorInput(c.color)}
+                    className={`h-9 rounded-[8px] flex items-center justify-center font-bold text-xs transition-all border ${
+                      folderColorInput.toUpperCase() === c.color.toUpperCase()
+                        ? 'ring-2 ring-white scale-105 border-white'
+                        : 'border-transparent hover:scale-102 opacity-80 hover:opacity-100'
+                    }`}
+                    style={{ backgroundColor: c.color }}
+                  >
+                    {folderColorInput.toUpperCase() === c.color.toUpperCase() && (
+                      <Check className="w-4 h-4 text-white drop-shadow-md" />
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Hex preview */}
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full border border-[#2b2d31]" style={{ backgroundColor: folderColorInput }} />
+                <input
+                  type="text"
+                  value={folderColorInput}
+                  onChange={(e) => setFolderColorInput(e.target.value)}
+                  className="bg-[#111214] border border-[#2b2d31] rounded-[4px] px-2.5 py-1 text-xs text-white font-mono uppercase outline-none focus:border-[#00f0ff]/50"
+                  placeholder="#00F0FF"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#1f2024]">
+              <button
+                type="button"
+                onClick={() => setEditingFolder(null)}
+                className="px-3 py-1.5 rounded text-xs text-[#949ba4] hover:text-white hover:bg-[#1e1f22] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!folderNameInput.trim()}
+                onClick={handleSaveFolderSettings}
+                className="px-4 py-1.5 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* 12. Create Server / Beacon Modal */}
       <CreateServerModal

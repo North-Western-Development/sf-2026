@@ -1,5 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Upload, Plus, Edit2, Check, X, Users, Eye, Bell, Shield, Activity, HelpCircle, Image as ImageIcon, Hash } from 'lucide-react';
+import { 
+  Trash2, 
+  Upload, 
+  Plus, 
+  Edit2, 
+  Check, 
+  X, 
+  Users, 
+  Eye, 
+  EyeOff, 
+  Bell, 
+  Shield, 
+  Activity, 
+  HelpCircle, 
+  Image as ImageIcon, 
+  Hash, 
+  Volume2, 
+  Radio, 
+  Archive, 
+  Search, 
+  FolderPlus, 
+  AlertCircle
+} from 'lucide-react';
 import { Modal } from '@subspace/ui';
 import { api } from './services/api';
 
@@ -7,6 +29,24 @@ export interface CustomServerEmoji {
   id: string;
   name: string;
   url: string;
+}
+
+export interface ServerChannel {
+  id: string;
+  name: string;
+  type: 'text' | 'voice' | 'announcement' | 'archive' | 'gallery';
+  description?: string;
+  unread?: boolean;
+  isHidden?: boolean;
+  isMuted?: boolean;
+  isUnhideable?: boolean;
+}
+
+export interface ServerCategory {
+  id: string;
+  name: string;
+  collapsed?: boolean;
+  channels: ServerChannel[];
 }
 
 export interface ServerSettingsModalProps {
@@ -21,6 +61,12 @@ export interface ServerSettingsModalProps {
   onUploadEmoji?: (name: string, url: string) => void;
   onRenameEmoji?: (emojiId: string, newName: string) => void;
   onDeleteEmoji?: (emojiId: string) => void;
+  categories?: ServerCategory[];
+  onUpdateRelay?: (relayId: string, updates: { name?: string; topic?: string }) => Promise<void> | void;
+  onDeleteRelay?: (relayId: string) => Promise<void> | void;
+  onCreateRelay?: (name: string, type: string, topic?: string, categoryId?: string) => Promise<void> | void;
+  onCreateCategory?: (name: string) => Promise<void> | void;
+  onToggleRelayVisibility?: (relayId: string, isHidden: boolean) => Promise<void> | void;
 }
 
 export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
@@ -35,6 +81,12 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   onUploadEmoji,
   onRenameEmoji,
   onDeleteEmoji,
+  categories = [],
+  onUpdateRelay,
+  onDeleteRelay,
+  onCreateRelay,
+  onCreateCategory,
+  onToggleRelayVisibility,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'channels' | 'emojis' | 'onboarding' | 'discovery' | 'notifications' | 'privacy' | 'insights' | 'audit'>(initialTab);
   const [nameInput, setNameInput] = useState(serverName);
@@ -96,6 +148,101 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   const [discoveryBannerUrl, setDiscoveryBannerUrl] = useState('');
   const [discoveryCategory, setDiscoveryCategory] = useState('Gaming');
   const [discoverySaved, setDiscoverySaved] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
+
+  // Channel Manager State
+  const [channelSearch, setChannelSearch] = useState('');
+  const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+  const [editChannelName, setEditChannelName] = useState('');
+  const [editChannelTopic, setEditChannelTopic] = useState('');
+  const [isCreatingChannel, setIsCreatingChannel] = useState(false);
+  const [createTargetCategoryId, setCreateTargetCategoryId] = useState<string | undefined>(undefined);
+  const [newChannelName, setNewChannelName] = useState('');
+  const [newChannelType, setNewChannelType] = useState<'text' | 'voice' | 'announcement' | 'archive' | 'gallery'>('text');
+  const [newChannelTopic, setNewChannelTopic] = useState('');
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [channelToDelete, setChannelToDelete] = useState<ServerChannel | null>(null);
+  const [channelActionLoading, setChannelActionLoading] = useState(false);
+
+  const handleStartEditChannel = (channel: ServerChannel) => {
+    setEditingChannelId(channel.id);
+    setEditChannelName(channel.name);
+    setEditChannelTopic(channel.description || '');
+  };
+
+  const handleSaveEditChannel = async (channelId: string) => {
+    if (!editChannelName.trim()) return;
+    setChannelActionLoading(true);
+    try {
+      if (onUpdateRelay) {
+        await onUpdateRelay(channelId, {
+          name: editChannelName.trim(),
+          topic: editChannelTopic.trim(),
+        });
+      }
+      setEditingChannelId(null);
+    } finally {
+      setChannelActionLoading(false);
+    }
+  };
+
+  const handleOpenCreateChannel = (categoryId?: string) => {
+    setCreateTargetCategoryId(categoryId);
+    setNewChannelName('');
+    setNewChannelTopic('');
+    setNewChannelType('text');
+    setIsCreatingChannel(true);
+  };
+
+  const handleConfirmCreateChannel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newChannelName.trim()) return;
+    setChannelActionLoading(true);
+    try {
+      if (onCreateRelay) {
+        await onCreateRelay(newChannelName.trim(), newChannelType, newChannelTopic.trim(), createTargetCategoryId);
+      }
+      setIsCreatingChannel(false);
+      setNewChannelName('');
+      setNewChannelTopic('');
+    } finally {
+      setChannelActionLoading(false);
+    }
+  };
+
+  const handleConfirmCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    setChannelActionLoading(true);
+    try {
+      if (onCreateCategory) {
+        await onCreateCategory(newCategoryName.trim());
+      }
+      setIsCreatingCategory(false);
+      setNewCategoryName('');
+    } finally {
+      setChannelActionLoading(false);
+    }
+  };
+
+  const handleDeleteChannelConfirm = async () => {
+    if (!channelToDelete) return;
+    setChannelActionLoading(true);
+    try {
+      if (onDeleteRelay) {
+        await onDeleteRelay(channelToDelete.id);
+      }
+      setChannelToDelete(null);
+    } finally {
+      setChannelActionLoading(false);
+    }
+  };
 
   const selectedClearance = clearancesList.find(c => c.id === selectedClearanceId) || clearancesList[0];
 
@@ -621,14 +768,524 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
 
           {activeTab === 'channels' && (
             <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-white mb-1">Channel Organization</h3>
-                <p className="text-xs text-[#949ba4]">Manage category hierarchies and default notification relays.</p>
+              {/* Header with Title and Action Buttons */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#1f2024]">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Hash className="w-4 h-4 text-[#00f0ff]" />
+                    <span>Relay & Channel Management</span>
+                  </h3>
+                  <p className="text-xs text-[#949ba4] mt-0.5">
+                    Configure frequency channels, edit topics, manage core priority relays, and organize categories.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingCategory(true)}
+                    className="px-3 py-1.5 rounded-[4px] bg-[#1e1f22] hover:bg-[#2b2d31] text-[#dbdee1] hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-[#2b2d31]"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5 text-[#949ba4]" />
+                    <span>Create Category</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenCreateChannel()}
+                    className="px-3 py-1.5 rounded-[4px] bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Channel</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="p-4 rounded-[8px] bg-[#111214] border border-[#1f2024] text-center text-[#949ba4]">
-                All channel layouts are synchronized with real database relays.
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#80848e]" />
+                <input
+                  type="text"
+                  placeholder="Filter channels by name or topic..."
+                  value={channelSearch}
+                  onChange={(e) => setChannelSearch(e.target.value)}
+                  className="w-full bg-[#111214] border border-[#1f2024] focus:border-[#00f0ff]/50 rounded-[6px] pl-9 pr-8 py-2 text-xs text-white placeholder-[#80848e] outline-none transition-colors"
+                />
+                {channelSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setChannelSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#80848e] hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
+
+              {/* Channel Categories & Relays List */}
+              <div className="space-y-4 max-h-[480px] overflow-y-auto pr-1">
+                {categories.length === 0 ? (
+                  <div className="p-8 rounded-[8px] bg-[#111214] border border-[#1f2024] text-center space-y-2">
+                    <Hash className="w-8 h-8 text-[#4e5058] mx-auto" />
+                    <div className="text-sm font-semibold text-white">No Relays Configured</div>
+                    <div className="text-xs text-[#949ba4]">This Beacon does not have any active channels.</div>
+                  </div>
+                ) : (
+                  categories.map((cat) => {
+                    const filteredChannels = cat.channels.filter(ch => 
+                      !channelSearch.trim() ||
+                      ch.name.toLowerCase().includes(channelSearch.toLowerCase().trim()) ||
+                      (ch.description && ch.description.toLowerCase().includes(channelSearch.toLowerCase().trim()))
+                    );
+
+                    if (channelSearch.trim() && filteredChannels.length === 0) {
+                      return null;
+                    }
+
+                    return (
+                      <div key={cat.id} className="rounded-[8px] bg-[#111214] border border-[#1f2024] overflow-hidden">
+                        {/* Category Header */}
+                        <div className="flex items-center justify-between px-3 py-2 bg-[#0b0c0e] border-b border-[#1f2024]">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-bold tracking-wider text-[#949ba4] uppercase">
+                              {cat.name}
+                            </span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#1f2024] text-[#80848e]">
+                              {filteredChannels.length}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCreateChannel(cat.id)}
+                            title={`Add channel to ${cat.name}`}
+                            className="p-1 rounded hover:bg-[#1f2024] text-[#949ba4] hover:text-white transition-colors"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Channels List */}
+                        <div className="p-2 space-y-1.5">
+                          {filteredChannels.length === 0 ? (
+                            <div className="text-center py-3 text-xs text-[#80848e] italic">
+                              No channels match search in this category.
+                            </div>
+                          ) : (
+                            filteredChannels.map((ch) => {
+                              const isEditing = editingChannelId === ch.id;
+
+                              let TypeIcon = Hash;
+                              let iconColor = 'text-[#949ba4]';
+                              let typeLabel = 'Text';
+                              if (ch.type === 'voice') {
+                                TypeIcon = Volume2;
+                                iconColor = 'text-[#23a55a]';
+                                typeLabel = 'Voice';
+                              } else if (ch.type === 'announcement') {
+                                TypeIcon = Radio;
+                                iconColor = 'text-[#f0b232]';
+                                typeLabel = 'Announcement';
+                              } else if (ch.type === 'archive') {
+                                TypeIcon = Archive;
+                                iconColor = 'text-[#00f0ff]';
+                                typeLabel = 'Forum';
+                              } else if (ch.type === 'gallery') {
+                                TypeIcon = ImageIcon;
+                                iconColor = 'text-[#eb459e]';
+                                typeLabel = 'Gallery';
+                              }
+
+                              return (
+                                <div
+                                  key={ch.id}
+                                  className={`rounded-[6px] border transition-all ${
+                                    isEditing 
+                                      ? 'bg-[#18191c] border-[#00f0ff]/50 p-3 shadow-md' 
+                                      : 'bg-[#16171a]/70 hover:bg-[#1c1d22] border-[#1f2024] p-2.5 flex items-center justify-between gap-3'
+                                  }`}
+                                >
+                                  {isEditing ? (
+                                    <div className="space-y-3 w-full">
+                                      <div className="text-xs font-bold text-white flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                          <TypeIcon className={`w-3.5 h-3.5 ${iconColor}`} />
+                                          <span>Edit Channel #{ch.name}</span>
+                                        </div>
+                                        {ch.isUnhideable && (
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 flex items-center gap-1">
+                                            <Shield className="w-2.5 h-2.5" /> Core Relay
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div>
+                                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#949ba4] mb-1">
+                                            Channel Name
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={editChannelName}
+                                            onChange={(e) => setEditChannelName(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+                                            className="w-full bg-[#111214] border border-[#2b2d31] focus:border-[#00f0ff]/50 rounded-[4px] px-2.5 py-1.5 text-xs text-white outline-none"
+                                            placeholder="channel-name"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#949ba4] mb-1">
+                                            Channel Topic
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={editChannelTopic}
+                                            onChange={(e) => setEditChannelTopic(e.target.value)}
+                                            className="w-full bg-[#111214] border border-[#2b2d31] focus:border-[#00f0ff]/50 rounded-[4px] px-2.5 py-1.5 text-xs text-white outline-none"
+                                            placeholder="Add operational topic or guidelines..."
+                                          />
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-end gap-2 pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingChannelId(null)}
+                                          className="px-2.5 py-1 rounded text-xs text-[#949ba4] hover:text-white hover:bg-[#2b2d31] transition-colors"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={channelActionLoading || !editChannelName.trim()}
+                                          onClick={() => handleSaveEditChannel(ch.id)}
+                                          className="px-3 py-1 rounded bg-[#23a55a] hover:bg-[#1a7f45] text-white text-xs font-semibold transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                          <span>Save Changes</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {/* Left: Icon, Name, Topic & Badges */}
+                                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                        <div className="w-7 h-7 rounded-[6px] bg-[#111214] border border-[#1f2024] flex items-center justify-center shrink-0">
+                                          <TypeIcon className={`w-3.5 h-3.5 ${iconColor}`} />
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-white truncate">
+                                              #{ch.name}
+                                            </span>
+
+                                            {/* Badges */}
+                                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-[#1f2024] text-[#80848e]">
+                                              {typeLabel}
+                                            </span>
+
+                                            {ch.isUnhideable && (
+                                              <span 
+                                                title="Core Priority Relay - Protected channel that cannot be hidden or removed"
+                                                className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 flex items-center gap-1 shrink-0"
+                                              >
+                                                <Shield className="w-2.5 h-2.5" /> Core Relay
+                                              </span>
+                                            )}
+
+                                            {ch.isHidden && (
+                                              <span 
+                                                title="Hidden from regular transmitter views"
+                                                className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#2b2d31] text-[#949ba4] flex items-center gap-1 shrink-0"
+                                              >
+                                                <EyeOff className="w-2.5 h-2.5" /> Hidden
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div className="text-[11px] text-[#80848e] truncate mt-0.5">
+                                            {ch.description ? ch.description : <span className="italic opacity-60">No topic set</span>}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Right: Actions */}
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {/* Edit Button */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleStartEditChannel(ch)}
+                                          title="Edit channel name and topic"
+                                          className="p-1.5 rounded hover:bg-[#2b2d31] text-[#949ba4] hover:text-white transition-colors"
+                                        >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+
+                                        {/* Visibility Toggle Button */}
+                                        {onToggleRelayVisibility && (
+                                          <button
+                                            type="button"
+                                            disabled={Boolean(ch.isUnhideable && !ch.isHidden)}
+                                            onClick={() => onToggleRelayVisibility(ch.id, !ch.isHidden)}
+                                            title={
+                                              ch.isUnhideable && !ch.isHidden
+                                                ? 'Core priority relay cannot be hidden'
+                                                : ch.isHidden
+                                                ? 'Unhide channel'
+                                                : 'Hide channel'
+                                            }
+                                            className={`p-1.5 rounded transition-colors ${
+                                              ch.isUnhideable && !ch.isHidden
+                                                ? 'opacity-30 cursor-not-allowed text-[#80848e]'
+                                                : 'hover:bg-[#2b2d31] text-[#949ba4] hover:text-white'
+                                            }`}
+                                          >
+                                            {ch.isHidden ? (
+                                              <EyeOff className="w-3.5 h-3.5 text-[#f23f43]" />
+                                            ) : (
+                                              <Eye className="w-3.5 h-3.5 text-[#23a55a]" />
+                                            )}
+                                          </button>
+                                        )}
+
+                                        {/* Delete Button */}
+                                        {onDeleteRelay && (
+                                          <button
+                                            type="button"
+                                            disabled={Boolean(ch.isUnhideable)}
+                                            onClick={() => setChannelToDelete(ch)}
+                                            title={ch.isUnhideable ? 'Core relays cannot be deleted' : 'Delete channel'}
+                                            className={`p-1.5 rounded transition-colors ${
+                                              ch.isUnhideable 
+                                                ? 'opacity-20 cursor-not-allowed text-[#80848e]' 
+                                                : 'hover:bg-[#da373c]/20 text-[#949ba4] hover:text-[#fa777c]'
+                                            }`}
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Create Channel Modal / Sub-card */}
+              {isCreatingChannel && (
+                <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="w-full max-w-md bg-[#111214] border border-[#1f2024] rounded-[10px] shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Plus className="w-4 h-4 text-[#00f0ff]" />
+                        <span>Create Relay Channel</span>
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingChannel(false)}
+                        className="text-[#80848e] hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleConfirmCreateChannel} className="space-y-3">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#949ba4] mb-1.5">
+                          Channel Type
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { type: 'text', label: 'Text Relay', icon: Hash, desc: 'Messages & media' },
+                            { type: 'voice', label: 'Voice Bridge', icon: Volume2, desc: 'Audio & holo-cast' },
+                            { type: 'announcement', label: 'Announcement', icon: Radio, desc: 'Official broadcasts' },
+                            { type: 'archive', label: 'Forum Board', icon: Archive, desc: 'Organized threads' },
+                          ].map((t) => {
+                            const IconComponent = t.icon;
+                            const isSelected = newChannelType === t.type;
+                            return (
+                              <button
+                                key={t.type}
+                                type="button"
+                                onClick={() => setNewChannelType(t.type as any)}
+                                className={`flex items-start gap-2 p-2.5 rounded-[6px] text-left border transition-all ${
+                                  isSelected 
+                                    ? 'bg-[#5865f2]/10 border-[#5865f2] text-white' 
+                                    : 'bg-[#16171a] border-[#1f2024] text-[#949ba4] hover:border-[#2b2d31]'
+                                }`}
+                              >
+                                <IconComponent className={`w-4 h-4 mt-0.5 shrink-0 ${isSelected ? 'text-[#5865f2]' : 'text-[#80848e]'}`} />
+                                <div>
+                                  <div className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-[#dbdee1]'}`}>{t.label}</div>
+                                  <div className="text-[10px] text-[#80848e]">{t.desc}</div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#949ba4] mb-1">
+                          Channel Name
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#80848e]">#</span>
+                          <input
+                            type="text"
+                            required
+                            placeholder="new-relay"
+                            value={newChannelName}
+                            onChange={(e) => setNewChannelName(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+                            className="w-full bg-[#1e1f22] border border-[#2b2d31] focus:border-[#00f0ff]/50 rounded-[4px] pl-6 pr-2.5 py-1.5 text-xs text-white placeholder-[#80848e] outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#949ba4] mb-1">
+                          Channel Topic (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Purpose of this channel..."
+                          value={newChannelTopic}
+                          onChange={(e) => setNewChannelTopic(e.target.value)}
+                          className="w-full bg-[#1e1f22] border border-[#2b2d31] focus:border-[#00f0ff]/50 rounded-[4px] px-2.5 py-1.5 text-xs text-white placeholder-[#80848e] outline-none"
+                        />
+                      </div>
+
+                      {categories.length > 0 && (
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#949ba4] mb-1">
+                            Target Category
+                          </label>
+                          <select
+                            value={createTargetCategoryId || ''}
+                            onChange={(e) => setCreateTargetCategoryId(e.target.value || undefined)}
+                            className="w-full bg-[#1e1f22] border border-[#2b2d31] focus:border-[#00f0ff]/50 rounded-[4px] px-2.5 py-1.5 text-xs text-white outline-none"
+                          >
+                            <option value="">Auto-Assign by Type</option>
+                            {categories.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1f2024]">
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingChannel(false)}
+                          className="px-3 py-1.5 rounded text-xs text-[#949ba4] hover:text-white hover:bg-[#1e1f22] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={channelActionLoading || !newChannelName.trim()}
+                          className="px-4 py-1.5 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Create Channel</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* Create Category Modal */}
+              {isCreatingCategory && (
+                <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="w-full max-w-sm bg-[#111214] border border-[#1f2024] rounded-[10px] shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <FolderPlus className="w-4 h-4 text-[#00f0ff]" />
+                        <span>Create Category</span>
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingCategory(false)}
+                        className="text-[#80848e] hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleConfirmCreateCategory} className="space-y-3">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#949ba4] mb-1">
+                          Category Name
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. OPERATIONS & INTEL"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          className="w-full bg-[#1e1f22] border border-[#2b2d31] focus:border-[#00f0ff]/50 rounded-[4px] px-2.5 py-1.5 text-xs text-white placeholder-[#80848e] outline-none"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1f2024]">
+                        <button
+                          type="button"
+                          onClick={() => setIsCreatingCategory(false)}
+                          className="px-3 py-1.5 rounded text-xs text-[#949ba4] hover:text-white hover:bg-[#1e1f22] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={channelActionLoading || !newCategoryName.trim()}
+                          className="px-4 py-1.5 rounded bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold transition-colors shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          <FolderPlus className="w-3.5 h-3.5" />
+                          <span>Create Category</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* Delete Channel Confirmation Dialog */}
+              {channelToDelete && (
+                <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                  <div className="w-full max-w-sm bg-[#111214] border border-[#da373c]/40 rounded-[10px] shadow-2xl p-5 space-y-3 animate-in fade-in zoom-in-95">
+                    <div className="flex items-center gap-2 text-[#da373c]">
+                      <AlertCircle className="w-5 h-5" />
+                      <h4 className="text-sm font-bold text-white">Delete Channel</h4>
+                    </div>
+                    <p className="text-xs text-[#dbdee1]">
+                      Are you sure you want to delete <span className="font-bold text-white">#{channelToDelete.name}</span>? All transmissions and archival logs in this channel will be permanently removed. This action cannot be undone.
+                    </p>
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setChannelToDelete(null)}
+                        className="px-3 py-1.5 rounded text-xs text-[#949ba4] hover:text-white hover:bg-[#1e1f22] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={channelActionLoading}
+                        onClick={handleDeleteChannelConfirm}
+                        className="px-4 py-1.5 rounded bg-[#da373c] hover:bg-[#ba2e33] text-white text-xs font-semibold transition-colors shadow-sm flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Channel</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

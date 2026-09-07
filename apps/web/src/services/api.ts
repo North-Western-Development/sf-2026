@@ -41,6 +41,17 @@ export interface ApiRelay {
   isHidden?: boolean;
 }
 
+export interface ApiCluster {
+  id: string;
+  transmitterId?: string;
+  name: string;
+  color?: string;
+  position?: number;
+  beaconIds: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ApiTransmission {
   id: string;
   relayId: string;
@@ -270,6 +281,40 @@ class SubspaceApiClient {
       method: 'DELETE',
     });
     if (!res.ok) throw new Error('Failed to delete relay');
+  }
+
+  public async getClusters(): Promise<ApiCluster[]> {
+    const res = await this.fetchAuth(`${API_BASE}/clusters`);
+    if (!res.ok) throw new Error('Failed to fetch clusters');
+    const data = await res.json();
+    return data.clusters || [];
+  }
+
+  public async createCluster(name: string, color = '#00F0FF', position = 0, beaconIds: string[] = []): Promise<ApiCluster> {
+    const res = await this.fetchAuth(`${API_BASE}/clusters`, {
+      method: 'POST',
+      body: JSON.stringify({ name, color, position, beaconIds }),
+    });
+    if (!res.ok) throw new Error('Failed to create cluster');
+    const data = await res.json();
+    return data.cluster;
+  }
+
+  public async updateCluster(clusterId: string, updates: { name?: string; color?: string; position?: number; beaconIds?: string[] }): Promise<ApiCluster> {
+    const res = await this.fetchAuth(`${API_BASE}/clusters/${clusterId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error('Failed to update cluster');
+    const data = await res.json();
+    return data.cluster;
+  }
+
+  public async deleteCluster(clusterId: string): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/clusters/${clusterId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete cluster');
   }
 
   public async updateProfile(profileData: {
