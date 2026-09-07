@@ -42,11 +42,64 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   const [editingEmojiId, setEditingEmojiId] = useState<string | null>(null);
   const [editEmojiName, setEditEmojiName] = useState('');
 
+  // Clearances / Roles state
+  const [clearancesList, setClearancesList] = useState<any[]>([
+    { id: 'c1', name: 'Fleet Admiral', color: '#00f0ff', position: 3, permissions: (1n << 29n).toString(), count: 1 },
+    { id: 'c2', name: 'Command Staff', color: '#5865f2', position: 2, permissions: ((1n << 0n) | (1n << 1n) | (1n << 8n)).toString(), count: 2 },
+    { id: 'c3', name: 'Transmitter', color: '#23a55a', position: 1, permissions: ((1n << 0n) | (1n << 1n) | (1n << 5n)).toString(), count: 8 },
+    { id: 'c4', name: '@everyone', color: '#949ba4', position: 0, permissions: (1n << 0n).toString(), count: 11 },
+  ]);
+  const [selectedClearanceId, setSelectedClearanceId] = useState<string>('c2');
+  const [newClearanceName, setNewClearanceName] = useState('');
+  const [newClearanceColor, setNewClearanceColor] = useState('#00f0ff');
+
+  const selectedClearance = clearancesList.find(c => c.id === selectedClearanceId) || clearancesList[0];
+
+  const PERMISSION_ITEMS = [
+    { bit: 1n << 0n, label: 'View Relay Channels', desc: 'Allows members to view channels in this beacon.' },
+    { bit: 1n << 1n, label: 'Send Transmissions', desc: 'Allows members to post messages in text and archival relays.' },
+    { bit: 1n << 2n, label: 'Embed Rich Links', desc: 'Unfurls web previews for transmitted hyperlinks.' },
+    { bit: 1n << 3n, label: 'Attach Vault Files', desc: 'Allows uploading and attaching files from Subspace Vault.' },
+    { bit: 1n << 4n, label: 'Use Signal Glyphs', desc: 'Allows using custom beacon emojis and reactions.' },
+    { bit: 1n << 5n, label: 'Connect Comm-Link Audio', desc: 'Allows joining voice frequencies and rooms.' },
+    { bit: 1n << 6n, label: 'Transmit Voice Audio', desc: 'Allows speaking in Comm-Link audio channels.' },
+    { bit: 1n << 7n, label: 'Broadcast Holo-Cast', desc: 'Allows screensharing and video broadcasting.' },
+    { bit: 1n << 8n, label: 'Manage Transmissions', desc: 'Allows deleting and pinning messages from others.' },
+    { bit: 1n << 9n, label: 'Manage Relay Channels', desc: 'Allows creating, editing, and deleting beacon relays.' },
+    { bit: 1n << 10n, label: 'Manage Clearances', desc: 'Allows creating and editing roles lower than own rank.' },
+    { bit: 1n << 29n, label: 'Administrator', desc: 'Grants all clearances and bypasses channel overrides.' },
+  ];
+
+  const handleTogglePermission = (permBit: bigint) => {
+    if (!selectedClearance) return;
+    const currentBits = BigInt(selectedClearance.permissions || 0);
+    const hasBit = (currentBits & permBit) === permBit;
+    const newBits = hasBit ? currentBits & ~permBit : currentBits | permBit;
+
+    setClearancesList(prev => prev.map(c => 
+      c.id === selectedClearance.id ? { ...c, permissions: newBits.toString() } : c
+    ));
+  };
+
+  const handleAddClearance = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClearanceName.trim()) return;
+    const newRole = {
+      id: `c-${Date.now()}`,
+      name: newClearanceName.trim(),
+      color: newClearanceColor,
+      position: clearancesList.length,
+      permissions: ((1n << 0n) | (1n << 1n)).toString(),
+      count: 0,
+    };
+    setClearancesList(prev => [newRole, ...prev]);
+    setSelectedClearanceId(newRole.id);
+    setNewClearanceName('');
+  };
+
   useEffect(() => {
     setNameInput(serverName);
   }, [serverName, isOpen]);
-
-  if (!isOpen) return null;
 
   const handleCreateEmoji = (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,29 +241,109 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
 
           {activeTab === 'roles' && (
             <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-white mb-1">Clearances & Roles</h3>
-                <p className="text-xs text-[#949ba4]">Use roles to group server transmitters and assign clearance permissions.</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-0.5">Clearances & Roles (64-Bit Bitfield Architecture)</h3>
+                  <p className="text-xs text-[#949ba4]">Configure hierarchy positions, display colors, and granular permission bitfields.</p>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                {[
-                  { name: 'Fleet Admiral', color: '#00f0ff', count: 1, permissions: 'Administrator, Manage Channels, Ban' },
-                  { name: 'Command Staff', color: '#5865f2', count: 2, permissions: 'Manage Messages, Mute Members' },
-                  { name: 'Transmitter', color: '#23a55a', count: 8, permissions: 'Send Messages, Connect Voice' },
-                  { name: '@everyone', color: '#949ba4', count: 11, permissions: 'View Channels, Read History' },
-                ].map((role) => (
-                  <div key={role.name} className="p-3 rounded-[6px] bg-[#111214] border border-[#1f2024] flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: role.color }} />
-                      <div>
-                        <div className="font-semibold text-white">{role.name}</div>
-                        <div className="text-[10px] text-[#949ba4]">{role.permissions}</div>
+              {/* Add Role Header Form */}
+              <form onSubmit={handleAddClearance} className="flex items-center gap-2 p-2 bg-[#111214] border border-[#1f2024] rounded-[6px]">
+                <input
+                  type="text"
+                  value={newClearanceName}
+                  onChange={e => setNewClearanceName(e.target.value)}
+                  placeholder="New Clearance Name (e.g. Flight Officer)"
+                  className="flex-1 bg-[#080809] border border-[#2b2d31] rounded px-2.5 py-1 text-xs text-white placeholder-[#80848e] focus:outline-none focus:border-[#00f0ff]"
+                />
+                <input
+                  type="color"
+                  value={newClearanceColor}
+                  onChange={e => setNewClearanceColor(e.target.value)}
+                  className="w-7 h-7 bg-transparent border-0 cursor-pointer rounded"
+                  title="Clearance Color"
+                />
+                <button
+                  type="submit"
+                  disabled={!newClearanceName.trim()}
+                  className="bg-[#00f0ff] hover:bg-[#00f0ff]/80 text-black font-semibold px-3 py-1 rounded text-xs transition-colors disabled:opacity-40"
+                >
+                  Create Clearance
+                </button>
+              </form>
+
+              {/* Two Column Layout: Clearance Selector & Permission Bit Switches */}
+              <div className="flex gap-4 pt-1">
+                {/* Left Roles List */}
+                <div className="w-52 space-y-1.5 shrink-0">
+                  <div className="text-[10px] font-bold text-[#80848e] uppercase px-1">Clearance Hierarchy</div>
+                  {clearancesList.map((role) => {
+                    const isSelected = selectedClearanceId === role.id;
+                    return (
+                      <div
+                        key={role.id}
+                        onClick={() => setSelectedClearanceId(role.id)}
+                        className={`p-2.5 rounded-[6px] border flex items-center justify-between cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'border-[#00f0ff] bg-[#00f0ff]/10 text-white font-semibold'
+                            : 'border-[#1f2024] bg-[#111214] text-[#949ba4] hover:border-[#35363c]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
+                          <span className="truncate text-xs text-white">{role.name}</span>
+                        </div>
+                        <span className="text-[10px] text-[#80848e] font-mono">Pos {role.position}</span>
                       </div>
+                    );
+                  })}
+                </div>
+
+                {/* Right Permission Bit Switches */}
+                <div className="flex-1 bg-[#111214] border border-[#1f2024] rounded-[8px] p-3.5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#1f2024] pb-2">
+                    <div>
+                      <div className="font-bold text-white text-xs flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedClearance?.color }} />
+                        <span>{selectedClearance?.name} Permissions</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-[#00f0ff]">
+                        Bitfield: 0x{BigInt(selectedClearance?.permissions || 0).toString(16).toUpperCase()}
+                      </span>
                     </div>
-                    <span className="text-[11px] text-[#949ba4]">{role.count} members</span>
                   </div>
-                ))}
+
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {PERMISSION_ITEMS.map(item => {
+                      const currentBits = BigInt(selectedClearance?.permissions || 0);
+                      const isChecked = (currentBits & item.bit) === item.bit || (currentBits & (1n << 29n)) === (1n << 29n);
+                      const isAdm = (currentBits & (1n << 29n)) === (1n << 29n) && item.bit !== (1n << 29n);
+
+                      return (
+                        <div
+                          key={item.label}
+                          className="flex items-center justify-between p-2 rounded bg-[#0b0c0e] border border-[#1f2024]"
+                        >
+                          <div className="pr-3">
+                            <div className="font-semibold text-white text-xs">{item.label}</div>
+                            <div className="text-[10px] text-[#80848e]">{item.desc}</div>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isAdm}
+                              onChange={() => handleTogglePermission(item.bit)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-8 h-4 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#23a55a]"></div>
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           )}

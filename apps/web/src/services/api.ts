@@ -284,6 +284,20 @@ class SubspaceApiClient {
     return res.json();
   }
 
+  public async getVaultFiles(): Promise<VaultFile[]> {
+    const res = await this.fetchAuth(`${API_BASE}/vault/files`);
+    if (!res.ok) throw new Error('Failed to fetch vault files');
+    const data = await res.json();
+    return data.files || [];
+  }
+
+  public async deleteVaultFile(fileId: string): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/vault/files/${fileId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete vault file');
+  }
+
   public async acceptUploadDisclaimer(): Promise<{ hasAcceptedUploadDisclaimer: boolean }> {
     const res = await this.fetchAuth(`${API_BASE}/vault/disclaimer/accept`, {
       method: 'POST',

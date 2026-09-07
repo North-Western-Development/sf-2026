@@ -40,7 +40,11 @@ import {
   Lock,
   FolderPlus,
   Bell,
-  Cloud
+  Cloud,
+  ShieldAlert,
+  HardDrive,
+  Terminal,
+  Network
 } from 'lucide-react';
 import { 
   Modal, 
@@ -70,6 +74,12 @@ import { FullProfileModal } from './FullProfileModal';
 import { MarkdownMessage } from './MarkdownMessage';
 import { UploadDisclaimerModal } from './UploadDisclaimerModal';
 import { CloudDrivePickerModal, CloudTetherItem } from './CloudDrivePickerModal';
+import { SubspaceVaultModal } from './SubspaceVaultModal';
+import { IncidentFlareModal } from './IncidentFlareModal';
+import { CommandConsoleModal } from './CommandConsoleModal';
+import { ArchivalForumView } from './ArchivalForumView';
+import { VisualGalleryView } from './VisualGalleryView';
+import { CreateMeshModal } from './CreateMeshModal';
 
 // Data Interfaces
 interface Beacon {
@@ -263,11 +273,24 @@ export const AppContent: React.FC = () => {
   // Subspace Vault & Cloud Drive Tether States
   const [isUploadDisclaimerOpen, setIsUploadDisclaimerOpen] = useState(false);
   const [isCloudPickerOpen, setIsCloudPickerOpen] = useState(false);
+  const [isSubspaceVaultOpen, setIsSubspaceVaultOpen] = useState(false);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+
+  // Command Console (Staff Administration) & Incident Flare (Reporting) States
+  const [isCommandConsoleOpen, setIsCommandConsoleOpen] = useState(false);
+  const [incidentFlareTarget, setIncidentFlareTarget] = useState<{
+    targetType: 'transmission' | 'transmitter' | 'beacon';
+    targetId: string;
+    targetLabel: string;
+    snippet?: string;
+  } | null>(null);
+
+  // Subspace Mesh (Group DM) Modal State
+  const [isCreateMeshOpen, setIsCreateMeshOpen] = useState(false);
 
   const [isVoiceChatOpen, setIsVoiceChatOpen] = useState(false);
   const [isUserPopoutOpen, setIsUserPopoutOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'profile' | 'appearance' | 'voice' | 'badges'>('appearance');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'profile' | 'appearance' | 'voice' | 'badges' | 'security'>('appearance');
 
   // Floating Popover for clicking users anywhere in Chat or Member List
   const [hoverUserPopout, setHoverUserPopout] = useState<{
@@ -320,7 +343,7 @@ export const AppContent: React.FC = () => {
   const [voiceUsers, setVoiceUsers] = useState<Record<string, VoiceUser[]>>({});
 
   // Direct Message Conversations
-  const [directConversations] = useState<DirectConversation[]>([
+  const [directConversations, setDirectConversations] = useState<DirectConversation[]>([
     {
       id: 'dm-vance',
       user: {
@@ -1122,6 +1145,19 @@ export const AppContent: React.FC = () => {
         showToast('Message text copied');
       },
     },
+    {
+      label: 'Report Transmission (Incident Flare)',
+      danger: true,
+      icon: <ShieldAlert className="w-3.5 h-3.5 text-[#f23f43]" />,
+      onClick: () => {
+        setIncidentFlareTarget({
+          targetType: 'transmission',
+          targetId: message.id,
+          targetLabel: `Transmission from ${message.author}`,
+          snippet: message.content,
+        });
+      },
+    },
     { separator: true },
     {
       label: 'Delete Message',
@@ -1140,6 +1176,18 @@ export const AppContent: React.FC = () => {
         const dm = directConversations.find(d => d.user.id === user.id);
         if (dm) setSelectedDmId(dm.id);
         else showToast(`Opening DM with ${user.name}`);
+      },
+    },
+    {
+      label: 'Report Transmitter (Incident Flare)',
+      danger: true,
+      icon: <ShieldAlert className="w-3.5 h-3.5 text-[#f23f43]" />,
+      onClick: () => {
+        setIncidentFlareTarget({
+          targetType: 'transmitter',
+          targetId: user.id,
+          targetLabel: `@${user.callsign}`,
+        });
       },
     },
     {
@@ -1201,6 +1249,13 @@ export const AppContent: React.FC = () => {
         icon: <Plus className="w-3.5 h-3.5" />,
         onClick: () => {
           fileInputRef.current?.click();
+        },
+      },
+      {
+        label: 'Open Subspace Vault (File Drive)',
+        icon: <HardDrive className="w-3.5 h-3.5 text-[#23a55a]" />,
+        onClick: () => {
+          setIsSubspaceVaultOpen(true);
         },
       },
       {
@@ -1634,7 +1689,7 @@ export const AppContent: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsServerMenuOpen(false);
-                      showToast('Create Relay Channel dialog');
+                      setIsCreateChannelOpen(true);
                     }}
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
                   >
@@ -1644,13 +1699,25 @@ export const AppContent: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsServerMenuOpen(false);
-                      showToast('Create Category');
+                      setIsCreateCategoryOpen(true);
                     }}
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
                   >
                     <span>Create Category</span>
                     <FolderPlus className="w-3.5 h-3.5 text-[#949ba4]" />
                   </button>
+                  {((currentUser.staffRank ?? 0) > 0) && (
+                    <button
+                      onClick={() => {
+                        setIsServerMenuOpen(false);
+                        setIsCommandConsoleOpen(true);
+                      }}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#00f0ff] hover:bg-[#00f0ff]/10 font-semibold transition-colors"
+                    >
+                      <span>Command Console</span>
+                      <Terminal className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setIsServerMenuOpen(false);
@@ -2054,6 +2121,13 @@ export const AppContent: React.FC = () => {
                     className="bg-[#23a55a] text-white px-2.5 py-1 rounded-[4px] text-xs font-semibold hover:bg-[#1f934f] transition-colors ml-2"
                   >
                     Add Friend
+                  </button>
+                  <button
+                    onClick={() => setIsCreateMeshOpen(true)}
+                    className="bg-[#1f2024] hover:bg-[#2b2d31] text-white px-2.5 py-1 rounded-[4px] text-xs font-semibold flex items-center gap-1.5 transition-colors border border-[#35363c]"
+                  >
+                    <Network className="w-3.5 h-3.5 text-[#00f0ff]" />
+                    <span>New Group DM</span>
                   </button>
                 </div>
               </div>
@@ -2520,7 +2594,6 @@ export const AppContent: React.FC = () => {
 
             {/* Split Voice View or Standard Feed */}
             <div className="flex-1 flex min-h-0 relative">
-              {/* If Channel is Voice, show Discord-style Voice Lounge Stage */}
               {currentChannel.type === 'voice' ? (
                 <div className="flex-1 flex flex-col bg-[#000000] p-6 items-center justify-center relative select-none">
                   {/* Voice Grid (1 video/avatar tile per active participant; if alone, 1 user + 1 invite/activity card) */}
@@ -2630,7 +2703,7 @@ export const AppContent: React.FC = () => {
                       }`}
                       title={isDeafened ? 'Undeafen' : 'Deafen'}
                     >
-                      <Headphones className="w-4 h-4" />
+                      {isDeafened ? <Headphones className="w-4 h-4" /> : <Headphones className="w-4 h-4" />}
                     </button>
                     <button
                       onClick={() => showToast('Holo-Cast Video Toggled')}
@@ -2662,6 +2735,23 @@ export const AppContent: React.FC = () => {
                     </button>
                   </div>
                 </div>
+              ) : currentChannel.type === 'archive' ? (
+                <ArchivalForumView
+                  relayId={currentChannel.id}
+                  relayName={currentChannel.name}
+                  currentUser={currentUser}
+                  onOpenUserProfile={(u) => handleOpenUserPopout({ clientX: 300, clientY: 200 } as any, u)}
+                />
+              ) : currentChannel.type === 'gallery' ? (
+                <VisualGalleryView
+                  relayId={currentChannel.id}
+                  relayName={currentChannel.name}
+                  currentUser={currentUser}
+                  onRequestDisclaimer={(f) => {
+                    setPendingUploadFile(f);
+                    setIsUploadDisclaimerOpen(true);
+                  }}
+                />
               ) : (
                 /* Standard Messages Feed */
                 <div className="flex-1 flex flex-col min-w-0 bg-[#000000]">
@@ -3094,6 +3184,14 @@ export const AppContent: React.FC = () => {
             >
               Voice & Video
             </button>
+            <button
+              onClick={() => setActiveSettingsTab('security')}
+              className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
+                activeSettingsTab === 'security' ? 'bg-[#35373c] text-white font-semibold' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+              }`}
+            >
+              Security & 2FA
+            </button>
           </div>
 
           {/* Settings Tab Content */}
@@ -3208,6 +3306,75 @@ export const AppContent: React.FC = () => {
                   <p>RTC Engine: LiveKit Subspace WebRTC</p>
                   <p>Audio Codec: Opus 128 kbps Quantum Optimized</p>
                   <p>Echo Cancellation & Noise Suppression: Enabled</p>
+                </div>
+              </div>
+            )}
+
+            {activeSettingsTab === 'security' && (
+              <div className="space-y-5 text-xs">
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-0.5">Authentication & Cryptography</h3>
+                  <p className="text-[#949ba4] text-[11px]">Manage Two-Factor Authentication, WebAuthn passkeys, and quantum E2EE keys.</p>
+                </div>
+
+                {/* 2FA TOTP Card */}
+                <div className="bg-[#111214] border border-[#1f2024] p-4 rounded-[8px] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-white text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-[#23a55a]" />
+                        <span>Two-Factor Authentication (TOTP)</span>
+                      </div>
+                      <p className="text-[11px] text-[#949ba4] mt-0.5">
+                        Require an authenticator code (Google Authenticator, Authy, 1Password) upon login.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => showToast('TOTP 2FA configuration active for account.')}
+                      className="bg-[#23a55a] hover:bg-[#1f934f] text-white font-semibold px-3 py-1.5 rounded text-xs transition-colors"
+                    >
+                      Active
+                    </button>
+                  </div>
+
+                  <div className="pt-2 border-t border-[#1f2024] flex items-center justify-between text-[11px]">
+                    <span className="text-[#80848e]">10 Emergency Backup Recovery Codes available</span>
+                    <button
+                      onClick={() => showToast('Recovery codes downloaded to secure file.')}
+                      className="text-[#00f0ff] hover:underline"
+                    >
+                      View Backup Codes
+                    </button>
+                  </div>
+                </div>
+
+                {/* WebAuthn / Passkeys */}
+                <div className="bg-[#111214] border border-[#1f2024] p-4 rounded-[8px] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-white text-xs">FIDO2 / WebAuthn Passkeys</div>
+                      <p className="text-[11px] text-[#949ba4] mt-0.5">
+                        Sign in without passwords using hardware security keys, Windows Hello, or Touch ID.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => showToast('Passkey registration prompt dispatched.')}
+                      className="bg-[#1f2024] hover:bg-[#2b2d31] text-white font-semibold px-3 py-1.5 rounded text-xs transition-colors border border-[#35363c]"
+                    >
+                      Register Passkey
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quantum Double Ratchet E2EE Key Info */}
+                <div className="bg-[#111214] border border-[#1f2024] p-4 rounded-[8px] space-y-2">
+                  <div className="font-bold text-white text-xs">Subspace Quantum Ratchet (QKD-E2EE)</div>
+                  <p className="text-[11px] text-[#949ba4]">
+                    Point-to-Point direct transmissions are end-to-end encrypted with X25519 & Kyber-1024 hybrid ratchets.
+                  </p>
+                  <div className="p-2 bg-[#080809] border border-[#1f2024] rounded font-mono text-[11px] text-[#00f0ff]">
+                    Local Identity Fingerprint: {currentUser.quantumKeyFingerprint || 'SF-QKD-9821-B07F-11AE'}
+                  </div>
                 </div>
               </div>
             )}
@@ -3394,6 +3561,65 @@ export const AppContent: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* 19. Subspace Vault Personal File Drive Modal */}
+      <SubspaceVaultModal
+        isOpen={isSubspaceVaultOpen}
+        onClose={() => setIsSubspaceVaultOpen(false)}
+        onInsertAttachmentTag={(tag) => setMessageInput(prev => prev ? `${prev} ${tag}` : tag)}
+        onRequestDisclaimer={(file) => {
+          setPendingUploadFile(file);
+          setIsUploadDisclaimerOpen(true);
+        }}
+      />
+
+      {/* 20. Incident Flare Reporting Modal */}
+      {incidentFlareTarget && (
+        <IncidentFlareModal
+          isOpen={Boolean(incidentFlareTarget)}
+          onClose={() => setIncidentFlareTarget(null)}
+          targetType={incidentFlareTarget.targetType}
+          targetId={incidentFlareTarget.targetId}
+          targetLabel={incidentFlareTarget.targetLabel}
+          snippet={incidentFlareTarget.snippet}
+        />
+      )}
+
+      {/* 21. Command Console Staff Dashboard Modal */}
+      <CommandConsoleModal
+        isOpen={isCommandConsoleOpen}
+        onClose={() => setIsCommandConsoleOpen(false)}
+        staffRank={currentUser.staffRank || 0}
+      />
+
+      {/* 22. Subspace Mesh (Group DM) Creation Modal */}
+      <CreateMeshModal
+        isOpen={isCreateMeshOpen}
+        onClose={() => setIsCreateMeshOpen(false)}
+        friends={friendsList}
+        onMeshCreated={(mesh) => {
+          showToast(`Subspace Mesh "${mesh.name}" established.`);
+          setSelectedBeaconId('home');
+          // Add to direct conversations list
+          setDirectConversations(prev => [
+            {
+              id: mesh.id,
+              user: {
+                id: mesh.id,
+                name: mesh.name,
+                callsign: mesh.name.toLowerCase().replace(/\s+/g, '_'),
+                discriminator: 'MESH',
+                avatar: '🌐',
+                status: 'online',
+                statusText: `${mesh.memberCount || 2} mesh participants`,
+              },
+              e2eeFingerprint: `SF-MESH-${mesh.id.slice(0, 4).toUpperCase()}`,
+            },
+            ...prev,
+          ]);
+          setSelectedDmId(mesh.id);
+        }}
+      />
     </div>
   );
 };
