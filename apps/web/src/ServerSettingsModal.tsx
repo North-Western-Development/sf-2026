@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Upload, Plus, Edit2, Check, X, Users, Eye } from 'lucide-react';
+import { Trash2, Upload, Plus, Edit2, Check, X, Users, Eye, Bell, Shield, Activity } from 'lucide-react';
 import { Modal } from '@subspace/ui';
 import { api } from './services/api';
 
@@ -14,6 +14,7 @@ export interface ServerSettingsModalProps {
   onClose: () => void;
   serverName: string;
   serverId: string;
+  initialTab?: 'overview' | 'roles' | 'channels' | 'emojis' | 'onboarding' | 'discovery' | 'notifications' | 'privacy' | 'insights' | 'audit';
   onUpdateServerName?: (newName: string) => void;
   onDeleteServer?: () => void;
   emojis?: CustomServerEmoji[];
@@ -27,6 +28,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   onClose,
   serverName,
   serverId,
+  initialTab = 'overview',
   onUpdateServerName,
   onDeleteServer,
   emojis = [],
@@ -34,8 +36,21 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   onRenameEmoji,
   onDeleteEmoji,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'channels' | 'emojis' | 'onboarding' | 'discovery' | 'audit'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'channels' | 'emojis' | 'onboarding' | 'discovery' | 'notifications' | 'privacy' | 'insights' | 'audit'>(initialTab);
   const [nameInput, setNameInput] = useState(serverName);
+
+  // Notification settings state
+  const [notifyLevel, setNotifyLevel] = useState<'all' | 'mentions' | 'nothing'>('mentions');
+  const [suppressEveryone, setSuppressEveryone] = useState(false);
+  const [suppressRoles, setSuppressRoles] = useState(false);
+  const [muteServer, setMuteServer] = useState(false);
+  const [notifSaved, setNotifSaved] = useState(false);
+
+  // Privacy & Safety settings state
+  const [allowDms, setAllowDms] = useState(true);
+  const [filterExplicit, setFilterExplicit] = useState<'scan_all' | 'scan_non_friends' | 'disabled'>('scan_all');
+  const [restrictedActivity, setRestrictedActivity] = useState(false);
+  const [privacySaved, setPrivacySaved] = useState(false);
 
   // Emoji management state
   const [newEmojiName, setNewEmojiName] = useState('');
@@ -158,9 +173,56 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
     } catch { /* noop */ }
   };
 
+  const handleSaveNotifications = () => {
+    try {
+      localStorage.setItem(`subspace_notif_${serverId}`, JSON.stringify({
+        notifyLevel,
+        suppressEveryone,
+        suppressRoles,
+        muteServer,
+      }));
+      setNotifSaved(true);
+      setTimeout(() => setNotifSaved(false), 2000);
+    } catch { /* noop */ }
+  };
+
+  const handleSavePrivacy = () => {
+    try {
+      localStorage.setItem(`subspace_privacy_${serverId}`, JSON.stringify({
+        allowDms,
+        filterExplicit,
+        restrictedActivity,
+      }));
+      setPrivacySaved(true);
+      setTimeout(() => setPrivacySaved(false), 2000);
+    } catch { /* noop */ }
+  };
+
   useEffect(() => {
     setNameInput(serverName);
-  }, [serverName, isOpen]);
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+    if (serverId) {
+      try {
+        const savedNotif = localStorage.getItem(`subspace_notif_${serverId}`);
+        if (savedNotif) {
+          const parsed = JSON.parse(savedNotif);
+          if (parsed.notifyLevel) setNotifyLevel(parsed.notifyLevel);
+          if (typeof parsed.suppressEveryone === 'boolean') setSuppressEveryone(parsed.suppressEveryone);
+          if (typeof parsed.suppressRoles === 'boolean') setSuppressRoles(parsed.suppressRoles);
+          if (typeof parsed.muteServer === 'boolean') setMuteServer(parsed.muteServer);
+        }
+        const savedPrivacy = localStorage.getItem(`subspace_privacy_${serverId}`);
+        if (savedPrivacy) {
+          const parsed = JSON.parse(savedPrivacy);
+          if (typeof parsed.allowDms === 'boolean') setAllowDms(parsed.allowDms);
+          if (parsed.filterExplicit) setFilterExplicit(parsed.filterExplicit);
+          if (typeof parsed.restrictedActivity === 'boolean') setRestrictedActivity(parsed.restrictedActivity);
+        }
+      } catch { /* noop */ }
+    }
+  }, [serverName, isOpen, initialTab, serverId]);
 
   const handleCreateEmoji = (e: React.FormEvent) => {
     e.preventDefault();
@@ -241,6 +303,33 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
             }`}
           >
             Discovery
+          </button>
+          <button
+            onClick={() => setActiveTab('notifications')}
+            className={`text-left px-2.5 py-1.5 rounded-[4px] transition-colors flex items-center gap-2 ${
+              activeTab === 'notifications' ? 'bg-[#1f2024] text-white font-semibold' : 'text-[#949ba4] hover:bg-[#16171a]'
+            }`}
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>Notification Settings</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('privacy')}
+            className={`text-left px-2.5 py-1.5 rounded-[4px] transition-colors flex items-center gap-2 ${
+              activeTab === 'privacy' ? 'bg-[#1f2024] text-white font-semibold' : 'text-[#949ba4] hover:bg-[#16171a]'
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>Privacy & Safety</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('insights')}
+            className={`text-left px-2.5 py-1.5 rounded-[4px] transition-colors flex items-center gap-2 ${
+              activeTab === 'insights' ? 'bg-[#1f2024] text-white font-semibold' : 'text-[#949ba4] hover:bg-[#16171a]'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>Server Insights</span>
           </button>
           <button
             onClick={() => setActiveTab('audit')}
@@ -754,6 +843,305 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                     <Check className="w-3.5 h-3.5" /> Saved
                   </span>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'notifications' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-bold text-white mb-1">Server Notification Settings</h3>
+                <p className="text-xs text-[#949ba4]">Configure default transmission alerts and frequency ping rules for this beacon.</p>
+              </div>
+
+              {/* Default Notification Level */}
+              <div className="space-y-3">
+                <label className="text-[11px] uppercase font-bold text-[#b5bac1] tracking-wider">
+                  Default Notification Level
+                </label>
+                <div className="space-y-2">
+                  {[
+                    { id: 'all', label: 'All Messages', desc: 'Get notified for every transmission sent in this beacon.' },
+                    { id: 'mentions', label: 'Only @mentions', desc: 'Recommended — Only receive alerts when you or your clearance roles are mentioned.' },
+                    { id: 'nothing', label: 'Nothing', desc: 'Suppress all notification badges and push alerts.' },
+                  ].map(option => (
+                    <label
+                      key={option.id}
+                      onClick={() => setNotifyLevel(option.id as any)}
+                      className={`flex items-start gap-3 p-3 rounded-[8px] border cursor-pointer transition-all ${
+                        notifyLevel === option.id
+                          ? 'bg-[#1a1b1e] border-[#00f0ff]/60 shadow-[0_0_12px_rgba(0,240,255,0.1)]'
+                          : 'bg-[#111214] border-[#1f2024] hover:bg-[#16171a]'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="notifyLevel"
+                        checked={notifyLevel === option.id}
+                        onChange={() => setNotifyLevel(option.id as any)}
+                        className="mt-0.5 accent-[#00f0ff]"
+                      />
+                      <div>
+                        <div className="text-xs font-semibold text-white">{option.label}</div>
+                        <div className="text-[11px] text-[#949ba4] mt-0.5">{option.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Ping Suppressions */}
+              <div className="space-y-3 pt-2">
+                <label className="text-[11px] uppercase font-bold text-[#b5bac1] tracking-wider">
+                  Notification Overrides
+                </label>
+                
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024] flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-white">Suppress @everyone and @here</div>
+                    <div className="text-[11px] text-[#949ba4] mt-0.5">Prevent high-priority broadcast pings from creating desktop or mobile pings.</div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={suppressEveryone}
+                      onChange={() => setSuppressEveryone(v => !v)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                  </label>
+                </div>
+
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024] flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-white">Suppress All Role @mentions</div>
+                    <div className="text-[11px] text-[#949ba4] mt-0.5">Silence mentions directed at your specific clearance and tactical roles.</div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={suppressRoles}
+                      onChange={() => setSuppressRoles(v => !v)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                  </label>
+                </div>
+
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024] flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-white">Mute Fleet Station</div>
+                    <div className="text-[11px] text-[#949ba4] mt-0.5">Silences all unread notifications, sound alerts, and channel unread pill markers.</div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={muteServer}
+                      onChange={() => setMuteServer(v => !v)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#f23f43]" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleSaveNotifications}
+                  className="px-5 py-2 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold text-xs rounded-[6px] transition-colors"
+                >
+                  Save Notification Settings
+                </button>
+                {notifSaved && (
+                  <span className="text-xs text-[#23a55a] flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Saved
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'privacy' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-bold text-white mb-1">Privacy & Safety Controls</h3>
+                <p className="text-xs text-[#949ba4]">Manage member interaction boundaries and incoming transmission filtering.</p>
+              </div>
+
+              {/* Direct Messages */}
+              <div className="space-y-3">
+                <label className="text-[11px] uppercase font-bold text-[#b5bac1] tracking-wider">
+                  Direct Messages
+                </label>
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024] flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-white">Allow Direct Transmissions</div>
+                    <div className="text-[11px] text-[#949ba4] mt-0.5">Allow members in this beacon to send you private quantum direct transmissions.</div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={allowDms}
+                      onChange={() => setAllowDms(v => !v)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Explicit Content Filter */}
+              <div className="space-y-3 pt-2">
+                <label className="text-[11px] uppercase font-bold text-[#b5bac1] tracking-wider">
+                  Explicit Transmission Filter
+                </label>
+                <p className="text-xs text-[#949ba4]">Automatically scan and quarantine transmissions containing potential security or safety hazards.</p>
+                <div className="space-y-2">
+                  {[
+                    { id: 'scan_all', label: 'Scan transmissions from all members', desc: 'Recommended for maximum station telemetry and operative safety.' },
+                    { id: 'scan_non_friends', label: 'Do not scan transmissions from trusted friends', desc: 'Transmissions from verified friend operatives will bypass scanner protocols.' },
+                    { id: 'disabled', label: 'Do not scan any transmissions', desc: 'Transmissions will not be inspected. Not recommended for public beacons.' },
+                  ].map(lvl => (
+                    <label
+                      key={lvl.id}
+                      onClick={() => setFilterExplicit(lvl.id as any)}
+                      className={`flex items-start gap-3 p-3 rounded-[8px] border cursor-pointer transition-all ${
+                        filterExplicit === lvl.id
+                          ? 'bg-[#1a1b1e] border-[#23a55a]/60 shadow-[0_0_12px_rgba(35,165,90,0.1)]'
+                          : 'bg-[#111214] border-[#1f2024] hover:bg-[#16171a]'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="filterExplicit"
+                        checked={filterExplicit === lvl.id}
+                        onChange={() => setFilterExplicit(lvl.id as any)}
+                        className="mt-0.5 accent-[#23a55a]"
+                      />
+                      <div>
+                        <div className="text-xs font-semibold text-white">{lvl.label}</div>
+                        <div className="text-[11px] text-[#949ba4] mt-0.5">{lvl.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Activity Sharing */}
+              <div className="space-y-3 pt-2">
+                <label className="text-[11px] uppercase font-bold text-[#b5bac1] tracking-wider">
+                  Telemetry Sharing
+                </label>
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024] flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-white">Restrict Tactical Activity Sharing</div>
+                    <div className="text-[11px] text-[#949ba4] mt-0.5">Hide your current game or Holo-Cast activity status from operatives in this server.</div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={restrictedActivity}
+                      onChange={() => setRestrictedActivity(v => !v)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-[#2b2d31] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#23a55a]" />
+                  </label>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleSavePrivacy}
+                  className="px-5 py-2 bg-[#5865f2] hover:bg-[#4752c4] text-white font-semibold text-xs rounded-[6px] transition-colors"
+                >
+                  Save Privacy Settings
+                </button>
+                {privacySaved && (
+                  <span className="text-xs text-[#23a55a] flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Saved
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'insights' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-bold text-white mb-1">Server Insights & Telemetry</h3>
+                <p className="text-xs text-[#949ba4]">Fleet station transmission metrics, operative engagement, and frequency stability.</p>
+              </div>
+
+              {/* Metric Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024]">
+                  <div className="text-[10px] uppercase font-bold text-[#80848e]">Active Operatives</div>
+                  <div className="text-xl font-bold text-white mt-1">48</div>
+                  <div className="text-[10px] text-[#23a55a] mt-0.5 font-medium">+12% vs last week</div>
+                </div>
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024]">
+                  <div className="text-[10px] uppercase font-bold text-[#80848e]">Voice Minutes</div>
+                  <div className="text-xl font-bold text-[#00f0ff] mt-1">3,420m</div>
+                  <div className="text-[10px] text-[#23a55a] mt-0.5 font-medium">+28% frequency</div>
+                </div>
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024]">
+                  <div className="text-[10px] uppercase font-bold text-[#80848e]">Msg Velocity</div>
+                  <div className="text-xl font-bold text-white mt-1">142/hr</div>
+                  <div className="text-[10px] text-[#949ba4] mt-0.5 font-medium">Peak: 480/hr</div>
+                </div>
+                <div className="p-3.5 rounded-[8px] bg-[#111214] border border-[#1f2024]">
+                  <div className="text-[10px] uppercase font-bold text-[#80848e]">Retention Rate</div>
+                  <div className="text-xl font-bold text-[#23a55a] mt-1">96.4%</div>
+                  <div className="text-[10px] text-[#23a55a] mt-0.5 font-medium">Quantum-stable</div>
+                </div>
+              </div>
+
+              {/* Telemetry Activity Chart (CSS Bar Representation) */}
+              <div className="p-4 rounded-[8px] bg-[#111214] border border-[#1f2024] space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold text-white">Transmission Velocity (Last 12 Hours)</div>
+                  <span className="text-[10px] text-[#00f0ff] font-mono">LIVE TELEMETRY</span>
+                </div>
+
+                <div className="h-28 flex items-end gap-2 pt-4 px-2 border-b border-[#1f2024]">
+                  {[
+                    { hour: '12h', val: 35 },
+                    { hour: '11h', val: 50 },
+                    { hour: '10h', val: 25 },
+                    { hour: '9h', val: 65 },
+                    { hour: '8h', val: 80 },
+                    { hour: '7h', val: 45 },
+                    { hour: '6h', val: 90 },
+                    { hour: '5h', val: 100 },
+                    { hour: '4h', val: 75 },
+                    { hour: '3h', val: 60 },
+                    { hour: '2h', val: 85 },
+                    { hour: 'Now', val: 95 },
+                  ].map((bar, i) => (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
+                      <div
+                        style={{ height: `${bar.val}%` }}
+                        className="w-full bg-gradient-to-t from-[#00f0ff]/40 to-[#00f0ff] rounded-t-[3px] group-hover:brightness-125 transition-all shadow-[0_0_8px_rgba(0,240,255,0.2)]"
+                        title={`${bar.hour}: ${bar.val * 2} transmissions`}
+                      />
+                      <span className="text-[9px] text-[#80848e] font-mono truncate">{bar.hour}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Station Health Diagnostic */}
+              <div className="p-3.5 rounded-[8px] bg-[#00f0ff]/5 border border-[#00f0ff]/20 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#00f0ff] animate-pulse" />
+                  <div>
+                    <div className="text-xs font-semibold text-white">Quantum Link Stability: 99.8%</div>
+                    <div className="text-[11px] text-[#949ba4] mt-0.5">Subspace frequency coherence is optimal across all relays.</div>
+                  </div>
+                </div>
+                <span className="text-[11px] font-mono text-[#00f0ff] bg-[#00f0ff]/10 px-2 py-1 rounded">ALL SYSTEMS NOMINAL</span>
               </div>
             </div>
           )}

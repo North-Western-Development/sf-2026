@@ -67,6 +67,8 @@ import { api, ApiBeacon, ApiRelay } from './services/api';
 import { gateway } from './services/gateway';
 import { InviteModal } from './InviteModal';
 import { ServerSettingsModal } from './ServerSettingsModal';
+import { ActivityLauncherModal, ActivityItem } from './ActivityLauncherModal';
+import { SelectFriendModal } from './SelectFriendModal';
 import { CreateServerModal } from './CreateServerModal';
 import { CreateChannelModal } from './CreateChannelModal';
 import { CreateCategoryModal } from './CreateCategoryModal';
@@ -145,10 +147,10 @@ interface DirectConversation {
   user: UserProfile;
   unreadCount?: number;
   lastMessage?: string;
-  e2eeFingerprint: string;
+  e2eeFingerprint?: string;
 }
 
-interface FriendItem {
+export interface FriendItem {
   id: string;
   user: UserProfile;
   relationship: 'online' | 'all' | 'pending' | 'blocked';
@@ -278,7 +280,13 @@ export const AppContent: React.FC = () => {
   const [isQuickScanOpen, setIsQuickScanOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
+  const [serverSettingsTab, setServerSettingsTab] = useState<'overview' | 'roles' | 'channels' | 'emojis' | 'onboarding' | 'discovery' | 'notifications' | 'privacy' | 'insights' | 'audit'>('overview');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isActivityLauncherOpen, setIsActivityLauncherOpen] = useState(false);
+  const [activeActivity, setActiveActivity] = useState<ActivityItem | null>(null);
+  const [isSelectFriendModalOpen, setIsSelectFriendModalOpen] = useState(false);
+  const [isVideoOn, setIsVideoOn] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isServerMenuOpen, setIsServerMenuOpen] = useState(false);
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
@@ -297,6 +305,8 @@ export const AppContent: React.FC = () => {
 
   // Custom Server Emojis
   const [beaconEmojisList, setBeaconEmojisList] = useState<{ id: string; name: string; url: string }[]>([]);
+  const [showBackupCodes, setShowBackupCodes] = useState(false);
+  const [passkeyRegistered, setPasskeyRegistered] = useState(false);
 
   // Subspace Vault & Cloud Drive Tether States
   const [isUploadDisclaimerOpen, setIsUploadDisclaimerOpen] = useState(false);
@@ -1034,6 +1044,9 @@ export const AppContent: React.FC = () => {
     if (inVoiceRoom) {
       gateway.updateVoiceState(null, false, false, false);
       setInVoiceRoom(null);
+      setIsVideoOn(false);
+      setIsScreenSharing(false);
+      setActiveActivity(null);
       showToast('Voice channel disconnected');
     }
   };
@@ -1249,7 +1262,14 @@ export const AppContent: React.FC = () => {
       label: 'Leave Server',
       danger: true,
       icon: <Trash2 className="w-3.5 h-3.5" />,
-      onClick: () => showToast(`Left ${beacon.name}`),
+      onClick: () => {
+        setBeacons(prev => prev.filter(b => b.id !== beacon.id));
+        if (selectedBeaconId === beacon.id) {
+          setSelectedBeaconId('home');
+          setSelectedDmId('friends');
+        }
+        showToast(`Left ${beacon.name}`);
+      },
     },
   ];
 
@@ -1257,7 +1277,23 @@ export const AppContent: React.FC = () => {
     {
       label: 'Mark As Read',
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" />,
-      onClick: () => showToast(`Marked #${channel.name} as read`),
+      onClick: () => {
+        setServerData(prev => {
+          const s = prev[selectedBeaconId];
+          if (!s) return prev;
+          return {
+            ...prev,
+            [selectedBeaconId]: {
+              ...s,
+              categories: s.categories.map(cat => ({
+                ...cat,
+                channels: cat.channels.map(c => c.id === channel.id ? { ...c, unread: false } : c),
+              })),
+            },
+          };
+        });
+        showToast(`Marked #${channel.name} as read`);
+      },
     },
     {
       label: 'Copy Channel ID',
@@ -1336,9 +1372,17 @@ export const AppContent: React.FC = () => {
       icon: <MessageSquare className="w-3.5 h-3.5" />,
       onClick: () => {
         setSelectedBeaconId('home');
-        const dm = directConversations.find(d => d.user.id === user.id);
-        if (dm) setSelectedDmId(dm.id);
-        else showToast(`Opening DM with ${user.name}`);
+        let dm = directConversations.find(d => d.user.id === user.id);
+        if (!dm) {
+          const newDm: DirectConversation = {
+            id: `dm-${user.id}`,
+            user: user,
+            unreadCount: 0,
+          };
+          setDirectConversations(prev => [newDm, ...prev]);
+          dm = newDm;
+        }
+        setSelectedDmId(dm.id);
       },
     },
     {
@@ -1433,7 +1477,13 @@ export const AppContent: React.FC = () => {
             {
               label: 'Quantum Key Exchange (Double Ratchet)',
               icon: <Key className="w-3.5 h-3.5 text-[#23a55a]" />,
-              onClick: () => showToast('Double Ratchet key handshake renewed'),
+              onClick: () => {
+                if (activeDm) {
+                  const newFp = `SF-QKD-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+                  setDirectConversations(prev => prev.map(d => d.id === activeDm.id ? { ...d, e2eeFingerprint: newFp } : d));
+                  showToast(`Double Ratchet key handshake renewed (${newFp})`);
+                }
+              },
             },
           ]
         : []),
@@ -1777,7 +1827,7 @@ export const AppContent: React.FC = () => {
                   type="button"
                   className="hover:text-white cursor-pointer" 
                   title="Create DM" 
-                  onClick={() => showToast('Start a new direct conversation')}
+                  onClick={() => setIsSelectFriendModalOpen(true)}
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
@@ -1818,6 +1868,11 @@ export const AppContent: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          setDirectConversations(prev => prev.filter(d => d.id !== dm.id));
+                          if (selectedDmId === dm.id) {
+                            const remaining = directConversations.filter(d => d.id !== dm.id);
+                            setSelectedDmId(remaining.length > 0 ? remaining[0].id : 'friends');
+                          }
                           showToast(`Closed DM with ${dm.user.name}`);
                         }}
                         className="opacity-0 group-hover:opacity-100 p-1 hover:text-white rounded"
@@ -1877,6 +1932,7 @@ export const AppContent: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsServerMenuOpen(false);
+                      setServerSettingsTab('overview');
                       setIsServerSettingsOpen(true);
                     }}
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
@@ -1887,7 +1943,8 @@ export const AppContent: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsServerMenuOpen(false);
-                      showToast('Server Insights telemetry');
+                      setServerSettingsTab('insights');
+                      setIsServerSettingsOpen(true);
                     }}
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
                   >
@@ -1929,7 +1986,8 @@ export const AppContent: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsServerMenuOpen(false);
-                      showToast('Notification Settings');
+                      setServerSettingsTab('notifications');
+                      setIsServerSettingsOpen(true);
                     }}
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
                   >
@@ -1939,7 +1997,8 @@ export const AppContent: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsServerMenuOpen(false);
-                      showToast('Privacy & Safety Settings');
+                      setServerSettingsTab('privacy');
+                      setIsServerSettingsOpen(true);
                     }}
                     className="w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-[#dbdee1] hover:bg-[#1a1b1e] hover:text-white transition-colors"
                   >
@@ -2189,14 +2248,28 @@ export const AppContent: React.FC = () => {
           </div>
           <div className="flex gap-1.5">
             <button
-              onClick={() => showToast('Video stream toggled')}
-              className="flex-1 bg-[#16171a] hover:bg-[#202226] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border border-[#1f2024] text-[#dbdee1] hover:text-white transition-colors"
+              onClick={() => {
+                setIsVideoOn(p => !p);
+                showToast(!isVideoOn ? 'Video stream activated' : 'Video stream stopped');
+              }}
+              className={`flex-1 py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border transition-colors ${
+                isVideoOn 
+                  ? 'bg-[#23a55a] text-white border-[#23a55a]' 
+                  : 'bg-[#16171a] hover:bg-[#202226] border-[#1f2024] text-[#dbdee1] hover:text-white'
+              }`}
             >
               <Video className="w-3.5 h-3.5" /> Video
             </button>
             <button
-              onClick={() => showToast('Screen share toggled')}
-              className="flex-1 bg-[#16171a] hover:bg-[#202226] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border border-[#1f2024] text-[#dbdee1] hover:text-white transition-colors"
+              onClick={() => {
+                setIsScreenSharing(p => !p);
+                showToast(!isScreenSharing ? 'Screen share activated' : 'Screen share ended');
+              }}
+              className={`flex-1 py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border transition-colors ${
+                isScreenSharing 
+                  ? 'bg-[#23a55a] text-white border-[#23a55a]' 
+                  : 'bg-[#16171a] hover:bg-[#202226] border-[#1f2024] text-[#dbdee1] hover:text-white'
+              }`}
             >
               <Monitor className="w-3.5 h-3.5" /> Share Screen
             </button>
@@ -2467,9 +2540,17 @@ export const AppContent: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
-                              const dm = directConversations.find(d => d.user.id === item.user.id);
-                              if (dm) setSelectedDmId(dm.id);
-                              else showToast(`Opening DM with ${item.user.name}`);
+                              let dm = directConversations.find(d => d.user.id === item.user.id);
+                              if (!dm) {
+                                const newDm: DirectConversation = {
+                                  id: `dm-${item.user.id}`,
+                                  user: item.user,
+                                  unreadCount: 0,
+                                };
+                                setDirectConversations(prev => [newDm, ...prev]);
+                                dm = newDm;
+                              }
+                              setSelectedDmId(dm.id);
                             }}
                             className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
                             title="Message"
@@ -2539,10 +2620,27 @@ export const AppContent: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-3 text-[#b5bac1]">
-                <button onClick={() => showToast(`Starting voice call with ${activeDm.user.name}`)} className="p-1 hover:text-white" title="Start Voice Call">
+                <button
+                  onClick={() => {
+                    setInVoiceRoom(`dm-call-${activeDm.id}`);
+                    gateway.updateVoiceState(`dm-call-${activeDm.id}`, isMuted, isDeafened, false);
+                    showToast(`Voice call connected with ${activeDm.user.name}`);
+                  }}
+                  className="p-1 hover:text-white transition-colors"
+                  title="Start Voice Call"
+                >
                   <Phone className="w-5 h-5" />
                 </button>
-                <button onClick={() => showToast(`Starting video call with ${activeDm.user.name}`)} className="p-1 hover:text-white" title="Start Video Call">
+                <button
+                  onClick={() => {
+                    setInVoiceRoom(`dm-call-${activeDm.id}`);
+                    setIsVideoOn(true);
+                    gateway.updateVoiceState(`dm-call-${activeDm.id}`, isMuted, isDeafened, false);
+                    showToast(`Video call connected with ${activeDm.user.name}`);
+                  }}
+                  className="p-1 hover:text-white transition-colors"
+                  title="Start Video Call"
+                >
                   <Video className="w-5 h-5" />
                 </button>
                 <button onClick={() => setIsPinnedPopdownOpen(p => !p)} className="p-1 hover:text-white relative" title="Pinned Messages">
@@ -3069,7 +3167,7 @@ export const AppContent: React.FC = () => {
                               <UserPlus className="w-3.5 h-3.5 text-[#00f0ff]" /> Invite to Voice
                             </button>
                             <button
-                              onClick={() => showToast('Activity Launcher')}
+                              onClick={() => setIsActivityLauncherOpen(true)}
                               className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
                             >
                               <Sparkles className="w-3.5 h-3.5 text-[#eb459e]" /> Choose Activity
@@ -3100,7 +3198,7 @@ export const AppContent: React.FC = () => {
                               <UserPlus className="w-3.5 h-3.5 text-[#00f0ff]" /> Invite to Voice
                             </button>
                             <button
-                              onClick={() => showToast('Activity Launcher')}
+                              onClick={() => setIsActivityLauncherOpen(true)}
                               className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
                             >
                               <Sparkles className="w-3.5 h-3.5 text-[#eb459e]" /> Choose Activity
@@ -3153,21 +3251,31 @@ export const AppContent: React.FC = () => {
                       {isDeafened ? <Headphones className="w-4 h-4" /> : <Headphones className="w-4 h-4" />}
                     </button>
                     <button
-                      onClick={() => showToast('Holo-Cast Video Toggled')}
-                      className="p-2.5 rounded-full bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31] transition-colors"
-                      title="Share Video"
+                      onClick={() => {
+                        setIsVideoOn(p => !p);
+                        showToast(!isVideoOn ? 'Holo-Cast Video Activated' : 'Holo-Cast Video Deactivated');
+                      }}
+                      className={`p-2.5 rounded-full transition-colors ${
+                        isVideoOn ? 'bg-[#23a55a] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
+                      }`}
+                      title={isVideoOn ? 'Stop Video' : 'Share Video'}
                     >
                       <Video className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => showToast('Holo-Cast Screen Share Toggled')}
-                      className="p-2.5 rounded-full bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31] transition-colors"
-                      title="Share Screen"
+                      onClick={() => {
+                        setIsScreenSharing(p => !p);
+                        showToast(!isScreenSharing ? 'Holo-Cast Screen Share Activated' : 'Holo-Cast Screen Share Stopped');
+                      }}
+                      className={`p-2.5 rounded-full transition-colors ${
+                        isScreenSharing ? 'bg-[#23a55a] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
+                      }`}
+                      title={isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
                     >
                       <Monitor className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => showToast('Opening Activities')}
+                      onClick={() => setIsActivityLauncherOpen(true)}
                       className="p-2.5 rounded-full bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31] transition-colors"
                       title="Activities"
                     >
@@ -3699,11 +3807,20 @@ export const AppContent: React.FC = () => {
           <ProfileCard
             user={hoverUserPopout.user}
             onSendMessage={(uid) => {
+              const targetUser = hoverUserPopout.user;
               setHoverUserPopout(null);
               setSelectedBeaconId('home');
-              const dm = directConversations.find(d => d.user.id === uid);
-              if (dm) setSelectedDmId(dm.id);
-              else showToast(`Opening DM with ${uid}`);
+              let dm = directConversations.find(d => d.user.id === uid);
+              if (!dm) {
+                const newDm: DirectConversation = {
+                  id: `dm-${targetUser.id}`,
+                  user: targetUser,
+                  unreadCount: 0,
+                };
+                setDirectConversations(prev => [newDm, ...prev]);
+                dm = newDm;
+              }
+              setSelectedDmId(dm.id);
             }}
             onClose={() => setHoverUserPopout(null)}
           />
@@ -3951,14 +4068,34 @@ export const AppContent: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="pt-2 border-t border-[#1f2024] flex items-center justify-between text-[11px]">
-                    <span className="text-[#80848e]">10 Emergency Backup Recovery Codes available</span>
-                    <button
-                      onClick={() => showToast('Recovery codes downloaded to secure file.')}
-                      className="text-[#00f0ff] hover:underline"
-                    >
-                      View Backup Codes
-                    </button>
+                  <div className="pt-2 border-t border-[#1f2024] space-y-2 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#80848e]">10 Emergency Backup Recovery Codes available</span>
+                      <button
+                        onClick={() => setShowBackupCodes(p => !p)}
+                        className="text-[#00f0ff] hover:underline font-medium"
+                      >
+                        {showBackupCodes ? 'Hide Backup Codes' : 'View Backup Codes'}
+                      </button>
+                    </div>
+                    {showBackupCodes && (
+                      <div className="p-2.5 bg-[#080809] border border-[#1f2024] rounded-[6px] space-y-2">
+                        <div className="grid grid-cols-2 gap-1.5 font-mono text-[10px] text-[#23a55a]">
+                          {['7K9Q-2M4X', 'B3P1-9R8V', 'W5L8-0C2Y', 'D4F9-8X1Z', 'M2T7-6V3N', 'P9K4-1Q8W', 'Z8X3-5V7R', 'Q1W9-8E2T', 'H4J7-9K2L', 'C8V5-3B1N'].map(c => (
+                            <span key={c} className="bg-[#111214] px-1.5 py-0.5 rounded border border-[#1f2024]">{c}</span>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard?.writeText(['7K9Q-2M4X', 'B3P1-9R8V', 'W5L8-0C2Y', 'D4F9-8X1Z', 'M2T7-6V3N', 'P9K4-1Q8W', 'Z8X3-5V7R', 'Q1W9-8E2T', 'H4J7-9K2L', 'C8V5-3B1N'].join('\n'));
+                            showToast('10 Recovery codes copied to clipboard');
+                          }}
+                          className="w-full py-1 text-[10px] font-semibold bg-[#1a1b1e] hover:bg-[#232428] text-white rounded transition-colors"
+                        >
+                          Copy All 10 Codes
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3972,10 +4109,17 @@ export const AppContent: React.FC = () => {
                       </p>
                     </div>
                     <button
-                      onClick={() => showToast('Passkey registration prompt dispatched.')}
-                      className="bg-[#1f2024] hover:bg-[#2b2d31] text-white font-semibold px-3 py-1.5 rounded text-xs transition-colors border border-[#35363c]"
+                      onClick={() => {
+                        setPasskeyRegistered(true);
+                        showToast('Passkey registered: Quantum FIDO2 Hardware Key linked');
+                      }}
+                      className={`font-semibold px-3 py-1.5 rounded text-xs transition-colors border ${
+                        passkeyRegistered
+                          ? 'bg-[#23a55a]/20 border-[#23a55a]/40 text-[#23a55a]'
+                          : 'bg-[#1f2024] hover:bg-[#2b2d31] text-white border-[#35363c]'
+                      }`}
                     >
-                      Register Passkey
+                      {passkeyRegistered ? 'Passkey Linked' : 'Register Passkey'}
                     </button>
                   </div>
                 </div>
@@ -4013,6 +4157,7 @@ export const AppContent: React.FC = () => {
         onClose={() => setIsServerSettingsOpen(false)}
         serverName={currentServer.name}
         serverId={selectedBeaconId}
+        initialTab={serverSettingsTab}
         onUpdateServerName={(newName) => {
           setBeacons(prev => prev.map(b => b.id === selectedBeaconId ? { ...b, name: newName } : b));
           setServerData(prev => ({
@@ -4232,6 +4377,38 @@ export const AppContent: React.FC = () => {
             ...prev,
           ]);
           setSelectedDmId(mesh.id);
+        }}
+      />
+
+      {/* 23. Activity Launcher Modal */}
+      <ActivityLauncherModal
+        isOpen={isActivityLauncherOpen}
+        onClose={() => setIsActivityLauncherOpen(false)}
+        activeActivityId={activeActivity?.id}
+        onLaunchActivity={(act) => {
+          setActiveActivity(act);
+          showToast(`Launched ${act.name} in voice stage!`);
+        }}
+      />
+
+      {/* 24. Select Friend to Direct Message Modal */}
+      <SelectFriendModal
+        isOpen={isSelectFriendModalOpen}
+        onClose={() => setIsSelectFriendModalOpen(false)}
+        friends={friendsList}
+        onSelectFriend={(friend) => {
+          setSelectedBeaconId('home');
+          let dm = directConversations.find(d => d.user.id === friend.id);
+          if (!dm) {
+            const newDm: DirectConversation = {
+              id: `dm-${friend.id}`,
+              user: friend,
+              unreadCount: 0,
+            };
+            setDirectConversations(prev => [newDm, ...prev]);
+            dm = newDm;
+          }
+          setSelectedDmId(dm.id);
         }}
       />
     </div>
