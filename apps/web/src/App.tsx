@@ -2826,9 +2826,9 @@ export const AppContent: React.FC = () => {
                                   {m.author}
                                 </span>
 
-                                {m.roleBadge && (
+                                {(m.roleBadge || authorMember.staffRank && authorMember.staffRank >= 2 || (authorMember.callsign === 'command_officer' || m.callsign === 'command_officer')) && (
                                   <span className="bg-[#5865f2] text-white text-[10px] font-bold px-1 rounded uppercase">
-                                    {m.roleBadge}
+                                    {m.roleBadge || 'COMMAND STAFF'}
                                   </span>
                                 )}
 
