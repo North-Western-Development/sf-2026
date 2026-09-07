@@ -8,7 +8,8 @@ import {
   bigint,
   uuid,
   jsonb,
-  primaryKey
+  primaryKey,
+  uniqueIndex
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -16,7 +17,8 @@ import {
  */
 export const transmitters = pgTable('transmitters', {
   id: uuid('id').defaultRandom().primaryKey(),
-  username: text('username').notNull().unique(),
+  username: text('username').notNull(),
+  discriminator: text('discriminator').default('0001').notNull(),
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   displayName: text('display_name').notNull(),
@@ -25,6 +27,7 @@ export const transmitters = pgTable('transmitters', {
   bannerColor: text('banner_color').default('#0B0E14').notNull(),
   bannerUrl: text('banner_url'),
   avatarUrl: text('avatar_url'),
+  bio: text('bio'),
   presence: text('presence').default('offline').notNull(),
   staffRank: integer('staff_rank').default(0).notNull(),
   isBanned: boolean('is_banned').default(false).notNull(),
@@ -38,7 +41,9 @@ export const transmitters = pgTable('transmitters', {
   lastAgreedRulesVersion: integer('last_agreed_rules_version').default(0).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex('transmitters_username_discriminator_idx').on(table.username, table.discriminator),
+]);
 
 /**
  * Transmitter Passkeys (WebAuthn / FIDO2)
@@ -323,4 +328,17 @@ export const incidentReports = pgTable('incident_reports', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/**
+ * Beacon Custom Emojis
+ */
+export const beaconEmojis = pgTable('beacon_emojis', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  beaconId: uuid('beacon_id').references(() => beacons.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  uploaderId: uuid('uploader_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 

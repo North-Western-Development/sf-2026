@@ -1,5 +1,25 @@
 import React, { useState } from 'react';
-import { Shield, Key, Clock, MessageSquare, Copy, Edit3, CheckCircle2, Award, Zap, Terminal, Sparkles } from 'lucide-react';
+import { 
+  Shield, 
+  Key, 
+  Clock, 
+  MessageSquare, 
+  Copy, 
+  Edit3, 
+  CheckCircle2, 
+  Award, 
+  Zap, 
+  Terminal, 
+  Sparkles,
+  UserPlus,
+  UserCheck,
+  MoreVertical,
+  ExternalLink,
+  ShoppingBag,
+  UserX,
+  Slash,
+  AlertTriangle
+} from 'lucide-react';
 import { BadgeItem } from './BadgeDeck.js';
 
 export interface UserBadgeItem extends BadgeItem {
@@ -10,6 +30,7 @@ export interface UserProfile {
   id: string;
   name: string;
   callsign: string;
+  discriminator?: string;
   avatar: string;
   status: 'online' | 'idle' | 'dnd' | 'ghost';
   statusText?: string;
@@ -19,8 +40,10 @@ export interface UserProfile {
   bannerGradient?: string;
   bio?: string;
   memberSince?: string;
+  friendsSince?: string;
   quantumKeyFingerprint?: string;
   isSelf?: boolean;
+  isFriend?: boolean;
 }
 
 interface ProfileCardProps {
@@ -31,6 +54,9 @@ interface ProfileCardProps {
   hideRoles?: boolean;
   onEditProfile?: () => void;
   onCopyId?: (id: string) => void;
+  onToggleFriend?: (userId: string) => void;
+  onViewFullProfile?: (userId: string) => void;
+  onInviteToServer?: (userId: string) => void;
 }
 
 export const ProfileCard: React.FC<ProfileCardProps> = ({
@@ -40,8 +66,13 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   hideRoles,
   onEditProfile,
   onCopyId,
+  onToggleFriend,
+  onViewFullProfile,
+  onInviteToServer,
 }) => {
   const [hoveredBadge, setHoveredBadge] = useState<{ badge: UserBadgeItem; x: number; y: number } | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [isFriend, setIsFriend] = useState(Boolean(user.isFriend));
 
   const getStatusBg = (status: UserProfile['status']) => {
     switch (status) {
@@ -71,16 +102,21 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
 
   const getBadgeIcon = (tier?: string) => {
     switch (tier) {
-      case 'staff': return <Shield className="w-3.5 h-3.5 text-[#00f0ff]" />;
-      case 'quantum': return <Zap className="w-3.5 h-3.5 text-[#7928ca]" />;
-      case 'gold': return <Award className="w-3.5 h-3.5 text-[#f0b232]" />;
-      case 'bronze': return <Sparkles className="w-3.5 h-3.5 text-[#eb459e]" />;
-      default: return <Terminal className="w-3.5 h-3.5 text-[#23a55a]" />;
+      case 'staff': return <Shield className="w-3 h-3 text-[#00f0ff]" />;
+      case 'quantum': return <Zap className="w-3 h-3 text-[#7928ca]" />;
+      case 'gold': return <Award className="w-3 h-3 text-[#f0b232]" />;
+      case 'bronze': return <Sparkles className="w-3 h-3 text-[#eb459e]" />;
+      default: return <Terminal className="w-3 h-3 text-[#23a55a]" />;
     }
   };
 
+  const handleToggleFriend = () => {
+    setIsFriend(!isFriend);
+    if (onToggleFriend) onToggleFriend(user.id);
+  };
+
   return (
-    <div className="w-[340px] bg-[#0b0c0e] rounded-[16px] shadow-[0_16px_40px_rgba(0,0,0,0.85)] overflow-visible text-left select-none text-[#dbdee1] animate-in fade-in zoom-in-95 duration-150 border border-[#1f2024] relative">
+    <div className="w-[340px] bg-[#080809] rounded-[16px] shadow-[0_16px_40px_rgba(0,0,0,0.95)] overflow-visible text-left select-none text-[#dbdee1] animate-in fade-in zoom-in-95 duration-150 border border-[#1e1f22] relative">
       {/* Banner */}
       <div 
         className="h-28 w-full relative rounded-t-[16px] overflow-hidden"
@@ -96,45 +132,136 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
         )}
       </div>
 
-      {/* Avatar & Header */}
+      {/* Avatar & Action Shelf */}
       <div className="px-4 pb-4 relative">
         <div className="flex justify-between items-end -mt-12 mb-3">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-[#000000] border-[6px] border-[#0b0c0e] flex items-center justify-center text-3xl shadow-2xl">
+          <div className="relative overflow-visible">
+            <div className="w-20 h-20 rounded-full bg-[#000000] border-[5px] border-[#080809] flex items-center justify-center text-3xl shadow-2xl overflow-hidden">
               {user.avatar}
             </div>
+            {/* Status indicator sitting cleanly on border without cutoff */}
             <span 
-              className={`absolute bottom-0 right-0 w-6 h-6 rounded-full border-[4px] border-[#0b0c0e] shadow-md ${getStatusBg(user.status)}`}
+              className={`absolute bottom-0 right-0 w-6 h-6 rounded-full border-[3.5px] border-[#080809] shadow-md ${getStatusBg(user.status)} z-10`}
               title={`Status: ${getStatusLabel(user.status)}`}
             />
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Badges Container Bar (Individual Icon Chips with Hover Cards) */}
-            <div className="bg-[#111214] border border-[#1f2024] rounded-[8px] p-1 flex items-center gap-1">
-              {defaultBadges.map((badge) => (
-                <div
-                  key={badge.id}
-                  className="relative p-1 rounded hover:bg-[#1a1b1e] cursor-pointer transition-colors"
-                  onMouseEnter={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setHoveredBadge({ badge, x: rect.left + rect.width / 2, y: rect.top });
-                  }}
-                  onMouseLeave={() => setHoveredBadge(null)}
-                >
-                  {getBadgeIcon(badge.tier)}
-                </div>
-              ))}
-            </div>
-
+          <div className="flex items-center gap-1.5 relative">
             {onSendMessage && !user.isSelf && (
               <button
                 type="button"
                 onClick={() => onSendMessage(user.id)}
-                className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-3 py-1.5 rounded-[4px] text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm ml-1"
+                className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-3 py-1.5 rounded-[4px] text-xs font-semibold flex items-center gap-1 transition-colors shadow-sm"
               >
-                <MessageSquare className="w-3.5 h-3.5" /> Direct Comm
+                <MessageSquare className="w-3.5 h-3.5" /> DM
               </button>
+            )}
+
+            {!user.isSelf && (
+              <button
+                type="button"
+                onClick={handleToggleFriend}
+                className={`p-1.5 rounded-[4px] text-xs font-semibold transition-colors border ${
+                  isFriend 
+                    ? 'bg-[#23a55a]/15 text-[#23a55a] border-[#23a55a]/40 hover:bg-[#23a55a]/25' 
+                    : 'bg-[#1e1f22] text-[#dbdee1] border-[#2b2d31] hover:bg-[#2b2d31]'
+                }`}
+                title={isFriend ? 'Friends' : 'Add Friend'}
+              >
+                {isFriend ? <UserCheck className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+              </button>
+            )}
+
+            {/* 3-dots Dropdown Menu Button */}
+            {!user.isSelf && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowDropdown(!showDropdown)}
+                  className="p-1.5 rounded-[4px] bg-[#1e1f22] hover:bg-[#2b2d31] text-[#dbdee1] border border-[#2b2d31] transition-colors"
+                  title="More actions"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+
+                {showDropdown && (
+                  <div 
+                    className="absolute right-0 top-full mt-1.5 w-52 bg-[#111214] border border-[#1f2024] rounded-[8px] py-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs text-[#dbdee1]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDropdown(false);
+                        if (onViewFullProfile) onViewFullProfile(user.id);
+                      }}
+                      className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-[#5865f2] hover:text-white transition-colors"
+                    >
+                      <span>View Full Profile</span>
+                      <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDropdown(false)}
+                      className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-[#5865f2] hover:text-white transition-colors"
+                    >
+                      <span>Shop This Look (BETA)</span>
+                      <ShoppingBag className="w-3.5 h-3.5 opacity-60" />
+                    </button>
+                    {onInviteToServer && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDropdown(false);
+                          onInviteToServer(user.id);
+                        }}
+                        className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-[#5865f2] hover:text-white transition-colors"
+                      >
+                        <span>Invite to Server</span>
+                        <span className="text-[10px] opacity-60">›</span>
+                      </button>
+                    )}
+                    <div className="my-1 border-t border-[#1f2024]" />
+                    <button
+                      type="button"
+                      onClick={() => setShowDropdown(false)}
+                      className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-[#1e1f22] transition-colors"
+                    >
+                      <span>Ignore</span>
+                      <Slash className="w-3.5 h-3.5 opacity-60" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDropdown(false)}
+                      className="w-full px-3 py-1.5 flex items-center justify-between text-[#f23f43] hover:bg-[#f23f43] hover:text-white transition-colors"
+                    >
+                      <span>Block</span>
+                      <UserX className="w-3.5 h-3.5 opacity-60" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDropdown(false)}
+                      className="w-full px-3 py-1.5 flex items-center justify-between text-[#f23f43] hover:bg-[#f23f43] hover:text-white transition-colors"
+                    >
+                      <span>Report User Profile</span>
+                      <AlertTriangle className="w-3.5 h-3.5 opacity-60" />
+                    </button>
+                    <div className="my-1 border-t border-[#1f2024]" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDropdown(false);
+                        if (onCopyId) onCopyId(user.id);
+                        else navigator.clipboard?.writeText(user.id);
+                      }}
+                      className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-[#5865f2] hover:text-white transition-colors"
+                    >
+                      <span>Copy User ID</span>
+                      <Copy className="w-3.5 h-3.5 opacity-60" />
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -146,23 +273,36 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
               {user.name}
               {user.staffRank && user.staffRank >= 2 && <Shield className="w-4 h-4 text-[#00f0ff]" />}
             </h3>
-            <div className="text-xs text-[#949ba4] font-medium mt-0.5">@{user.callsign}</div>
+            <div className="text-xs text-[#949ba4] font-medium mt-0.5">
+              @{user.callsign}{user.discriminator ? `#${user.discriminator}` : ''}
+            </div>
+
+            {/* Compact Badges Bar Rendered Underneath Username */}
+            {defaultBadges.length > 0 && (
+              <div className="flex items-center gap-1 mt-2">
+                <div className="bg-[#18191c] border border-[#232428] rounded-[6px] px-1.5 py-0.5 flex items-center gap-1">
+                  {defaultBadges.map((badge) => (
+                    <div
+                      key={badge.id}
+                      className="relative p-0.5 rounded hover:bg-[#2b2d31] cursor-pointer transition-colors"
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHoveredBadge({ badge, x: rect.left + rect.width / 2, y: rect.top });
+                      }}
+                      onMouseLeave={() => setHoveredBadge(null)}
+                    >
+                      {getBadgeIcon(badge.tier)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Custom Status Speech Bubble */}
           {user.statusText && (
             <div className="relative text-xs text-[#f2f3f5] bg-[#1a1b1e] px-3 py-2 rounded-[8px] border border-[#26282e] shadow-sm">
               <span className="italic font-normal">"{user.statusText}"</span>
-            </div>
-          )}
-
-          {/* Bio */}
-          {user.bio && (
-            <div className="pt-2 border-t border-[#1f2024] text-xs text-[#b5bac1] leading-relaxed">
-              <div className="text-[10px] uppercase font-bold text-[#b5bac1] mb-1 tracking-wider">
-                ABOUT ME
-              </div>
-              {user.bio}
             </div>
           )}
 

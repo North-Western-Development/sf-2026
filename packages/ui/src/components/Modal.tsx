@@ -8,6 +8,7 @@ export interface ModalProps {
   description?: string;
   children: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  fixedDimensions?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -17,6 +18,7 @@ export const Modal: React.FC<ModalProps> = ({
   description,
   children,
   maxWidth = 'md',
+  fixedDimensions = false,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -38,15 +40,19 @@ export const Modal: React.FC<ModalProps> = ({
     '2xl': 'max-w-2xl',
   }[maxWidth];
 
+  const sizeClasses = fixedDimensions
+    ? 'w-[840px] h-[600px] max-w-[95vw] max-h-[85vh] flex flex-col'
+    : `w-full ${maxWidthClass}`;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md transition-opacity animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md transition-opacity animate-fade-in"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className={`relative w-full ${maxWidthClass} bg-[#151922] border border-[#232936] shadow-[0_0_30px_rgba(0,0,0,0.8)] rounded-2xl p-6 text-[#F0F4F8] transition-all transform animate-scale-up`}
+        className={`relative ${sizeClasses} bg-[#080809] border border-[#1e1f22] shadow-[0_0_30px_rgba(0,0,0,0.9)] rounded-2xl p-6 text-[#F0F4F8] transition-all transform animate-scale-up`}
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -64,7 +70,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
         )}
 
-        <div className="mt-2">{children}</div>
+        <div className={`mt-2 ${fixedDimensions ? 'flex-1 min-h-0 overflow-y-auto' : ''}`}>{children}</div>
       </div>
     </div>
   );

@@ -5,11 +5,14 @@ const API_BASE = '/api/v1';
 export interface TransmitterProfile {
   id: string;
   username: string;
+  discriminator?: string;
   email?: string;
   displayName?: string;
   displayColor?: string;
   displayFont?: string;
   avatarUrl?: string | null;
+  bannerUrl?: string | null;
+  bannerColor?: string | null;
   presence?: string;
   staffRank?: number;
   roles?: string[];
@@ -50,6 +53,7 @@ export interface ApiTransmission {
   author?: {
     id: string;
     username: string;
+    discriminator?: string;
     displayName?: string;
     displayColor?: string;
     avatarUrl?: string | null;
@@ -60,10 +64,14 @@ export interface ApiTransmission {
 export interface ApiMember {
   transmitterId: string;
   username: string;
+  discriminator?: string;
   displayName: string;
   displayColor?: string;
   displayFont?: string;
   avatarUrl?: string | null;
+  bannerUrl?: string | null;
+  bannerColor?: string | null;
+  bio?: string;
   presence?: string;
   hasCompletedOnboarding?: boolean;
   clearanceIds?: string[];
@@ -186,6 +194,79 @@ class SubspaceApiClient {
     return data.transmission;
   }
 
+  public async createBeacon(name: string, description?: string): Promise<ApiBeacon> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons`, {
+      method: 'POST',
+      body: JSON.stringify({ name, description }),
+    });
+    if (!res.ok) throw new Error('Failed to create beacon');
+    const data = await res.json();
+    return data.beacon;
+  }
+
+  public async createRelay(beaconId: string, name: string, type: string, parentId?: string, topic?: string): Promise<ApiRelay> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/relays`, {
+      method: 'POST',
+      body: JSON.stringify({ name, type, parentId, topic }),
+    });
+    if (!res.ok) throw new Error('Failed to create relay');
+    const data = await res.json();
+    return data.relay;
+  }
+
+  public async updateProfile(profileData: {
+    displayName?: string;
+    bio?: string;
+    displayColor?: string;
+    displayFont?: string;
+    username?: string;
+    avatarUrl?: string;
+  }): Promise<TransmitterProfile> {
+    const res = await this.fetchAuth(`${API_BASE}/auth/me/profile`, {
+      method: 'PATCH',
+      body: JSON.stringify(profileData),
+    });
+    if (!res.ok) throw new Error('Failed to update profile');
+    const data = await res.json();
+    this.transmitter = data.transmitter;
+    localStorage.setItem('subspace_user', JSON.stringify(data.transmitter));
+    return data.transmitter;
+  }
+
+  public async getBeaconEmojis(beaconId: string): Promise<any[]> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/emojis`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.emojis || [];
+  }
+
+  public async uploadBeaconEmoji(beaconId: string, name: string, url: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/emojis`, {
+      method: 'POST',
+      body: JSON.stringify({ name, url }),
+    });
+    if (!res.ok) throw new Error('Failed to upload emoji');
+    const data = await res.json();
+    return data.emoji;
+  }
+
+  public async renameBeaconEmoji(beaconId: string, emojiId: string, name: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/emojis/${emojiId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw new Error('Failed to rename emoji');
+    const data = await res.json();
+    return data.emoji;
+  }
+
+  public async deleteBeaconEmoji(beaconId: string, emojiId: string): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/emojis/${emojiId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete emoji');
+  }
+
   public async joinBeacon(beaconId: string): Promise<void> {
     await this.fetchAuth(`${API_BASE}/beacons/${beaconId}/join`, {
       method: 'POST',
@@ -196,6 +277,115 @@ class SubspaceApiClient {
       body: JSON.stringify({}),
     });
   }
+
+  public async getVaultQuota(): Promise<VaultQuota> {
+    const res = await this.fetchAuth(`${API_BASE}/vault/quota`);
+    if (!res.ok) throw new Error('Failed to fetch quota');
+    return res.json();
+  }
+
+  public async acceptUploadDisclaimer(): Promise<{ hasAcceptedUploadDisclaimer: boolean }> {
+    const res = await this.fetchAuth(`${API_BASE}/vault/disclaimer/accept`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) throw new Error('Failed to accept upload disclaimer');
+    return res.json();
+  }
+
+  public async getCloudIntegrations(): Promise<Record<string, CloudIntegration>> {
+    try {
+      const res = await this.fetchAuth(`${API_BASE}/vault/integrations/config`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.integrations) return data.integrations;
+      }
+    } catch {
+      // Fallback to configured defaults
+    }
+    return {
+      google: { provider: 'google', name: 'Google Drive', isEnabled: true, clientId: '448110191150-r7racvvpsod6avnjfh6ubi123pco5omq.apps.googleusercontent.com' },
+      onedrive: { provider: 'onedrive', name: 'Microsoft OneDrive', isEnabled: true, clientId: 'deefc586-cdcb-427e-b6a5-60d139deaf4b' },
+      dropbox: { provider: 'dropbox', name: 'Dropbox', isEnabled: true, clientId: '1xxu145p7r3u75m' },
+    };
+  }
+
+  public async requestUploadTicket(filename: string, mimeType: string, sizeBytes: number): Promise<{
+    storageKey: string;
+    presignedUploadUrl: string;
+    expiresInSeconds: number;
+    bucket: string;
+  }> {
+    const res = await this.fetchAuth(`${API_BASE}/vault/upload-ticket`, {
+      method: 'POST',
+      body: JSON.stringify({ filename, mimeType, sizeBytes }),
+    });
+    if (res.status === 403) {
+      const err = await res.json();
+      if (err.code === 'DISCLAIMER_REQUIRED') {
+        const error = new Error(err.error || 'Upload disclaimer required');
+        (error as any).code = 'DISCLAIMER_REQUIRED';
+        (error as any).disclaimerNotice = err.disclaimerNotice;
+        throw error;
+      }
+      throw new Error(err.error || 'Upload forbidden');
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to obtain upload ticket');
+    }
+    return res.json();
+  }
+
+  public async recordVaultFile(storageKey: string, filename: string, mimeType: string, sizeBytes: number): Promise<VaultFile> {
+    const res = await this.fetchAuth(`${API_BASE}/vault/files`, {
+      method: 'POST',
+      body: JSON.stringify({ storageKey, filename, mimeType, sizeBytes }),
+    });
+    if (!res.ok) throw new Error('Failed to record vault file');
+    const data = await res.json();
+    return data.file;
+  }
+
+  public async uploadVaultFile(file: File): Promise<VaultFile> {
+    const ticket = await this.requestUploadTicket(file.name, file.type || 'application/octet-stream', file.size);
+    await fetch(ticket.presignedUploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+      },
+    });
+    return this.recordVaultFile(ticket.storageKey, file.name, file.type || 'application/octet-stream', file.size);
+  }
+}
+
+export interface CloudIntegration {
+  provider: 'google' | 'onedrive' | 'dropbox';
+  name: string;
+  isEnabled: boolean;
+  clientId?: string;
+  apiKey?: string;
+}
+
+export interface VaultQuota {
+  quotaBytes: number;
+  usedBytes: number;
+  remainingBytes: number;
+  fileCount: number;
+  hasAcceptedUploadDisclaimer: boolean;
+}
+
+export interface VaultFile {
+  id: string;
+  transmitterId: string;
+  storageKey: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: string;
+  isQuarantined: boolean;
+  createdAt: string;
+  downloadUrl?: string;
 }
 
 export const api = new SubspaceApiClient();

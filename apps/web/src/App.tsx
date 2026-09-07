@@ -39,7 +39,8 @@ import {
   MoreVertical,
   Lock,
   FolderPlus,
-  Bell
+  Bell,
+  Cloud
 } from 'lucide-react';
 import { 
   Modal, 
@@ -60,6 +61,15 @@ import { api, ApiBeacon, ApiRelay } from './services/api';
 import { gateway } from './services/gateway';
 import { InviteModal } from './InviteModal';
 import { ServerSettingsModal } from './ServerSettingsModal';
+import { CreateServerModal } from './CreateServerModal';
+import { CreateChannelModal } from './CreateChannelModal';
+import { CreateCategoryModal } from './CreateCategoryModal';
+import { PinnedMessagesPopdown } from './PinnedMessagesPopdown';
+import { EmojiPickerPopdown } from './EmojiPickerPopdown';
+import { FullProfileModal } from './FullProfileModal';
+import { MarkdownMessage } from './MarkdownMessage';
+import { UploadDisclaimerModal } from './UploadDisclaimerModal';
+import { CloudDrivePickerModal, CloudTetherItem } from './CloudDrivePickerModal';
 
 // Data Interfaces
 interface Beacon {
@@ -231,8 +241,29 @@ export const AppContent: React.FC = () => {
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isServerMenuOpen, setIsServerMenuOpen] = useState(false);
-  const [isMemberPanelOpen, setIsMemberPanelOpen] = useState(true);
-  const [isPinnedDrawerOpen, setIsPinnedDrawerOpen] = useState(false);
+  const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
+  const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
+  const [createChannelCategory, setCreateChannelCategory] = useState<string | undefined>(undefined);
+  const [isCreateCategoryOpen, setIsCreateCategoryOpen] = useState(false);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [isPinnedPopdownOpen, setIsPinnedPopdownOpen] = useState(false);
+  const [fullProfileUser, setFullProfileUser] = useState<UserProfile | null>(null);
+
+  // Independent Member List States for Text Channels vs Voice Channels
+  const [isTextMemberListOpen, setIsTextMemberListOpen] = useState(true);
+  const [isVoiceMemberListOpen, setIsVoiceMemberListOpen] = useState(false);
+
+  // Voice Channel Switch Confirmation Dialog
+  const [pendingSwitchChannelId, setPendingSwitchChannelId] = useState<string | null>(null);
+
+  // Custom Server Emojis
+  const [beaconEmojisList, setBeaconEmojisList] = useState<{ id: string; name: string; url: string }[]>([]);
+
+  // Subspace Vault & Cloud Drive Tether States
+  const [isUploadDisclaimerOpen, setIsUploadDisclaimerOpen] = useState(false);
+  const [isCloudPickerOpen, setIsCloudPickerOpen] = useState(false);
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+
   const [isVoiceChatOpen, setIsVoiceChatOpen] = useState(false);
   const [isUserPopoutOpen, setIsUserPopoutOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'profile' | 'appearance' | 'voice' | 'badges'>('appearance');
@@ -630,17 +661,24 @@ export const AppContent: React.FC = () => {
           id: m.transmitterId,
           name: m.displayName || m.username,
           callsign: m.username,
+          discriminator: m.discriminator || '0001',
           avatar: m.avatarUrl || '👨‍🚀',
+          bannerGradient: m.bannerColor ? `linear-gradient(135deg, ${m.bannerColor} 0%, #1a1a24 50%, #00f0ff22 100%)` : undefined,
           status: (m.presence as any) || 'online',
           statusText: m.isOwner ? 'Beacon Commander' : 'Active Transmitter',
           staffRank: m.isOwner ? 3 : (m.staffRank || 0),
           roles: m.isOwner ? ['Beacon Owner', 'Command Staff'] : ['Transmitter'],
-          bio: 'Subspace Beacon Member',
+          bio: m.bio || 'Subspace Beacon Member',
           memberSince: 'Sep 2026',
           quantumKeyFingerprint: `SF-QKD-${m.transmitterId.slice(0, 4).toUpperCase()}`,
           isSelf: m.transmitterId === currentUser.id,
         }));
         setMembers(mappedMembers);
+
+        // Fetch custom emojis for this beacon
+        api.getBeaconEmojis(selectedBeaconId).then(emojis => {
+          setBeaconEmojisList(emojis);
+        }).catch(() => {});
 
         // Automatically select the first channel if none or current channel not in this beacon
         const allChans = cats.flatMap(c => c.channels);
@@ -836,17 +874,31 @@ export const AppContent: React.FC = () => {
     }
   };
 
-  // Join / Leave voice channel with real Gateway integration
+  // Two-Click Voice Channel Workflow with Switch Confirmation
   const handleVoiceChannelClick = (channelId: string) => {
-    if (inVoiceRoom === channelId) {
-      setSelectedChannelId(channelId);
-    } else {
-      setInVoiceRoom(channelId);
-      setSelectedChannelId(channelId);
-      setIsMemberPanelOpen(false); // Collapsed by default in voice channel view per user instructions!
-      gateway.updateVoiceState(channelId, isMuted, isDeafened, false);
-      showToast(`Connected to real voice channel`);
+    // If clicking a different voice channel while already connected to one
+    if (inVoiceRoom && inVoiceRoom !== channelId) {
+      setPendingSwitchChannelId(channelId);
+      return;
     }
+
+    // Two-Click workflow:
+    // Click 1: If not connected to this room, join audio in background without changing active channel view
+    if (inVoiceRoom !== channelId) {
+      setInVoiceRoom(channelId);
+      gateway.updateVoiceState(channelId, isMuted, isDeafened, false);
+      showToast('Connected to Voice in background. Click again to view voice stage.');
+    } else {
+      // Click 2: Already connected, so navigate into the voice lounge stage
+      setSelectedChannelId(channelId);
+    }
+  };
+
+  const confirmSwitchVoiceChannel = (channelId: string) => {
+    setInVoiceRoom(channelId);
+    gateway.updateVoiceState(channelId, isMuted, isDeafened, false);
+    setPendingSwitchChannelId(null);
+    showToast('Switched voice channels. Click again to view voice stage.');
   };
 
   const handleDisconnectVoice = () => {
@@ -1083,17 +1135,63 @@ export const AppContent: React.FC = () => {
     },
   ];
 
+  // Ref for hidden file input to trigger on + click
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const processDirectUpload = async (file: File) => {
+    try {
+      showToast(`Uploading ${file.name} to Subspace Vault...`);
+      const vaultFile = await api.uploadVaultFile(file);
+      showToast(`Uploaded ${file.name} to Subspace Vault!`);
+      const attachmentTag = `[Attachment: ${file.name} (${(file.size / 1024).toFixed(1)} KB)|${vaultFile.downloadUrl || ''}]`;
+      setMessageInput(prev => prev ? `${prev} ${attachmentTag}` : attachmentTag);
+    } catch (err: any) {
+      if (err.code === 'DISCLAIMER_REQUIRED') {
+        setPendingUploadFile(file);
+        setIsUploadDisclaimerOpen(true);
+        return;
+      }
+      showToast(`Upload failed: ${err.message}`);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processDirectUpload(file);
+    e.target.value = '';
+  };
+
+  const handleDisclaimerAccepted = () => {
+    showToast('Vault upload policy acknowledged.');
+    if (pendingUploadFile) {
+      const f = pendingUploadFile;
+      setPendingUploadFile(null);
+      processDirectUpload(f);
+    }
+  };
+
+  const handleTetherCloudSelected = (tether: CloudTetherItem) => {
+    const tetherTag = `[CloudTether:${tether.provider}|${tether.title}|${tether.url}|${tether.sizeFormatted}]`;
+    setMessageInput(prev => prev ? `${prev} ${tetherTag}` : tetherTag);
+    showToast(`Tethered ${tether.title} from ${tether.provider}`);
+  };
+
   const handleAttachmentMenu = (e: React.MouseEvent) => {
     openContextMenu(e, [
       {
         label: 'Upload a File',
         icon: <Plus className="w-3.5 h-3.5" />,
-        onClick: () => showToast('Vault S3 upload gate triggered'),
+        onClick: () => {
+          fileInputRef.current?.click();
+        },
       },
       {
-        label: 'Create Archival Thread',
-        icon: <Archive className="w-3.5 h-3.5" />,
-        onClick: () => showToast('Opening Thread builder'),
+        label: 'Tether Cloud File (Drive / Dropbox)',
+        icon: <Cloud className="w-3.5 h-3.5 text-[#00f0ff]" />,
+        onClick: () => {
+          setIsCloudPickerOpen(true);
+        },
       },
       ...(selectedBeaconId === 'home'
         ? [
@@ -1174,8 +1272,15 @@ export const AppContent: React.FC = () => {
 
       {/* Main Multi-Panel Workspace */}
       <div className="flex flex-1 min-h-0">
-        {/* 2. Server Rail (Far Left) - Discord Authentic 72px - Jet Black (#080809) */}
-        <div className="w-[72px] bg-[#080809] flex flex-col items-center py-3 gap-2 shrink-0 z-30 select-none border-r border-[#141518]">
+        {/* Left Combined Dual-Column Container: Server Rail (72px) + Channel Sidebar (channelSidebarWidth) + Full Spanning User Island */}
+        <div
+          style={{ width: `${72 + channelSidebarWidth}px` }}
+          className="flex flex-col shrink-0 h-full relative select-none border-r border-[#1a1b1e] bg-[#080809] z-20"
+        >
+          {/* Top Section: Server Rail + Active Sidebar */}
+          <div className="flex flex-1 min-h-0 w-full">
+            {/* 2. Server Rail (Far Left) - Discord Authentic 72px - Jet Black (#080809) */}
+            <div className="w-[72px] bg-[#080809] flex flex-col items-center py-3 gap-2 shrink-0 select-none border-r border-[#141518]">
           {/* Subspace Gateway / Home DM Button */}
           <div className="relative flex items-center justify-center w-full group">
             <span 
@@ -1326,7 +1431,7 @@ export const AppContent: React.FC = () => {
             <div className="relative flex items-center justify-center w-full group mt-1">
               <span className="absolute -left-1 w-1.5 bg-white rounded-r-full h-0 group-hover:h-5 transition-all z-40" />
               <button
-                onClick={() => showToast('Open Beacon Discovery')}
+                onClick={() => setIsCreateServerOpen(true)}
                 className="w-12 h-12 rounded-[24px] hover:rounded-[16px] bg-[#16171a] hover:bg-[#23a55a] text-[#23a55a] hover:text-white flex items-center justify-center transition-all duration-200"
                 title="Add a Server"
               >
@@ -1350,23 +1455,21 @@ export const AppContent: React.FC = () => {
                 <Compass className="w-5 h-5" />
               </button>
             </div>
+            </div>
           </div>
-        </div>
 
-        {/* 3. Secondary Sidebar (Channels or DMs) - Resizable with Draggable Handle */}
-        {selectedBeaconId === 'home' ? (
-          /* A. Direct Messages & Friends Sidebar (Home View - Jet Black #0f1012) */
-          <div 
-            style={{ width: `${channelSidebarWidth}px` }} 
-            className="bg-[#0f1012] flex flex-col shrink-0 border-r border-[#1a1b1e] relative select-none"
-          >
-            {/* Top Search Button: "Find or start a conversation" */}
-            <div className="h-12 px-2.5 border-b border-[#1a1b1e] flex items-center">
-              <button
-                onClick={() => setIsQuickScanOpen(true)}
-                className="w-full bg-[#08080a] hover:bg-[#16171a] text-[#949ba4] text-xs px-2 py-1.5 rounded-[4px] flex items-center justify-between transition-colors shadow-inner border border-[#1f2024]"
-              >
-                <span className="truncate">Find or start a conversation</span>
+          {/* 3. Secondary Sidebar (Channels or DMs) */}
+            <div className="flex-1 min-w-0 bg-[#0f1012] flex flex-col h-full relative overflow-hidden">
+              {selectedBeaconId === 'home' ? (
+                /* A. Direct Messages & Friends Sidebar (Home View - Jet Black #0f1012) */
+                <div className="flex-1 flex flex-col h-full relative">
+                  {/* Top Search Button: "Find or start a conversation" */}
+                  <div className="h-12 px-2.5 border-b border-[#1a1b1e] flex items-center">
+                    <button
+                      onClick={() => setIsQuickScanOpen(true)}
+                      className="w-full bg-[#08080a] hover:bg-[#16171a] text-[#949ba4] text-xs px-2 py-1.5 rounded-[4px] flex items-center justify-between transition-colors shadow-inner border border-[#1f2024]"
+                    >
+                      <span className="truncate">Find or start a conversation</span>
                 <kbd className="text-[10px] font-mono bg-[#16171a] px-1 rounded text-[#80848e]">Ctrl+K</kbd>
               </button>
             </div>
@@ -1448,73 +1551,12 @@ export const AppContent: React.FC = () => {
               </div>
             </div>
 
-            {/* Floating User Display Island (Bottom) */}
-            <div className="mx-2 mb-2 p-1.5 rounded-[8px] bg-[#111214] border border-[#1f2024] shadow-lg flex items-center justify-between shrink-0 relative">
-              <div
-                onClick={() => setIsUserPopoutOpen(p => !p)}
-                className="flex items-center gap-2 p-1 rounded-[6px] hover:bg-[#1a1b1e] cursor-pointer min-w-0 flex-1 transition-colors"
-              >
-                <div className="relative shrink-0">
-                  <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-base">
-                    {currentUser.avatar}
-                  </div>
-                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#111214] ${getStatusColor(currentUser.status)}`} />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-white truncate">{currentUser.name}</div>
-                  <div className="text-[10px] text-[#949ba4] truncate">{currentUser.statusText}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center text-[#b5bac1]">
-                <button onClick={() => setIsMuted(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isMuted ? 'text-[#f23f43]' : 'hover:text-white'}`}>
-                  {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </button>
-                <button onClick={() => setIsDeafened(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isDeafened ? 'text-[#f23f43]' : 'hover:text-white'}`}>
-                  <Headphones className="w-4 h-4" />
-                </button>
-                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 rounded-[4px] hover:bg-[#1a1b1e] hover:text-white">
-                  <Settings className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* User Island Popout (NO ROLES SHOWN FOR CURRENT USER ISLAND) */}
-              {isUserPopoutOpen && (
-                <div className="absolute bottom-[56px] left-0 z-50">
-                  <ProfileCard
-                    user={currentUser}
-                    hideRoles={true}
-                    onStatusChange={(st) => {
-                      setCurrentUser(p => ({ ...p, status: st }));
-                      showToast(`Status updated to ${st}`);
-                    }}
-                    onEditProfile={() => {
-                      setIsUserPopoutOpen(false);
-                      setIsSettingsOpen(true);
-                    }}
-                    onClose={() => setIsUserPopoutOpen(false)}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Draggable Divider Handle for Resizing */}
-            <div
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setIsResizingChannelSidebar(true);
-              }}
-              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-[#00f0ff] transition-colors z-30"
-            />
-          </div>
-        ) : (
-          /* B. Server Channels Sidebar (Jet Black #0f1012) */
-          <div 
-            style={{ width: `${channelSidebarWidth}px` }} 
-            className="bg-[#0f1012] flex flex-col shrink-0 border-r border-[#1a1b1e] relative select-none"
-          >
-            {/* Server Fixed Header with Anchored Dropdown Menu */}
-            <div className="relative">
+              ) : (
+                /* B. Server Channels Sidebar (Jet Black #0f1012) */
+                <div className="flex-1 flex flex-col h-full relative overflow-hidden">
+                  {/* Server Fixed Header with Anchored Dropdown Menu */}
+                  <div className="relative">
               <div 
                 onClick={() => setIsServerMenuOpen(p => !p)}
                 className="h-12 px-4 border-b border-[#1a1b1e] flex items-center justify-between font-bold text-white shadow-sm hover:bg-[#16171a] cursor-pointer transition-colors"
@@ -1668,7 +1710,8 @@ export const AppContent: React.FC = () => {
                         className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 hover:text-white transition-opacity" 
                         onClick={(e) => {
                           e.stopPropagation();
-                          showToast(`Create Channel in ${cat.name}`);
+                          setCreateChannelCategory(cat.name);
+                          setIsCreateChannelOpen(true);
                         }}
                       />
                     </div>
@@ -1752,97 +1795,130 @@ export const AppContent: React.FC = () => {
                 );
               })}
             </div>
+          </div>
+        )}
+      </div>
+    </div>
 
-            {/* Active Voice Connection Panel (Bottom) */}
-            {inVoiceRoom && (
-              <div className="bg-[#0b0c0e] border-t border-[#1a1b1e] px-3 py-2 text-xs">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#23a55a] animate-ping" />
-                    <span className="font-semibold text-[#23a55a]">Voice Connected</span>
-                  </div>
-                  <button 
-                    onClick={handleDisconnectVoice}
-                    className="p-1 rounded hover:bg-[#1a1b1e] text-[#f23f43]"
-                    title="Disconnect"
-                  >
-                    <PhoneOff className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="text-[11px] text-[#949ba4] truncate mb-2">
+    {/* Bottom Section: Dual-Column User Island + Stacked Voice Controls */}
+    {/* Spans across both columns (72px + channelSidebarWidth)! */}
+    <div className="w-full shrink-0 bg-[#080809] border-t border-[#1a1b1e] p-2 flex flex-col gap-1.5 z-30 relative select-none">
+      {/* Stacked Voice Controls (Screenshot 3) */}
+      {inVoiceRoom && (
+        <div className="bg-[#0f1012] border border-[#1f2024] rounded-[8px] p-2 flex flex-col gap-1.5 text-xs shadow-md">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#23a55a] animate-pulse shrink-0" />
+              <div className="flex flex-col min-w-0">
+                <span className="font-bold text-[#23a55a] text-xs leading-none">Voice Connected</span>
+                <span className="text-[10px] text-[#949ba4] truncate">
                   {allCurrentChannels.find(c => c.id === inVoiceRoom)?.name || 'Comm-Link'} / 128 kbps
-                </div>
-                <div className="flex gap-1.5">
-                  <button onClick={() => showToast('Video toggle')} className="flex-1 bg-[#16171a] hover:bg-[#202226] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border border-[#1f2024]">
-                    <Video className="w-3.5 h-3.5" /> Video
-                  </button>
-                  <button onClick={() => showToast('Screen share toggle')} className="flex-1 bg-[#16171a] hover:bg-[#202226] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border border-[#1f2024]">
-                    <Monitor className="w-3.5 h-3.5" /> Share Screen
-                  </button>
-                </div>
+                </span>
               </div>
-            )}
-
-            {/* Floating User Display Island (Bottom) */}
-            <div className="mx-2 mb-2 p-1.5 rounded-[8px] bg-[#111214] border border-[#1f2024] shadow-lg flex items-center justify-between shrink-0 relative">
-              <div
-                onClick={() => setIsUserPopoutOpen(p => !p)}
-                className="flex items-center gap-2 p-1 rounded-[6px] hover:bg-[#1a1b1e] cursor-pointer min-w-0 flex-1 transition-colors"
-              >
-                <div className="relative shrink-0">
-                  <div className="w-8 h-8 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-base">
-                    {currentUser.avatar}
-                  </div>
-                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#111214] ${getStatusColor(currentUser.status)}`} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-white truncate">{currentUser.name}</div>
-                  <div className="text-[10px] text-[#949ba4] truncate">{currentUser.statusText}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center text-[#b5bac1]">
-                <button onClick={() => setIsMuted(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isMuted ? 'text-[#f23f43]' : 'hover:text-white'}`}>
-                  {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </button>
-                <button onClick={() => setIsDeafened(p => !p)} className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isDeafened ? 'text-[#f23f43]' : 'hover:text-white'}`}>
-                  <Headphones className="w-4 h-4" />
-                </button>
-                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 rounded-[4px] hover:bg-[#1a1b1e] hover:text-white">
-                  <Settings className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* User Island Popout (NO ROLES SHOWN FOR CURRENT USER ISLAND) */}
-              {isUserPopoutOpen && (
-                <div className="absolute bottom-[56px] left-0 z-50">
-                  <ProfileCard
-                    user={currentUser}
-                    hideRoles={true}
-                    onStatusChange={(st) => {
-                      setCurrentUser(p => ({ ...p, status: st }));
-                      showToast(`Status updated to ${st}`);
-                    }}
-                    onEditProfile={() => {
-                      setIsUserPopoutOpen(false);
-                      setIsSettingsOpen(true);
-                    }}
-                    onClose={() => setIsUserPopoutOpen(false)}
-                  />
-                </div>
-              )}
             </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-[10px] text-[#23a55a] font-mono bg-[#23a55a]/10 px-1.5 py-0.5 rounded">RTC 18ms</span>
+              <button
+                onClick={handleDisconnectVoice}
+                className="p-1 rounded hover:bg-[#1a1b1e] text-[#f23f43] hover:text-white transition-colors"
+                title="Disconnect"
+              >
+                <PhoneOff className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => showToast('Video stream toggled')}
+              className="flex-1 bg-[#16171a] hover:bg-[#202226] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border border-[#1f2024] text-[#dbdee1] hover:text-white transition-colors"
+            >
+              <Video className="w-3.5 h-3.5" /> Video
+            </button>
+            <button
+              onClick={() => showToast('Screen share toggled')}
+              className="flex-1 bg-[#16171a] hover:bg-[#202226] py-1 rounded text-[11px] font-medium flex items-center justify-center gap-1 border border-[#1f2024] text-[#dbdee1] hover:text-white transition-colors"
+            >
+              <Monitor className="w-3.5 h-3.5" /> Share Screen
+            </button>
+          </div>
+        </div>
+      )}
 
-            {/* Draggable Divider Handle for Resizing */}
-            <div
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setIsResizingChannelSidebar(true);
+      {/* Floating User Display Island spanning the full width! */}
+      <div className="p-1.5 rounded-[8px] bg-[#111214] border border-[#1f2024] shadow-lg flex items-center justify-between relative">
+        <div
+          onClick={() => setIsUserPopoutOpen(p => !p)}
+          className="flex items-center gap-2.5 p-1 rounded-[6px] hover:bg-[#1a1b1e] cursor-pointer min-w-0 flex-1 transition-colors"
+        >
+          <div className="relative shrink-0">
+            <div className="w-9 h-9 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-base">
+              {currentUser.avatar}
+            </div>
+            <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#111214] ${getStatusColor(currentUser.status)}`} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+              <span>{currentUser.name}</span>
+              <span className="text-[10px] text-[#949ba4] font-normal">#{currentUser.discriminator || '0001'}</span>
+            </div>
+            <div className="text-[10px] text-[#949ba4] truncate">{currentUser.statusText}</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-0.5 text-[#b5bac1]">
+          <button
+            onClick={() => setIsMuted(p => !p)}
+            className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isMuted ? 'text-[#f23f43]' : 'hover:text-white'}`}
+            title={isMuted ? 'Unmute' : 'Mute'}
+          >
+            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => setIsDeafened(p => !p)}
+            className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isDeafened ? 'text-[#f23f43]' : 'hover:text-white'}`}
+            title={isDeafened ? 'Undeafen' : 'Deafen'}
+          >
+            <Headphones className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-1.5 rounded-[4px] hover:bg-[#1a1b1e] hover:text-white"
+            title="User Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* User Island Popout */}
+        {isUserPopoutOpen && (
+          <div className="absolute bottom-[56px] left-2 z-50">
+            <ProfileCard
+              user={currentUser}
+              hideRoles={true}
+              onStatusChange={(st) => {
+                setCurrentUser(p => ({ ...p, status: st }));
+                showToast(`Status updated to ${st}`);
               }}
-              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-[#00f0ff] transition-colors z-30"
+              onEditProfile={() => {
+                setIsUserPopoutOpen(false);
+                setIsSettingsOpen(true);
+              }}
+              onClose={() => setIsUserPopoutOpen(false)}
             />
           </div>
         )}
+      </div>
+    </div>
+
+    {/* Draggable Divider Handle on the right edge */}
+    <div
+      onMouseDown={(e) => {
+        e.preventDefault();
+        setIsResizingChannelSidebar(true);
+      }}
+      className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-[#00f0ff] transition-colors z-30"
+    />
+  </div>
 
         {/* 4. Main Viewport Area */}
         {selectedBeaconId === 'explore' ? (
@@ -2097,9 +2173,21 @@ export const AppContent: React.FC = () => {
                 <button onClick={() => showToast(`Starting video call with ${activeDm.user.name}`)} className="p-1 hover:text-white" title="Start Video Call">
                   <Video className="w-5 h-5" />
                 </button>
-                <button onClick={() => setIsPinnedDrawerOpen(p => !p)} className="p-1 hover:text-white" title="Pinned Messages">
+                <button onClick={() => setIsPinnedPopdownOpen(p => !p)} className="p-1 hover:text-white relative" title="Pinned Messages">
                   <Pin className="w-5 h-5" />
                 </button>
+                <PinnedMessagesPopdown
+                  isOpen={isPinnedPopdownOpen}
+                  onClose={() => setIsPinnedPopdownOpen(false)}
+                  pinnedMessages={activeMessages.filter(m => m.isPinned).map(m => ({
+                    id: m.id,
+                    author: m.author,
+                    avatar: m.avatar,
+                    content: m.content,
+                    timestamp: m.timestamp,
+                  }))}
+                  onUnpin={(id) => handleTogglePin(id)}
+                />
                 <button onClick={(e) => handleOpenUserPopout(e, activeDm.user)} className="p-1 hover:text-white" title="User Profile">
                   <Shield className="w-5 h-5" />
                 </button>
@@ -2355,19 +2443,43 @@ export const AppContent: React.FC = () => {
                 )}
 
                 <button
-                  onClick={() => setIsPinnedDrawerOpen(p => !p)}
-                  className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] transition-colors ${isPinnedDrawerOpen ? 'text-white bg-[#1a1b1e]' : 'hover:text-white'}`}
+                  onClick={() => setIsPinnedPopdownOpen(p => !p)}
+                  className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] transition-colors relative ${isPinnedPopdownOpen ? 'text-white bg-[#1a1b1e]' : 'hover:text-white'}`}
                   title="Pinned Messages"
                 >
                   <Pin className="w-5 h-5" />
                 </button>
                 <button
-                  onClick={() => setIsMemberPanelOpen(p => !p)}
-                  className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] transition-colors ${isMemberPanelOpen ? 'text-white bg-[#1a1b1e]' : 'hover:text-white'}`}
+                  onClick={() => {
+                    if (currentChannel.type === 'voice') {
+                      setIsVoiceMemberListOpen(p => !p);
+                    } else {
+                      setIsTextMemberListOpen(p => !p);
+                    }
+                  }}
+                  className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] transition-colors ${
+                    (currentChannel.type === 'voice' ? isVoiceMemberListOpen : isTextMemberListOpen)
+                      ? 'text-white bg-[#1a1b1e]'
+                      : 'hover:text-white'
+                  }`}
                   title="Member List"
                 >
                   <Users className="w-5 h-5" />
                 </button>
+
+                {/* Pinned Messages Floating Popdown (Directly Anchored Beneath Pin Button) */}
+                <PinnedMessagesPopdown
+                  isOpen={isPinnedPopdownOpen}
+                  onClose={() => setIsPinnedPopdownOpen(false)}
+                  pinnedMessages={activeMessages.filter(m => m.isPinned).map(m => ({
+                    id: m.id,
+                    author: m.author,
+                    avatar: m.avatar,
+                    content: m.content,
+                    timestamp: m.timestamp,
+                  }))}
+                  onUnpin={(id) => handleTogglePin(id)}
+                />
 
                 {/* Quick Search */}
                 <div 
@@ -2391,46 +2503,145 @@ export const AppContent: React.FC = () => {
 
             {/* Split Voice View or Standard Feed */}
             <div className="flex-1 flex min-h-0 relative">
-              {/* If Channel is Voice, show Voice Lounge Stage (NO TEXT TYPING BOX AT BOTTOM!) */}
+              {/* If Channel is Voice, show Discord-style Voice Lounge Stage */}
               {currentChannel.type === 'voice' ? (
                 <div className="flex-1 flex flex-col bg-[#000000] p-6 items-center justify-center relative select-none">
-                  <div className="grid grid-cols-2 gap-6 max-w-2xl w-full">
-                    {(voiceUsers[currentChannel.id] || []).map(vu => (
-                      <div
-                        key={vu.id}
-                        className={`bg-[#0b0c0e] rounded-[14px] p-8 flex flex-col items-center justify-center relative shadow-2xl ${
-                          vu.isSpeaking ? 'ring-4 ring-[#23a55a]' : 'border border-[#1f2024]'
-                        }`}
-                      >
-                        <div className="w-20 h-20 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-4xl mb-3 shadow-inner">
-                          {vu.avatar}
+                  {/* Voice Grid (1 video/avatar tile per active participant; if alone, 1 user + 1 invite/activity card) */}
+                  <div className="grid grid-cols-2 gap-6 max-w-4xl w-full h-full max-h-[500px] items-center">
+                    {/* User Tiles */}
+                    {(voiceUsers[currentChannel.id] || []).length === 0 ? (
+                      <>
+                        {/* Connected Self Tile */}
+                        <div className="bg-[#1a3328] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl border border-[#23a55a]/30">
+                          <div className="w-24 h-24 rounded-full bg-[#000000] border-2 border-[#23a55a] flex items-center justify-center text-4xl shadow-inner mb-4">
+                            {currentUser.avatar}
+                          </div>
+                          <div className="absolute bottom-4 left-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-[6px] text-xs font-semibold text-white">
+                            {currentUser.name}
+                          </div>
                         </div>
-                        <div className="text-sm font-bold text-white flex items-center gap-1.5">
-                          <span>{vu.name}</span>
-                          {vu.isSpeaking && <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />}
+
+                        {/* Invite / Activity Card matching media_1788737148844.png */}
+                        <div className="bg-[#1e1322] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl border border-[#7928ca]/30 p-6 text-center">
+                          <div className="text-5xl mb-4">🏆</div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <button
+                              onClick={() => setIsInviteModalOpen(true)}
+                              className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
+                            >
+                              <UserPlus className="w-3.5 h-3.5 text-[#00f0ff]" /> Invite to Voice
+                            </button>
+                            <button
+                              onClick={() => showToast('Activity Launcher')}
+                              className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-[#eb459e]" /> Choose Activity
+                            </button>
+                          </div>
                         </div>
-                        <div className="absolute bottom-3 right-3 text-[#949ba4]">
-                          {vu.isMuted && <MicOff className="w-4 h-4 text-[#f23f43]" />}
+                      </>
+                    ) : (voiceUsers[currentChannel.id] || []).length === 1 ? (
+                      <>
+                        {/* Single User Tile */}
+                        <div className="bg-[#1a3328] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl border border-[#23a55a]/30">
+                          <div className="w-24 h-24 rounded-full bg-[#000000] border-2 border-[#23a55a] flex items-center justify-center text-4xl shadow-inner mb-4">
+                            {voiceUsers[currentChannel.id][0].avatar}
+                          </div>
+                          <div className="absolute bottom-4 left-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-[6px] text-xs font-semibold text-white">
+                            {voiceUsers[currentChannel.id][0].name}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+
+                        {/* Solo Companion Invite Card */}
+                        <div className="bg-[#1e1322] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl border border-[#7928ca]/30 p-6 text-center">
+                          <div className="text-5xl mb-4">🏆</div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <button
+                              onClick={() => setIsInviteModalOpen(true)}
+                              className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
+                            >
+                              <UserPlus className="w-3.5 h-3.5 text-[#00f0ff]" /> Invite to Voice
+                            </button>
+                            <button
+                              onClick={() => showToast('Activity Launcher')}
+                              className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-[#eb459e]" /> Choose Activity
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      /* Multi-user tiles: 1 per participant */
+                      voiceUsers[currentChannel.id].map(vu => (
+                        <div
+                          key={vu.id}
+                          className={`bg-[#0b0c0e] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl ${
+                            vu.isSpeaking ? 'ring-4 ring-[#23a55a]' : 'border border-[#1f2024]'
+                          }`}
+                        >
+                          <div className="w-20 h-20 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-4xl mb-3 shadow-inner">
+                            {vu.avatar}
+                          </div>
+                          <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-md px-2.5 py-0.5 rounded-[4px] text-xs font-semibold text-white flex items-center gap-1.5">
+                            <span>{vu.name}</span>
+                            {vu.isSpeaking && <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />}
+                          </div>
+                          <div className="absolute bottom-3 right-3 text-[#949ba4]">
+                            {vu.isMuted && <MicOff className="w-4 h-4 text-[#f23f43]" />}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
 
-                  <div className="mt-8 text-xs text-[#80848e]">
-                    Connected to Subspace High-Fidelity Voice Mesh
-                  </div>
-                  <div className="flex gap-2 mt-3">
-                    <button 
-                      onClick={() => setIsInviteModalOpen(true)}
-                      className="bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs font-semibold px-4 py-2 rounded-[6px] flex items-center gap-1.5 transition-colors shadow-sm"
+                  {/* Floating Bottom Pill Controls Bar (Replicating media_1788737148844.png) */}
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111214]/90 backdrop-blur-md border border-[#1f2024] rounded-full px-4 py-2 flex items-center gap-3 shadow-2xl z-20">
+                    <button
+                      onClick={() => setIsMuted(p => !p)}
+                      className={`p-2.5 rounded-full transition-colors ${
+                        isMuted ? 'bg-[#f23f43] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
+                      }`}
+                      title={isMuted ? 'Unmute' : 'Mute'}
                     >
-                      <UserPlus className="w-3.5 h-3.5" /> Invite to Voice
+                      {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                     </button>
-                    <button 
-                      onClick={() => setIsVoiceChatOpen(p => !p)}
-                      className="bg-[#16171a] hover:bg-[#202226] text-white text-xs font-semibold px-4 py-2 rounded-[6px] flex items-center gap-1.5 transition-colors border border-[#1f2024]"
+                    <button
+                      onClick={() => setIsDeafened(p => !p)}
+                      className={`p-2.5 rounded-full transition-colors ${
+                        isDeafened ? 'bg-[#f23f43] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
+                      }`}
+                      title={isDeafened ? 'Undeafen' : 'Deafen'}
                     >
-                      <MessageSquare className="w-3.5 h-3.5 text-[#00f0ff]" /> {isVoiceChatOpen ? 'Hide Voice Chat' : 'Open Voice Chat'}
+                      <Headphones className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => showToast('Holo-Cast Video Toggled')}
+                      className="p-2.5 rounded-full bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31] transition-colors"
+                      title="Share Video"
+                    >
+                      <Video className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => showToast('Holo-Cast Screen Share Toggled')}
+                      className="p-2.5 rounded-full bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31] transition-colors"
+                      title="Share Screen"
+                    >
+                      <Monitor className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => showToast('Opening Activities')}
+                      className="p-2.5 rounded-full bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31] transition-colors"
+                      title="Activities"
+                    >
+                      <Sparkles className="w-4 h-4 text-[#eb459e]" />
+                    </button>
+                    <button
+                      onClick={handleDisconnectVoice}
+                      className="p-2.5 rounded-full bg-[#f23f43] hover:bg-[#da373b] text-white transition-colors"
+                      title="Disconnect"
+                    >
+                      <PhoneOff className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -2523,7 +2734,7 @@ export const AppContent: React.FC = () => {
                               </div>
 
                               <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
-                                {m.content}
+                                <MarkdownMessage content={m.content} />
                               </div>
 
                               {/* Reaction Pills */}
@@ -2548,8 +2759,26 @@ export const AppContent: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Hidden File Picker Input */}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+
                   {/* Channel Message Input Container (Shown ONLY for standard text channels, NEVER in voice stage!) */}
-                  <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#000000]">
+                  <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#000000] relative">
+                    {/* Emoji Picker Popover */}
+                    <EmojiPickerPopdown
+                      isOpen={isEmojiPickerOpen}
+                      onClose={() => setIsEmojiPickerOpen(false)}
+                      customEmojis={beaconEmojisList}
+                      onSelectEmoji={(emoji) => {
+                        setMessageInput(prev => `${prev}${emoji}`);
+                      }}
+                    />
+
                     <div className="bg-[#111214] border border-[#1f2024] rounded-[8px] flex items-center px-4 py-2.5 gap-3 focus-within:border-[#00f0ff]/50 transition-colors">
                       <button
                         type="button"
@@ -2570,13 +2799,15 @@ export const AppContent: React.FC = () => {
                       />
 
                       <div className="flex items-center gap-2.5 text-[#80848e]">
-                        <button type="button" className="hover:text-white transition-colors" title="Send a gift">
-                          <Gift className="w-5 h-5" />
-                        </button>
-                        <button type="button" className="hover:text-white text-xs font-bold font-mono px-1 rounded bg-[#1f2024] transition-colors" title="Open GIF picker">
+                        <button type="button" className="hover:text-white text-xs font-bold font-mono px-1.5 py-0.5 rounded bg-[#1f2024] transition-colors" title="Open GIF picker">
                           GIF
                         </button>
-                        <button type="button" className="hover:text-white transition-colors" title="Select Emoji">
+                        <button 
+                          type="button" 
+                          onClick={() => setIsEmojiPickerOpen(p => !p)} 
+                          className={`hover:text-white transition-colors ${isEmojiPickerOpen ? 'text-[#00f0ff]' : ''}`} 
+                          title="Select Signal Glyph (Emoji)"
+                        >
                           <Smile className="w-5 h-5" />
                         </button>
                         {messageInput.trim() && (
@@ -2642,12 +2873,9 @@ export const AppContent: React.FC = () => {
                   </form>
                 </div>
               )}
-            </div>
-          </div>
-        )}
 
-        {/* 5. Server Member List Sidebar (Jet Black #0f1012) - Resizable with Draggable Handle */}
-        {selectedBeaconId !== 'home' && isMemberPanelOpen && (
+              {/* 5. Server Member List Sidebar (Jet Black #0f1012) - Resizable with Draggable Handle */}
+              {selectedBeaconId !== 'home' && (currentChannel.type === 'voice' ? isVoiceMemberListOpen : isTextMemberListOpen) && (
           <div 
             style={{ width: `${memberPanelWidth}px` }} 
             className="bg-[#0f1012] flex flex-col shrink-0 border-l border-[#1a1b1e] select-none relative"
@@ -2729,55 +2957,10 @@ export const AppContent: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* 6. Pinned Messages Drawer */}
-        {isPinnedDrawerOpen && (
-          <div className="w-80 bg-[#2b2d31] border-l border-[#1f2023] flex flex-col shrink-0 animate-in slide-in-from-right duration-150 select-none">
-            <div className="h-12 px-4 border-b border-[#1f2023] flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <Pin className="w-4 h-4 text-[#00f0ff]" />
-                <span>Pinned Messages</span>
-              </div>
-              <button 
-                onClick={() => setIsPinnedDrawerOpen(false)}
-                className="p-1 rounded hover:bg-[#35373c] text-[#949ba4] hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {activeMessages.filter(m => m.isPinned).length === 0 ? (
-                <div className="text-xs text-[#949ba4] text-center mt-10">
-                  No pinned messages in this channel.
-                </div>
-              ) : (
-                activeMessages.filter(m => m.isPinned).map(m => (
-                  <div
-                    key={`pin-${m.id}`}
-                    onContextMenu={(e) => openContextMenu(e, getMessageContextMenu(m))}
-                    className="p-3 rounded-[8px] bg-[#313338] border border-[#232428] space-y-2 hover:border-[#5865f2] transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-white">{m.author}</span>
-                      <span className="text-[10px] text-[#949ba4]">{m.timestamp}</span>
-                    </div>
-                    <p className="text-xs text-[#dbdee1] leading-relaxed">{m.content}</p>
-                    <div className="flex justify-end gap-2 pt-1 border-t border-[#232428]">
-                      <button
-                        onClick={() => handleTogglePin(m.id)}
-                        className="text-[10px] text-[#f23f43] hover:underline"
-                      >
-                        Unpin
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
       </div>
+    </div>
+  )}
+</div>
 
       {/* 7. Hovering User Profile Popover (Rendered Adjacent to Click Target, NOT Fullscreen Modal!) */}
       {hoverUserPopout && (
@@ -2850,29 +3033,29 @@ export const AppContent: React.FC = () => {
         </div>
       </Modal>
 
-      {/* 9. Discord User Settings Modal */}
+      {/* 9. Discord User Settings Modal (Exact same 840x600 fixed dimensions as Server Settings) */}
       <Modal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         title="User Settings"
-        maxWidth="2xl"
+        fixedDimensions={true}
       >
-        <div className="flex gap-6 max-h-[75vh]">
+        <div className="flex gap-6 h-full min-h-0">
           {/* Settings Left Navigation */}
           <div className="w-48 flex flex-col gap-1 border-r border-[#232428] pr-4 shrink-0 text-xs font-medium">
             <div className="text-[10px] uppercase font-bold text-[#949ba4] px-2 py-1">User Settings</div>
             <button
               onClick={() => setActiveSettingsTab('profile')}
               className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
-                activeSettingsTab === 'profile' ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+                activeSettingsTab === 'profile' ? 'bg-[#35373c] text-white font-semibold' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
               }`}
             >
-              My Account & Identity
+              My Account & Profile
             </button>
             <button
               onClick={() => setActiveSettingsTab('appearance')}
               className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
-                activeSettingsTab === 'appearance' ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+                activeSettingsTab === 'appearance' ? 'bg-[#35373c] text-white font-semibold' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
               }`}
             >
               Appearance & Spectrum
@@ -2880,7 +3063,7 @@ export const AppContent: React.FC = () => {
             <button
               onClick={() => setActiveSettingsTab('badges')}
               className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
-                activeSettingsTab === 'badges' ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+                activeSettingsTab === 'badges' ? 'bg-[#35373c] text-white font-semibold' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
               }`}
             >
               Commendations & Badges
@@ -2888,7 +3071,7 @@ export const AppContent: React.FC = () => {
             <button
               onClick={() => setActiveSettingsTab('voice')}
               className={`text-left px-2 py-1.5 rounded-[4px] transition-colors ${
-                activeSettingsTab === 'voice' ? 'bg-[#35373c] text-white' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
+                activeSettingsTab === 'voice' ? 'bg-[#35373c] text-white font-semibold' : 'text-[#b5bac1] hover:bg-[#35373c]/50'
               }`}
             >
               Voice & Video
@@ -2929,17 +3112,69 @@ export const AppContent: React.FC = () => {
             )}
 
             {activeSettingsTab === 'profile' && (
-              <div className="space-y-4 text-xs">
-                <h3 className="text-sm font-bold text-white">My Account Info</h3>
-                <div className="bg-[#2b2d31] p-3 rounded-[8px] space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-[#949ba4]">Username</span>
-                    <span className="text-white font-medium">{currentUser.name}</span>
+              <div className="space-y-5 text-xs">
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-0.5">Transmitter Identity</h3>
+                  <p className="text-[#949ba4] text-[11px]">Manage your display name, tag, and personal bio.</p>
+                </div>
+
+                <div className="bg-[#111214] border border-[#1f2024] p-3.5 rounded-[8px] space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-[#949ba4] uppercase">Display Name</label>
+                    <input
+                      type="text"
+                      value={currentUser.name}
+                      onChange={(e) => setCurrentUser(p => ({ ...p, name: e.target.value }))}
+                      className="w-full bg-[#080809] border border-[#2b2d31] rounded-[6px] px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#00f0ff]"
+                    />
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#949ba4]">Callsign</span>
-                    <span className="text-white font-mono">@{currentUser.callsign}</span>
+
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-[#949ba4]">Transmitter Tag</span>
+                    <span className="text-white font-mono bg-[#16171a] px-2 py-1 rounded border border-[#232428]">
+                      @{currentUser.callsign}#{currentUser.discriminator || '0001'}
+                    </span>
                   </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[11px] font-bold text-[#949ba4] uppercase">About Me (Bio)</label>
+                      <span className={`text-[10px] ${((currentUser.bio || '').length > 450) ? 'text-[#f23f43]' : 'text-[#80848e]'}`}>
+                        {(currentUser.bio || '').length}/500
+                      </span>
+                    </div>
+                    <textarea
+                      rows={4}
+                      maxLength={500}
+                      value={currentUser.bio || ''}
+                      onChange={(e) => setCurrentUser(p => ({ ...p, bio: e.target.value }))}
+                      placeholder="Share a transmission about yourself (up to 500 characters)..."
+                      className="w-full bg-[#080809] border border-[#2b2d31] rounded-[6px] p-2.5 text-white text-xs placeholder-[#80848e] focus:outline-none focus:border-[#00f0ff] resize-none"
+                    />
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await api.updateProfile({
+                            displayName: currentUser.name,
+                            bio: currentUser.bio,
+                          });
+                          showToast('Profile updated and saved!');
+                        } catch (err: any) {
+                          showToast(`Failed to update profile: ${err.message}`);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-[6px] bg-[#00f0ff] hover:bg-[#33f3ff] text-black font-bold text-xs transition-all shadow-[0_0_12px_rgba(0,240,255,0.3)]"
+                    >
+                      Save Profile Changes
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-[#111214] border border-[#1f2024] p-3 rounded-[8px] space-y-2">
                   <div className="flex justify-between">
                     <span className="text-[#949ba4]">Subspace Key Fingerprint</span>
                     <span className="text-[#00f0ff] font-mono">{currentUser.quantumKeyFingerprint}</span>
@@ -2951,7 +3186,7 @@ export const AppContent: React.FC = () => {
             {activeSettingsTab === 'voice' && (
               <div className="space-y-4 text-xs">
                 <h3 className="text-sm font-bold text-white">Voice & Video Diagnostics</h3>
-                <div className="bg-[#2b2d31] p-3 rounded-[8px] space-y-2 text-[#dbdee1]">
+                <div className="bg-[#111214] border border-[#1f2024] p-3 rounded-[8px] space-y-2 text-[#dbdee1]">
                   <p>RTC Engine: LiveKit Subspace WebRTC</p>
                   <p>Audio Codec: Opus 128 kbps Quantum Optimized</p>
                   <p>Echo Cancellation & Noise Suppression: Enabled</p>
@@ -2996,6 +3231,151 @@ export const AppContent: React.FC = () => {
           setIsServerSettingsOpen(false);
         }}
       />
+
+      {/* 12. Create Server / Beacon Modal */}
+      <CreateServerModal
+        isOpen={isCreateServerOpen}
+        onClose={() => setIsCreateServerOpen(false)}
+        onCreateServer={async (name: string, description?: string) => {
+          try {
+            const newBeacon = await api.createBeacon(name, description);
+            setBeacons(prev => [...prev, {
+              id: newBeacon.id,
+              name: newBeacon.name,
+              iconText: getBeaconInitials(newBeacon.name),
+              gradient: getBeaconGradient(newBeacon.id),
+            }]);
+            setSelectedBeaconId(newBeacon.id);
+            showToast(`Created and tuned into Beacon: ${newBeacon.name}`);
+          } catch (err: any) {
+            showToast(`Failed to create beacon: ${err.message}`);
+          }
+        }}
+      />
+
+      {/* 13. Create Channel Modal */}
+      <CreateChannelModal
+        isOpen={isCreateChannelOpen}
+        onClose={() => {
+          setIsCreateChannelOpen(false);
+          setCreateChannelCategory(undefined);
+        }}
+        categoryName={createChannelCategory}
+        onCreateChannel={async (name: string, type: 'text' | 'voice' | 'announcement', topic?: string) => {
+          try {
+            const newRelay = await api.createRelay(selectedBeaconId, name, type, undefined, topic);
+            setServerData(prev => {
+              const current = prev[selectedBeaconId] || { name: currentServer.name, categories: [] };
+              const updatedCategories = current.categories.map(cat => {
+                if (createChannelCategory ? cat.name === createChannelCategory : cat.id === 'cat-text') {
+                  return {
+                    ...cat,
+                    channels: [...cat.channels, {
+                      id: newRelay.id,
+                      name: newRelay.name,
+                      type: newRelay.type as any,
+                      description: newRelay.topic || undefined,
+                    }],
+                  };
+                }
+                return cat;
+              });
+              return {
+                ...prev,
+                [selectedBeaconId]: {
+                  ...current,
+                  categories: updatedCategories,
+                },
+              };
+            });
+            setSelectedChannelId(newRelay.id);
+            showToast(`Relay #${newRelay.name} provisioned`);
+          } catch (err: any) {
+            showToast(`Failed to create relay: ${err.message}`);
+          }
+        }}
+      />
+
+      {/* 14. Create Category Modal */}
+      <CreateCategoryModal
+        isOpen={isCreateCategoryOpen}
+        onClose={() => setIsCreateCategoryOpen(false)}
+        onCreateCategory={async (catName: string) => {
+          setServerData(prev => {
+            const current = prev[selectedBeaconId] || { name: currentServer.name, categories: [] };
+            return {
+              ...prev,
+              [selectedBeaconId]: {
+                ...current,
+                categories: [
+                  ...current.categories,
+                  {
+                    id: `cat-${Date.now()}`,
+                    name: catName,
+                    channels: [],
+                  },
+                ],
+              },
+            };
+          });
+          showToast(`Category [${catName}] established`);
+        }}
+      />
+
+      {/* 15. Subspace Vault Upload Disclaimer Modal */}
+      <UploadDisclaimerModal
+        isOpen={isUploadDisclaimerOpen}
+        onClose={() => {
+          setIsUploadDisclaimerOpen(false);
+          setPendingUploadFile(null);
+        }}
+        onAccepted={handleDisclaimerAccepted}
+      />
+
+      {/* 16. Cloud Drive Picker Modal (Google Drive, OneDrive, Dropbox) */}
+      <CloudDrivePickerModal
+        isOpen={isCloudPickerOpen}
+        onClose={() => setIsCloudPickerOpen(false)}
+        onSelectTether={handleTetherCloudSelected}
+      />
+
+      {/* 17. Full Profile Modal */}
+      <FullProfileModal
+        user={fullProfileUser}
+        isOpen={Boolean(fullProfileUser)}
+        onClose={() => setFullProfileUser(null)}
+      />
+
+      {/* 18. Voice Channel Switch Confirmation Dialog */}
+      {pendingSwitchChannelId && (
+        <Modal
+          isOpen={Boolean(pendingSwitchChannelId)}
+          onClose={() => setPendingSwitchChannelId(null)}
+          title="Switch Voice Channel?"
+        >
+          <div className="space-y-4 text-xs">
+            <p className="text-[#dbdee1] leading-relaxed">
+              You are already connected to a voice channel. Switching will disconnect your current audio session and connect you to the new channel. Do you wish to proceed?
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingSwitchChannelId(null)}
+                className="px-4 py-2 rounded-[6px] text-xs font-semibold text-[#dbdee1] hover:bg-[#1a1b1e] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmSwitchVoiceChannel(pendingSwitchChannelId)}
+                className="px-4 py-2 rounded-[6px] text-xs font-bold text-white bg-[#5865f2] hover:bg-[#4752c4] transition-all shadow-[0_0_12px_rgba(88,101,242,0.4)]"
+              >
+                Switch Channel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

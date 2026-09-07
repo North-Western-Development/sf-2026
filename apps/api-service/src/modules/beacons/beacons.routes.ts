@@ -8,6 +8,7 @@ import {
   beaconMembers,
   clearances,
   transmitters,
+  beaconEmojis,
 } from '@subspace/database';
 import {
   PERMISSIONS,
@@ -383,6 +384,10 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         clearanceIds: beaconMembers.clearanceIds,
         joinedAt: beaconMembers.joinedAt,
         username: transmitters.username,
+        discriminator: transmitters.discriminator,
+        bio: transmitters.bio,
+        bannerUrl: transmitters.bannerUrl,
+        bannerColor: transmitters.bannerColor,
         displayName: transmitters.displayName,
         displayColor: transmitters.displayColor,
         displayFont: transmitters.displayFont,
@@ -416,6 +421,10 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return {
         transmitterId: m.transmitterId,
         username: m.username,
+        discriminator: m.discriminator,
+        bio: m.bio,
+        bannerUrl: m.bannerUrl,
+        bannerColor: m.bannerColor,
         displayName: m.nickname || m.displayName,
         displayColor: effectiveColor,
         displayFont,
@@ -466,5 +475,124 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       );
 
     return reply.send({ message: 'Target transmitter expelled from Beacon' });
+  });
+
+  /**
+   * GET /api/v1/beacons/:id/emojis
+   * List custom emojis for a beacon
+   */
+  app.get('/:id/emojis', async (request, reply) => {
+    const { id: beaconId } = request.params as { id: string };
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const emojis = await db
+      .select()
+      .from(beaconEmojis)
+      .where(eq(beaconEmojis.beaconId, beaconId));
+
+    return reply.send({ emojis });
+  });
+
+  /**
+   * POST /api/v1/beacons/:id/emojis
+   * Upload / create a custom emoji
+   */
+  app.post('/:id/emojis', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+
+    const { id: beaconId } = request.params as { id: string };
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+    if (!actorContext) {
+      return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+    }
+
+    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.ADMINISTRATOR)) {
+      return reply.status(403).send({ error: 'Administrator permission required' });
+    }
+
+    const { name, url } = request.body as { name: string; url: string };
+    if (!name || !url) {
+      return reply.status(400).send({ error: 'Emoji name and URL are required' });
+    }
+
+    const cleanName = name.trim().replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+    if (!cleanName) {
+      return reply.status(400).send({ error: 'Emoji name must be alphanumeric or underscores' });
+    }
+
+    const [emoji] = await db
+      .insert(beaconEmojis)
+      .values({
+        beaconId,
+        name: cleanName,
+        url: url.trim(),
+        uploaderId: token.transmitterId,
+      })
+      .returning();
+
+    return reply.status(201).send({ emoji });
+  });
+
+  /**
+   * PATCH /api/v1/beacons/:id/emojis/:emojiId
+   * Rename custom emoji
+   */
+  app.patch('/:id/emojis/:emojiId', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+
+    const { id: beaconId, emojiId } = request.params as { id: string; emojiId: string };
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+    if (!actorContext) {
+      return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+    }
+
+    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.ADMINISTRATOR)) {
+      return reply.status(403).send({ error: 'Administrator permission required' });
+    }
+
+    const { name } = request.body as { name: string };
+    if (!name) return reply.status(400).send({ error: 'Emoji name is required' });
+
+    const cleanName = name.trim().replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+    const [updatedEmoji] = await db
+      .update(beaconEmojis)
+      .set({ name: cleanName })
+      .where(and(eq(beaconEmojis.id, emojiId), eq(beaconEmojis.beaconId, beaconId)))
+      .returning();
+
+    return reply.send({ emoji: updatedEmoji });
+  });
+
+  /**
+   * DELETE /api/v1/beacons/:id/emojis/:emojiId
+   * Delete custom emoji
+   */
+  app.delete('/:id/emojis/:emojiId', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+
+    const { id: beaconId, emojiId } = request.params as { id: string; emojiId: string };
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+    if (!actorContext) {
+      return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+    }
+
+    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.ADMINISTRATOR)) {
+      return reply.status(403).send({ error: 'Administrator permission required' });
+    }
+
+    await db
+      .delete(beaconEmojis)
+      .where(and(eq(beaconEmojis.id, emojiId), eq(beaconEmojis.beaconId, beaconId)));
+
+    return reply.send({ message: 'Emoji removed' });
   });
 };

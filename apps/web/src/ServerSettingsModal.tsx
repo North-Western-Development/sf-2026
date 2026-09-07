@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Upload, Plus, Edit2, Check, X } from 'lucide-react';
 import { Modal } from '@subspace/ui';
+
+export interface CustomServerEmoji {
+  id: string;
+  name: string;
+  url: string;
+}
 
 export interface ServerSettingsModalProps {
   isOpen: boolean;
@@ -9,6 +15,10 @@ export interface ServerSettingsModalProps {
   serverId: string;
   onUpdateServerName?: (newName: string) => void;
   onDeleteServer?: () => void;
+  emojis?: CustomServerEmoji[];
+  onUploadEmoji?: (name: string, url: string) => void;
+  onRenameEmoji?: (emojiId: string, newName: string) => void;
+  onDeleteEmoji?: (emojiId: string) => void;
 }
 
 export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
@@ -18,9 +28,19 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   serverId,
   onUpdateServerName,
   onDeleteServer,
+  emojis = [],
+  onUploadEmoji,
+  onRenameEmoji,
+  onDeleteEmoji,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'channels' | 'emojis' | 'audit'>('overview');
   const [nameInput, setNameInput] = useState(serverName);
+
+  // Emoji management state
+  const [newEmojiName, setNewEmojiName] = useState('');
+  const [newEmojiUrl, setNewEmojiUrl] = useState('');
+  const [editingEmojiId, setEditingEmojiId] = useState<string | null>(null);
+  const [editEmojiName, setEditEmojiName] = useState('');
 
   useEffect(() => {
     setNameInput(serverName);
@@ -28,18 +48,37 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleCreateEmoji = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmojiName.trim() || !newEmojiUrl.trim()) return;
+    if (onUploadEmoji) {
+      onUploadEmoji(newEmojiName.trim(), newEmojiUrl.trim());
+    }
+    setNewEmojiName('');
+    setNewEmojiUrl('');
+  };
+
+  const handleSaveRename = (emojiId: string) => {
+    if (!editEmojiName.trim()) return;
+    if (onRenameEmoji) {
+      onRenameEmoji(emojiId, editEmojiName.trim());
+    }
+    setEditingEmojiId(null);
+    setEditEmojiName('');
+  };
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={`Server Settings — ${serverName}`}
-      maxWidth="2xl"
+      fixedDimensions={true}
     >
-      <div className="flex gap-6 max-h-[75vh] select-none text-[#dbdee1]">
+      <div className="flex flex-1 h-full gap-6 select-none text-[#dbdee1] min-h-0">
         {/* Left Navigation */}
         <div className="w-48 flex flex-col gap-1 border-r border-[#1f2024] pr-4 shrink-0 text-xs font-medium">
-          <div className="text-[10px] uppercase font-bold text-[#949ba4] px-2 py-1">
-            {serverName.slice(0, 16)}
+          <div className="text-[10px] uppercase font-bold text-[#949ba4] px-2 py-1 truncate">
+            {serverName}
           </div>
           <button
             onClick={() => setActiveTab('overview')}
@@ -63,7 +102,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
               activeTab === 'channels' ? 'bg-[#1f2024] text-white font-semibold' : 'text-[#949ba4] hover:bg-[#16171a]'
             }`}
           >
-            Channel Management
+            Relay Channels
           </button>
           <button
             onClick={() => setActiveTab('emojis')}
@@ -71,7 +110,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
               activeTab === 'emojis' ? 'bg-[#1f2024] text-white font-semibold' : 'text-[#949ba4] hover:bg-[#16171a]'
             }`}
           >
-            Custom Emoji & Stickers
+            Signal Glyphs (Emojis)
           </button>
           <button
             onClick={() => setActiveTab('audit')}
@@ -79,31 +118,35 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
               activeTab === 'audit' ? 'bg-[#1f2024] text-white font-semibold' : 'text-[#949ba4] hover:bg-[#16171a]'
             }`}
           >
-            Audit Log
+            Audit Telemetry
           </button>
 
-          <div className="pt-4 mt-2 border-t border-[#1f2024]">
+          <div className="h-[1px] bg-[#1f2024] my-2" />
+
+          {onDeleteServer && (
             <button
               onClick={onDeleteServer}
-              className="w-full text-left px-2.5 py-1.5 rounded-[4px] text-xs font-semibold text-[#f23f43] hover:bg-[#f23f43]/10 transition-colors flex items-center justify-between"
+              className="text-left px-2.5 py-1.5 rounded-[4px] text-[#f23f43] hover:bg-[#f23f43]/10 transition-colors flex items-center justify-between"
             >
-              <span>Delete Server</span>
+              <span>Decommission Beacon</span>
               <Trash2 className="w-3.5 h-3.5" />
             </button>
-          </div>
+          )}
         </div>
 
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto pr-2 space-y-6 text-xs">
+        {/* Right Content Pane - Scrollable */}
+        <div className="flex-1 overflow-y-auto pr-2 text-xs">
           {activeTab === 'overview' && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-white mb-1">Server Overview</h3>
-                <p className="text-xs text-[#949ba4]">Customize the tactical identification parameters for this subspace beacon.</p>
+                <p className="text-xs text-[#949ba4]">Configure basic parameters for your subspace beacon node.</p>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[11px] uppercase font-bold text-[#b5bac1]">SERVER NAME</label>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-[#949ba4] tracking-wider block mb-1">
+                  SERVER NAME
+                </label>
                 <input
                   type="text"
                   value={nameInput}
@@ -185,19 +228,125 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
             </div>
           )}
 
+          {/* Fully Functional Signal Glyphs / Custom Emojis Tab */}
           {activeTab === 'emojis' && (
             <div className="space-y-4">
               <div>
-                <h3 className="text-sm font-bold text-white mb-1">Custom Beacon Emojis</h3>
-                <p className="text-xs text-[#949ba4]">Add up to 50 custom emojis that members can use across subspace.</p>
+                <h3 className="text-sm font-bold text-white mb-1">Custom Beacon Signal Glyphs</h3>
+                <p className="text-xs text-[#949ba4]">
+                  Upload custom emojis that transmitters can use in transmissions and reactions.
+                </p>
               </div>
-              <div className="grid grid-cols-4 gap-2">
-                {['⚡', '🛸', '🛰️', '🚀', '🔬', '🌌', '📡', '☄️'].map((emoji, idx) => (
-                  <div key={idx} className="p-3 rounded bg-[#111214] border border-[#1f2024] flex flex-col items-center justify-center text-xl">
-                    <span>{emoji}</span>
-                    <span className="text-[10px] text-[#80848e] font-mono mt-1">:slot_{idx + 1}:</span>
+
+              {/* Upload Form */}
+              <form onSubmit={handleCreateEmoji} className="p-3 rounded-[8px] bg-[#111214] border border-[#1f2024] space-y-3">
+                <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                  <Plus className="w-4 h-4 text-[#00f0ff]" />
+                  <span>Upload New Glyph</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Glyph name (e.g. hyperdrive)"
+                    value={newEmojiName}
+                    onChange={(e) => setNewEmojiName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                    className="bg-[#1e1f22] border border-[#2b2d31] focus:border-[#00f0ff]/50 rounded-[4px] px-2.5 py-1.5 text-xs text-white placeholder-[#80848e] outline-none"
+                  />
+                  <input
+                    type="url"
+                    required
+                    placeholder="Image URL (PNG, WEBP, SVG)"
+                    value={newEmojiUrl}
+                    onChange={(e) => setNewEmojiUrl(e.target.value)}
+                    className="bg-[#1e1f22] border border-[#2b2d31] focus:border-[#00f0ff]/50 rounded-[4px] px-2.5 py-1.5 text-xs text-white placeholder-[#80848e] outline-none"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-3 py-1.5 rounded-[4px] font-semibold text-xs transition-colors flex items-center gap-1"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Upload Glyph
+                  </button>
+                </div>
+              </form>
+
+              {/* Existing Emojis List */}
+              <div className="space-y-2">
+                <div className="text-[10px] uppercase font-bold text-[#949ba4] tracking-wider">
+                  ACTIVE GLYPHS ({emojis.length}/50)
+                </div>
+                {emojis.length === 0 ? (
+                  <div className="p-4 rounded-[6px] bg-[#111214] border border-[#1f2024] text-center text-[#80848e]">
+                    No custom emojis uploaded yet. Add your first beacon signal glyph above!
                   </div>
-                ))}
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {emojis.map((emoji) => (
+                      <div
+                        key={emoji.id}
+                        className="p-2.5 rounded-[6px] bg-[#111214] border border-[#1f2024] flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={emoji.url}
+                            alt={emoji.name}
+                            className="w-7 h-7 object-contain rounded shrink-0 bg-[#1e1f22] p-0.5"
+                          />
+                          {editingEmojiId === emoji.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={editEmojiName}
+                                onChange={(e) => setEditEmojiName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                                className="bg-[#1e1f22] border border-[#00f0ff] rounded px-1.5 py-0.5 text-xs text-white outline-none w-24"
+                              />
+                              <button
+                                onClick={() => handleSaveRename(emoji.id)}
+                                className="p-1 hover:text-[#23a55a]"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setEditingEmojiId(null)}
+                                className="p-1 hover:text-[#f23f43]"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="font-mono text-xs text-white truncate">:{emoji.name}:</span>
+                          )}
+                        </div>
+
+                        {editingEmojiId !== emoji.id && (
+                          <div className="flex items-center gap-1 text-[#949ba4]">
+                            <button
+                              onClick={() => {
+                                setEditingEmojiId(emoji.id);
+                                setEditEmojiName(emoji.name);
+                              }}
+                              className="p-1 hover:text-white"
+                              title="Rename emoji"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            {onDeleteEmoji && (
+                              <button
+                                onClick={() => onDeleteEmoji(emoji.id)}
+                                className="p-1 hover:text-[#f23f43]"
+                                title="Delete emoji"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -205,7 +354,7 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
           {activeTab === 'audit' && (
             <div className="space-y-3">
               <div>
-                <h3 className="text-sm font-bold text-white mb-1">Audit Log</h3>
+                <h3 className="text-sm font-bold text-white mb-1">Audit Telemetry</h3>
                 <p className="text-xs text-[#949ba4]">Chronological ledger of tactical administrative events.</p>
               </div>
               <div className="space-y-1.5 font-mono text-[11px]">

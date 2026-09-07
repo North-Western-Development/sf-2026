@@ -118,6 +118,9 @@ export async function buildApp() {
   const { commendationRoutes } = await import('./modules/commendations/commendations.routes.js');
   await app.register(commendationRoutes, { prefix: '/api/v1/transmitters' });
 
+  const { vaultRoutes } = await import('./modules/vault/vault.routes.js');
+  await app.register(vaultRoutes, { prefix: '/api/v1/vault' });
+
   // Health check endpoint
   app.get('/health', async () => {
     return {
