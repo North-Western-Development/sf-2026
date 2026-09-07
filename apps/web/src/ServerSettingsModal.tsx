@@ -49,6 +49,23 @@ export interface ServerCategory {
   channels: ServerChannel[];
 }
 
+export interface OnboardingOption {
+  id: string;
+  label: string;
+  description?: string;
+  roleId?: string;
+  roleName?: string;
+  roleColor?: string;
+}
+
+export interface OnboardingQuestion {
+  id: string;
+  title: string;
+  description?: string;
+  timing: 'join_and_browse' | 'browse_only';
+  options: OnboardingOption[];
+}
+
 export interface ServerSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -67,6 +84,8 @@ export interface ServerSettingsModalProps {
   onCreateRelay?: (name: string, type: string, topic?: string, categoryId?: string) => Promise<void> | void;
   onCreateCategory?: (name: string) => Promise<void> | void;
   onToggleRelayVisibility?: (relayId: string, isHidden: boolean) => Promise<void> | void;
+  onboardingQuestions?: OnboardingQuestion[];
+  onUpdateOnboardingQuestions?: (questions: OnboardingQuestion[]) => void;
 }
 
 export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
@@ -87,6 +106,8 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   onCreateRelay,
   onCreateCategory,
   onToggleRelayVisibility,
+  onboardingQuestions: propOnboardingQuestions,
+  onUpdateOnboardingQuestions,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'roles' | 'channels' | 'emojis' | 'onboarding' | 'discovery' | 'notifications' | 'privacy' | 'insights' | 'audit'>(initialTab);
   const [nameInput, setNameInput] = useState(serverName);
@@ -130,17 +151,40 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
   const [requiresOnboarding, setRequiresOnboarding] = useState(true);
   const [onboardingSaved, setOnboardingSaved] = useState(false);
   const [defaultChannels, setDefaultChannels] = useState<string[]>(['general', 'announcements', 'welcome']);
-  const [onboardingQuestions, setOnboardingQuestions] = useState<{ id: string; title: string; options: { label: string; roleId?: string }[] }[]>([
-    {
-      id: 'q1',
-      title: 'What is your primary operational role?',
-      options: [
-        { label: 'Tactical Pilot', roleId: 'c3' },
-        { label: 'Cartographer & Scout', roleId: 'c3' },
-        { label: 'Communications Specialist', roleId: 'c2' },
-      ],
-    },
-  ]);
+  const [onboardingQuestions, setOnboardingQuestions] = useState<OnboardingQuestion[]>(() => {
+    if (propOnboardingQuestions && propOnboardingQuestions.length > 0) {
+      return propOnboardingQuestions;
+    }
+    return [
+      {
+        id: 'q1',
+        title: 'What is your primary operational role?',
+        description: 'Select your operational flight specialty to receive your designated fleet role.',
+        timing: 'join_and_browse',
+        options: [
+          { id: 'opt-tactical', label: 'Tactical Pilot', roleId: 'c3' },
+          { id: 'opt-scout', label: 'Cartographer & Scout', roleId: 'c3' },
+          { id: 'opt-comms', label: 'Communications Specialist', roleId: 'c2' },
+        ],
+      },
+      {
+        id: 'q2',
+        title: 'What notifications and mission alerts would you like to receive?',
+        description: 'Choose extra alert pings and interest groups across this beacon.',
+        timing: 'browse_only',
+        options: [
+          { id: 'opt-alerts', label: 'Orbital Recon Alerts', roleId: 'c2' },
+          { id: 'opt-casual', label: 'Community Signals & Holo-Events', roleId: 'c3' },
+        ],
+      },
+    ];
+  });
+
+  useEffect(() => {
+    if (propOnboardingQuestions && propOnboardingQuestions.length > 0) {
+      setOnboardingQuestions(propOnboardingQuestions);
+    }
+  }, [propOnboardingQuestions]);
 
   // Discovery state
   const [isDiscoverable, setIsDiscoverable] = useState(false);
@@ -328,6 +372,9 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
         defaultChannels,
         onboardingQuestions,
       }));
+      if (onUpdateOnboardingQuestions) {
+        onUpdateOnboardingQuestions(onboardingQuestions);
+      }
       setOnboardingSaved(true);
       setTimeout(() => setOnboardingSaved(false), 2000);
     } catch { /* noop */ }
@@ -1489,12 +1536,14 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const newQ = {
+                      const newQ: OnboardingQuestion = {
                         id: `q-${Date.now()}`,
-                        title: 'What notifications would you like to receive?',
+                        title: '',
+                        description: '',
+                        timing: 'join_and_browse',
                         options: [
-                          { label: 'Major Mission Announcements', roleId: 'c2' },
-                          { label: 'Casual Fleet Hangouts', roleId: 'c3' },
+                          { id: `opt-${Date.now()}-1`, label: 'Specialist Option', roleId: clearancesList[0]?.id },
+                          { id: `opt-${Date.now()}-2`, label: 'Alternative Specialty', roleId: clearancesList[1]?.id || clearancesList[0]?.id },
                         ],
                       };
                       setOnboardingQuestions(prev => [...prev, newQ]);
@@ -1509,59 +1558,192 @@ export const ServerSettingsModal: React.FC<ServerSettingsModalProps> = ({
                   Ask questions to automatically assign roles or unlock specific frequency relays based on answers.
                 </p>
 
-                <div className="space-y-3 pt-2">
+                <div className="space-y-4 pt-2">
                   {onboardingQuestions.map((q, qIndex) => (
-                    <div key={q.id} className="p-3 bg-[#0c0d0e] border border-[#1f2024] rounded-[6px] space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white flex items-center gap-2">
-                          <span className="w-4 h-4 rounded-full bg-[#1f2024] text-[10px] text-[#00f0ff] flex items-center justify-center">
-                            {qIndex + 1}
-                          </span>
-                          <input
-                            type="text"
-                            value={q.title}
-                            onChange={(e) => {
-                              const updatedTitle = e.target.value;
-                              setOnboardingQuestions(prev => prev.map(item => item.id === q.id ? { ...item, title: updatedTitle } : item));
-                            }}
-                            className="bg-transparent border-b border-transparent hover:border-[#35363c] focus:border-[#00f0ff] text-xs font-semibold text-white px-1 outline-none flex-1"
-                          />
+                    <div key={q.id} className="p-4 bg-[#111214] border border-[#1f2024] hover:border-[#2b2d31] rounded-[8px] space-y-3 transition-all">
+                      {/* Question Header: Number + Full-width Title Input + Remove Button */}
+                      <div className="flex items-center gap-2.5 w-full">
+                        <span className="w-6 h-6 rounded-full bg-[#1f2024] text-xs font-bold text-[#00f0ff] flex items-center justify-center shrink-0 border border-[#00f0ff]/30">
+                          {qIndex + 1}
                         </span>
+                        <input
+                          type="text"
+                          value={q.title}
+                          onChange={(e) => {
+                            const updatedTitle = e.target.value;
+                            setOnboardingQuestions(prev => prev.map(item => item.id === q.id ? { ...item, title: updatedTitle } : item));
+                          }}
+                          placeholder="e.g. What is your primary operational role?"
+                          className="flex-1 min-w-0 bg-[#16171a] border border-[#2b2d31] focus:border-[#00f0ff]/70 rounded-[6px] px-3 py-1.5 text-xs font-semibold text-white placeholder-[#80848e] outline-none transition-colors"
+                        />
                         <button
                           type="button"
                           onClick={() => setOnboardingQuestions(prev => prev.filter(item => item.id !== q.id))}
-                          className="text-[#80848e] hover:text-[#f23f43] p-1"
+                          className="text-[#80848e] hover:text-[#f23f43] p-1.5 rounded hover:bg-[#da373c]/10 transition-colors shrink-0"
                           title="Remove Question"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
 
-                      <div className="space-y-1.5 pl-6">
-                        {q.options.map((opt, optIndex) => (
-                          <div key={optIndex} className="flex items-center gap-2 text-xs">
-                            <span className="text-[#80848e]">•</span>
-                            <span className="text-[#dbdee1] font-medium">{opt.label}</span>
-                            <span className="text-[10px] text-[#80848e]">→ Grants role:</span>
-                            <select
-                              value={opt.roleId || ''}
-                              onChange={(e) => {
-                                const targetRoleId = e.target.value;
-                                setOnboardingQuestions(prev => prev.map(item => {
-                                  if (item.id !== q.id) return item;
-                                  const updatedOpts = [...item.options];
-                                  updatedOpts[optIndex] = { ...updatedOpts[optIndex], roleId: targetRoleId };
-                                  return { ...item, options: updatedOpts };
-                                }));
-                              }}
-                              className="bg-[#16171a] border border-[#1f2024] text-[#00f0ff] text-[10px] rounded px-1.5 py-0.5 outline-none"
-                            >
-                              {clearancesList.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
+                      {/* Question Description / Subtitle */}
+                      <div className="pl-8">
+                        <input
+                          type="text"
+                          value={q.description || ''}
+                          onChange={(e) => {
+                            const updatedDesc = e.target.value;
+                            setOnboardingQuestions(prev => prev.map(item => item.id === q.id ? { ...item, description: updatedDesc } : item));
+                          }}
+                          placeholder="Optional description or instructions for new members..."
+                          className="w-full bg-[#0b0c0e] border border-[#1f2024] focus:border-[#00f0ff]/40 rounded-[4px] px-2.5 py-1 text-[11px] text-[#dbdee1] placeholder-[#80848e] outline-none transition-colors"
+                        />
+                      </div>
+
+                      {/* Question Timing / Placement Selector (The 2 Types: Join+Browse vs Browse Only) */}
+                      <div className="pl-8 pt-1">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-[#949ba4] mb-1.5">
+                          Question Placement &amp; Visibility
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOnboardingQuestions(prev => prev.map(item => item.id === q.id ? { ...item, timing: 'join_and_browse' } : item));
+                            }}
+                            className={`p-2.5 rounded-[6px] text-left border transition-all ${
+                              q.timing !== 'browse_only'
+                                ? 'bg-[#00f0ff]/10 border-[#00f0ff]/60 text-white'
+                                : 'bg-[#0b0c0e] border-[#1f2024] text-[#80848e] hover:border-[#2b2d31]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
+                              <span className={`w-2 h-2 rounded-full ${q.timing !== 'browse_only' ? 'bg-[#00f0ff]' : 'bg-[#4e5058]'}`} />
+                              <span>Ask Before Member Joins &amp; in Channels</span>
+                            </div>
+                            <p className="text-[10px] text-[#949ba4] mt-1 leading-snug">
+                              Shown in the welcome onboarding screen when a member joins, and always accessible in Channels &amp; Roles.
+                            </p>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOnboardingQuestions(prev => prev.map(item => item.id === q.id ? { ...item, timing: 'browse_only' } : item));
+                            }}
+                            className={`p-2.5 rounded-[6px] text-left border transition-all ${
+                              q.timing === 'browse_only'
+                                ? 'bg-[#5865f2]/10 border-[#5865f2]/60 text-white'
+                                : 'bg-[#0b0c0e] border-[#1f2024] text-[#80848e] hover:border-[#2b2d31]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 font-semibold text-xs text-white">
+                              <span className={`w-2 h-2 rounded-full ${q.timing === 'browse_only' ? 'bg-[#5865f2]' : 'bg-[#4e5058]'}`} />
+                              <span>Ask in Channels &amp; Roles Only</span>
+                            </div>
+                            <p className="text-[10px] text-[#949ba4] mt-1 leading-snug">
+                              Skipped on initial join. Members can find and answer this question later under Channels &amp; Roles.
+                            </p>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Answers / Options with Grantable Roles */}
+                      <div className="pl-8 pt-1 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#949ba4]">
+                            Options &amp; Granted Roles
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newOptId = `opt-${Date.now()}`;
+                              setOnboardingQuestions(prev => prev.map(item => {
+                                if (item.id !== q.id) return item;
+                                return {
+                                  ...item,
+                                  options: [
+                                    ...item.options,
+                                    { id: newOptId, label: 'New Option', roleId: clearancesList[0]?.id },
+                                  ],
+                                };
+                              }));
+                            }}
+                            className="text-[11px] font-semibold text-[#00f0ff] hover:text-[#33f3ff] flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" /> Add Option
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {q.options.map((opt, optIndex) => {
+                            const assignedRole = clearancesList.find(c => c.id === opt.roleId);
+                            return (
+                              <div key={opt.id || optIndex} className="flex items-center gap-2 bg-[#0b0c0e] border border-[#1f2024] rounded-[6px] p-2 text-xs">
+                                <span className="text-[#80848e] shrink-0">•</span>
+                                <input
+                                  type="text"
+                                  value={opt.label}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setOnboardingQuestions(prev => prev.map(item => {
+                                      if (item.id !== q.id) return item;
+                                      const updated = [...item.options];
+                                      updated[optIndex] = { ...updated[optIndex], label: val };
+                                      return { ...item, options: updated };
+                                    }));
+                                  }}
+                                  placeholder="Option name..."
+                                  className="bg-transparent text-white font-medium outline-none flex-1 min-w-0"
+                                />
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[10px] text-[#80848e]">Grants:</span>
+                                  <div className="flex items-center gap-1.5 bg-[#16171a] border border-[#2b2d31] rounded px-2 py-0.5">
+                                    {assignedRole?.color && (
+                                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: assignedRole.color }} />
+                                    )}
+                                    <select
+                                      value={opt.roleId || ''}
+                                      onChange={(e) => {
+                                        const targetRoleId = e.target.value;
+                                        setOnboardingQuestions(prev => prev.map(item => {
+                                          if (item.id !== q.id) return item;
+                                          const updatedOpts = [...item.options];
+                                          updatedOpts[optIndex] = { ...updatedOpts[optIndex], roleId: targetRoleId };
+                                          return { ...item, options: updatedOpts };
+                                        }));
+                                      }}
+                                      className="bg-transparent text-[#00f0ff] text-[11px] font-semibold outline-none cursor-pointer"
+                                    >
+                                      {clearancesList.map(c => (
+                                        <option key={c.id} value={c.id} className="bg-[#1e1f22] text-white">
+                                          {c.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {q.options.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOnboardingQuestions(prev => prev.map(item => {
+                                          if (item.id !== q.id) return item;
+                                          return { ...item, options: item.options.filter((_, idx) => idx !== optIndex) };
+                                        }));
+                                      }}
+                                      className="text-[#80848e] hover:text-[#f23f43] p-1 rounded transition-colors"
+                                      title="Delete Option"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   ))}

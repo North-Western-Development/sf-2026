@@ -76,7 +76,7 @@ import { usePlatformEnvironment } from './usePlatformEnvironment';
 import { api, ApiBeacon, ApiRelay } from './services/api';
 import { gateway } from './services/gateway';
 import { InviteModal } from './InviteModal';
-import { ServerSettingsModal } from './ServerSettingsModal';
+import { ServerSettingsModal, OnboardingQuestion } from './ServerSettingsModal';
 import { ActivityLauncherModal, ActivityItem } from './ActivityLauncherModal';
 import { SelectFriendModal } from './SelectFriendModal';
 import { CreateServerModal } from './CreateServerModal';
@@ -472,6 +472,49 @@ export const AppContent: React.FC = () => {
     }
   });
   const [showHiddenChannels, setShowHiddenChannels] = useState(false);
+
+  // Channels & Roles Active Tab ('customize' | 'browse')
+  const [browseActiveTab, setBrowseActiveTab] = useState<'customize' | 'browse'>('customize');
+
+  // Server Onboarding Questions & Role Customization State
+  const [onboardingQuestions, setOnboardingQuestions] = useState<OnboardingQuestion[]>(() => {
+    try {
+      const saved = localStorage.getItem('subspace_onboarding_questions');
+      if (saved) return JSON.parse(saved);
+    } catch { /* noop */ }
+    return [
+      {
+        id: 'q1',
+        title: 'What is your primary operational role?',
+        description: 'Select your operational flight specialty to receive your designated fleet role.',
+        timing: 'join_and_browse',
+        options: [
+          { id: 'opt-tactical', label: 'Tactical Pilot', roleId: 'c3', roleName: 'Transmitter', roleColor: '#23a55a' },
+          { id: 'opt-scout', label: 'Cartographer & Scout', roleId: 'c3', roleName: 'Transmitter', roleColor: '#23a55a' },
+          { id: 'opt-comms', label: 'Communications Specialist', roleId: 'c2', roleName: 'Command Staff', roleColor: '#5865f2' },
+        ],
+      },
+      {
+        id: 'q2',
+        title: 'What notifications and mission alerts would you like to receive?',
+        description: 'Choose extra alert pings and interest groups across this beacon.',
+        timing: 'browse_only',
+        options: [
+          { id: 'opt-alerts', label: 'Orbital Recon Alerts', roleId: 'c2', roleName: 'Command Staff', roleColor: '#5865f2' },
+          { id: 'opt-casual', label: 'Community Signals & Holo-Events', roleId: 'c3', roleName: 'Transmitter', roleColor: '#23a55a' },
+        ],
+      },
+    ];
+  });
+
+  // Selected Onboarding Options for Current User
+  const [selectedOnboardingAnswers, setSelectedOnboardingAnswers] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('subspace_user_onboarding_answers');
+      if (saved) return JSON.parse(saved);
+    } catch { /* noop */ }
+    return ['opt-comms'];
+  });
 
   // Relay Topic Editing State
   const [isEditingTopicModalOpen, setIsEditingTopicModalOpen] = useState(false);
@@ -3791,94 +3834,256 @@ export const AppContent: React.FC = () => {
             </form>
           </div>
         ) : selectedChannelId === 'browse-channels' ? (
-          /* C. Browse Channels Area ("Channels & Roles" - Jet Black) */
+          /* C. Browse Channels & Customize Roles Area ("Channels & Roles" - Jet Black) */
           <div className="flex-1 flex flex-col min-w-0 bg-[#000000] h-full overflow-y-auto select-none">
-            {/* Header */}
+            {/* Header with Navigation Tabs */}
             <div className="h-12 px-6 border-b border-[#141518] flex items-center justify-between shrink-0 bg-[#0b0c0e]">
-              <div className="flex items-center gap-2 font-bold text-white text-base">
+              <div className="flex items-center gap-3 font-bold text-white text-base">
                 <BrowseIcon className="w-5 h-5 text-[#00f0ff]" />
-                <span>Channels & Roles — Browse Channels</span>
+                <span>Channels &amp; Roles</span>
+              </div>
+              <div className="flex items-center bg-[#111214] p-0.5 rounded-[6px] border border-[#1f2024]">
+                <button
+                  onClick={() => setBrowseActiveTab('customize')}
+                  className={`px-3 py-1 text-xs font-semibold rounded-[4px] transition-colors ${
+                    browseActiveTab === 'customize'
+                      ? 'bg-[#1a1b1e] text-[#00f0ff] shadow-sm'
+                      : 'text-[#949ba4] hover:text-white'
+                  }`}
+                >
+                  Customize
+                </button>
+                <button
+                  onClick={() => setBrowseActiveTab('browse')}
+                  className={`px-3 py-1 text-xs font-semibold rounded-[4px] transition-colors ${
+                    browseActiveTab === 'browse'
+                      ? 'bg-[#1a1b1e] text-[#00f0ff] shadow-sm'
+                      : 'text-[#949ba4] hover:text-white'
+                  }`}
+                >
+                  Browse Channels
+                </button>
               </div>
             </div>
 
-            <div className="p-8 max-w-4xl mx-auto w-full space-y-6">
-              <div>
-                <h1 className="text-2xl font-bold text-white mb-1">Browse Channels</h1>
-                <p className="text-sm text-[#949ba4]">Explore and customize all channels available across {currentServer.name}.</p>
-              </div>
+            {browseActiveTab === 'customize' ? (
+              /* ─── Customize Tab (Questions & Selectable Roles) ─── */
+              <div className="p-8 max-w-4xl mx-auto w-full space-y-8">
+                <div>
+                  <h1 className="text-2xl font-bold text-white mb-1">Customize Your Roles &amp; Interests</h1>
+                  <p className="text-sm text-[#949ba4]">
+                    Choose the clearance specialties and mission updates relevant to you. Your selections assign real roles and adjust what you see across {currentServer.name}.
+                  </p>
+                </div>
 
-              {/* Search Channels */}
-              <div className="bg-[#1e1f22] rounded-[8px] flex items-center px-4 py-2.5 gap-3 text-sm">
-                <Search className="w-4 h-4 text-[#80848e]" />
-                <input
-                  type="text"
-                  placeholder={`Search channels in ${currentServer.name}...`}
-                  value={browseChannelQuery}
-                  onChange={(e) => setBrowseChannelQuery(e.target.value)}
-                  className="bg-transparent flex-1 text-white outline-none placeholder-[#80848e]"
-                />
-              </div>
-
-              {/* Categorized Channel Directory */}
-              <div className="space-y-6">
-                {currentCategories.map((cat) => {
-                  const filtered = cat.channels.filter(c => 
-                    c.name.toLowerCase().includes(browseChannelQuery.toLowerCase()) || 
-                    (c.description && c.description.toLowerCase().includes(browseChannelQuery.toLowerCase()))
-                  );
-
-                  if (filtered.length === 0) return null;
-
-                  return (
-                    <div key={cat.id} className="space-y-2">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#949ba4]">{cat.name}</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {filtered.map((chan) => (
-                          <div
-                            key={chan.id}
-                            className="bg-[#2b2d31] hover:bg-[#35373c] border border-[#35373c] p-3.5 rounded-[8px] flex flex-col justify-between transition-colors group cursor-pointer"
-                            onClick={() => {
-                              if (chan.type === 'voice') handleVoiceChannelClick(chan.id);
-                              else setSelectedChannelId(chan.id);
-                            }}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className="p-2 rounded bg-[#1e1f22] text-[#dbdee1] mt-0.5">
-                                {getChannelIcon(chan.type)}
+                {onboardingQuestions.length === 0 ? (
+                  <div className="text-center py-12 border border-dashed border-[#1f2024] rounded-[8px] bg-[#0b0c0e]/50">
+                    <p className="text-sm text-[#80848e]">No onboarding questions configured for this beacon yet.</p>
+                    <p className="text-xs text-[#4e5058] mt-1">Server operators can configure questions in Server Settings → Onboarding.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-8">
+                    {onboardingQuestions.map((question, qIdx) => {
+                      const isBrowseOnly = question.timing === 'browse_only';
+                      return (
+                        <div key={question.id || qIdx} className="space-y-3">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-[#00f0ff]">Q{qIdx + 1}.</span>
+                                <h3 className="text-base font-semibold text-white">{question.title}</h3>
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm font-semibold text-white group-hover:underline flex items-center gap-2">
-                                  <span>{chan.name}</span>
-                                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-[#1e1f22] text-[#949ba4]">
-                                    {chan.type}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-[#949ba4] mt-1 leading-relaxed">
-                                  {chan.description || 'No description provided.'}
-                                </p>
-                              </div>
+                              {question.description && (
+                                <p className="text-xs text-[#949ba4] mt-0.5 ml-6">{question.description}</p>
+                              )}
                             </div>
-
-                            <div className="mt-4 pt-2 border-t border-[#35373c]/50 flex justify-end">
-                              <button
-                                className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-3 py-1 rounded text-xs font-semibold"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (chan.type === 'voice') handleVoiceChannelClick(chan.id);
-                                  else setSelectedChannelId(chan.id);
-                                }}
-                              >
-                                View Channel
-                              </button>
-                            </div>
+                            <span className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded shrink-0 ${
+                              isBrowseOnly
+                                ? 'bg-[#5865f2]/15 text-[#5865f2] border border-[#5865f2]/30'
+                                : 'bg-[#00f0ff]/15 text-[#00f0ff] border border-[#00f0ff]/30'
+                            }`}>
+                              {isBrowseOnly ? 'Channels & Roles Only' : 'Starter Question'}
+                            </span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+
+                          {/* Options Grid */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 ml-6">
+                            {question.options.map((option) => {
+                              const isSelected = selectedOnboardingAnswers.includes(option.id);
+                              // Resolve role display name & color
+                              const roleName = option.roleName || (
+                                option.roleId === 'c1' ? 'Fleet Admiral' :
+                                option.roleId === 'c2' ? 'Command Staff' :
+                                option.roleId === 'c3' ? 'Transmitter' :
+                                option.label
+                              );
+                              const roleColor = option.roleColor || (
+                                option.roleId === 'c1' ? '#00f0ff' :
+                                option.roleId === 'c2' ? '#5865f2' :
+                                option.roleId === 'c3' ? '#23a55a' :
+                                '#00f0ff'
+                              );
+
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const nextSelected = isSelected
+                                      ? selectedOnboardingAnswers.filter(id => id !== option.id)
+                                      : [...selectedOnboardingAnswers, option.id];
+                                    
+                                    setSelectedOnboardingAnswers(nextSelected);
+                                    try {
+                                      localStorage.setItem('subspace_user_onboarding_answers', JSON.stringify(nextSelected));
+                                    } catch { /* noop */ }
+
+                                    // Toggle role in currentUser.roles
+                                    setCurrentUser(prev => {
+                                      const currentRoles = prev.roles || [];
+                                      const hasRole = currentRoles.includes(roleName);
+                                      let updatedRoles: string[];
+                                      if (isSelected && hasRole) {
+                                        updatedRoles = currentRoles.filter(r => r !== roleName);
+                                      } else if (!isSelected && !hasRole) {
+                                        updatedRoles = [...currentRoles, roleName];
+                                      } else {
+                                        updatedRoles = currentRoles;
+                                      }
+                                      return { ...prev, roles: updatedRoles };
+                                    });
+
+                                    showToast(
+                                      isSelected
+                                        ? `Removed clearance role "${roleName}"`
+                                        : `Acquired clearance role "${roleName}"`
+                                    );
+                                  }}
+                                  className={`p-3.5 rounded-[8px] border text-left flex items-start justify-between gap-3 transition-all ${
+                                    isSelected
+                                      ? 'bg-[#1a1b1e] border-[#00f0ff]/60 shadow-[0_0_12px_rgba(0,240,255,0.1)]'
+                                      : 'bg-[#111214] border-[#1f2024] hover:border-[#2b2d31] hover:bg-[#16171a]'
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-3 min-w-0">
+                                    <div className={`w-5 h-5 rounded-[4px] border mt-0.5 flex items-center justify-center shrink-0 transition-colors ${
+                                      isSelected
+                                        ? 'bg-[#00f0ff] border-[#00f0ff] text-black'
+                                        : 'bg-[#1e1f22] border-[#2b2d31]'
+                                    }`}>
+                                      {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-semibold text-white truncate">
+                                        {option.label}
+                                      </div>
+                                      {option.description && (
+                                        <div className="text-xs text-[#949ba4] mt-0.5 line-clamp-2">
+                                          {option.description}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-1.5 mt-2">
+                                        <span
+                                          className="w-2 h-2 rounded-full shrink-0"
+                                          style={{ backgroundColor: roleColor }}
+                                        />
+                                        <span className="text-[11px] font-medium text-[#dbdee1]">
+                                          {roleName}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              /* ─── Browse Channels Tab ─── */
+              <div className="p-8 max-w-4xl mx-auto w-full space-y-6">
+                <div>
+                  <h1 className="text-2xl font-bold text-white mb-1">Browse Channels</h1>
+                  <p className="text-sm text-[#949ba4]">Explore and customize all channels available across {currentServer.name}.</p>
+                </div>
+
+                {/* Search Channels */}
+                <div className="bg-[#1e1f22] rounded-[8px] flex items-center px-4 py-2.5 gap-3 text-sm">
+                  <Search className="w-4 h-4 text-[#80848e]" />
+                  <input
+                    type="text"
+                    placeholder={`Search channels in ${currentServer.name}...`}
+                    value={browseChannelQuery}
+                    onChange={(e) => setBrowseChannelQuery(e.target.value)}
+                    className="bg-transparent flex-1 text-white outline-none placeholder-[#80848e]"
+                  />
+                </div>
+
+                {/* Categorized Channel Directory */}
+                <div className="space-y-6">
+                  {currentCategories.map((cat) => {
+                    const filtered = cat.channels.filter(c => 
+                      c.name.toLowerCase().includes(browseChannelQuery.toLowerCase()) || 
+                      (c.description && c.description.toLowerCase().includes(browseChannelQuery.toLowerCase()))
+                    );
+
+                    if (filtered.length === 0) return null;
+
+                    return (
+                      <div key={cat.id} className="space-y-2">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#949ba4]">{cat.name}</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {filtered.map((chan) => (
+                            <div
+                              key={chan.id}
+                              className="bg-[#2b2d31] hover:bg-[#35373c] border border-[#35373c] p-3.5 rounded-[8px] flex flex-col justify-between transition-colors group cursor-pointer"
+                              onClick={() => {
+                                if (chan.type === 'voice') handleVoiceChannelClick(chan.id);
+                                else setSelectedChannelId(chan.id);
+                              }}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="p-2 rounded bg-[#1e1f22] text-[#dbdee1] mt-0.5">
+                                  {getChannelIcon(chan.type)}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-sm font-semibold text-white group-hover:underline flex items-center gap-2">
+                                    <span>{chan.name}</span>
+                                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-[#1e1f22] text-[#949ba4]">
+                                      {chan.type}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-[#949ba4] mt-1 leading-relaxed">
+                                    {chan.description || 'No description provided.'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 pt-2 border-t border-[#35373c]/50 flex justify-end">
+                                <button
+                                  className="bg-[#5865f2] hover:bg-[#4752c4] text-white px-3 py-1 rounded text-xs font-semibold"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (chan.type === 'voice') handleVoiceChannelClick(chan.id);
+                                    else setSelectedChannelId(chan.id);
+                                  }}
+                                >
+                                  View Channel
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           /* D. Public Server Channel View (Standard Server Channels - Jet Black #000000 / #0b0c0e) */
@@ -5023,6 +5228,14 @@ export const AppContent: React.FC = () => {
         onDeleteServer={() => {
           showToast(`Cannot delete active fleet station`);
           setIsServerSettingsOpen(false);
+        }}
+        onboardingQuestions={onboardingQuestions}
+        onUpdateOnboardingQuestions={(qs) => {
+          setOnboardingQuestions(qs);
+          try {
+            localStorage.setItem('subspace_onboarding_questions', JSON.stringify(qs));
+          } catch { /* noop */ }
+          showToast('Beacon onboarding questions updated');
         }}
       />
 
