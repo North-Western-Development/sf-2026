@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { eq, and, signalBlacklist } from '@subspace/database';
+import { eq, and, or, signalBlacklist, affiliations } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+import { publishSessionRefresh, publishGatewayEvent } from '../../lib/events.js';
 
 export const blacklistRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -53,6 +54,23 @@ export const blacklistRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         targetType,
       })
       .returning();
+
+    if (targetType === 'transmitter') {
+      // Blocking removes any friendship and pending affiliation requests between the two.
+      const removed = await db
+        .delete(affiliations)
+        .where(
+          or(
+            and(eq(affiliations.transmitterId, token.transmitterId), eq(affiliations.targetId, targetId)),
+            and(eq(affiliations.transmitterId, targetId), eq(affiliations.targetId, token.transmitterId))
+          )
+        )
+        .returning();
+      if (removed.length > 0) {
+        await publishSessionRefresh(app, [token.transmitterId, targetId]);
+        await publishGatewayEvent(app, 'RELATIONSHIP_REMOVE', { affiliationId: removed[0].id }, { transmitterIds: [token.transmitterId, targetId] });
+      }
+    }
 
     return reply.status(201).send({
       message: 'Target filtered and blacklisted',
