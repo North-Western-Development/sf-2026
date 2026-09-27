@@ -1,7 +1,17 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { eq, and, asc, relays, beacons, transmitterRelayPreferences } from '@subspace/database';
+import {
+  eq,
+  and,
+  asc,
+  relays,
+  beacons,
+  transmitterRelayPreferences,
+  computeRelayPermissions,
+  resolveRelayAudience,
+} from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
+import { publishGatewayEvent } from '../../lib/events.js';
 
 export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -44,10 +54,13 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       userPrefs.filter((p: any) => p.isHidden).map((p: any) => p.relayId)
     );
 
-    const mappedRelays = beaconRelays.map((relay: any) => ({
-      ...relay,
-      isHidden: hiddenRelayIds.has(relay.id),
-    }));
+    const mappedRelays = await Promise.all(
+      beaconRelays.map(async (relay: any) => ({
+        ...relay,
+        isHidden: hiddenRelayIds.has(relay.id),
+        myPermissions: (await computeRelayPermissions(db, token.transmitterId, relay.id)).toString(),
+      }))
+    );
 
     if (filterMode === 'all') {
       return reply.send({ relays: mappedRelays, filter: 'all' });
@@ -82,7 +95,7 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
 
     const body = request.body as any;
-    const { name, type, topic, position, parentId, isUnhideable } = body || {};
+    const { name, type, topic, position, parentId, isUnhideable, permissionsSynced } = body || {};
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return reply.status(400).send({ error: 'Relay name is required' });
@@ -98,8 +111,11 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         position: Number(position) || 0,
         parentId: parentId || null,
         isUnhideable: Boolean(isUnhideable),
+        permissionsSynced: permissionsSynced === undefined ? true : Boolean(permissionsSynced),
       })
       .returning();
+
+    await publishGatewayEvent(app, 'RELAY_CREATE', { beaconId, relay: newRelay }, { relayId: newRelay.id });
 
     return reply.status(201).send({
       message: 'Relay established successfully',
@@ -144,12 +160,26 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (body.topic !== undefined) updates.topic = body.topic;
     if (body.position !== undefined) updates.position = Number(body.position);
     if (body.isUnhideable !== undefined) updates.isUnhideable = Boolean(body.isUnhideable);
+    if (body.parentId !== undefined) updates.parentId = body.parentId;
+    if (body.permissionsSynced !== undefined) updates.permissionsSynced = Boolean(body.permissionsSynced);
+
+    const beforeAudience = await resolveRelayAudience(db, relayId);
 
     const [updated] = await db
       .update(relays)
       .set(updates)
       .where(eq(relays.id, relayId))
       .returning();
+
+    const afterAudience = await resolveRelayAudience(db, relayId);
+    const combinedAudience = [...new Set([...beforeAudience, ...afterAudience])];
+
+    await publishGatewayEvent(
+      app,
+      'RELAY_UPDATE',
+      { beaconId: existingRelay.beaconId, relay: updated },
+      { transmitterIds: combinedAudience }
+    );
 
     return reply.send({
       message: 'Relay parameters updated',
@@ -187,7 +217,16 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(403).send({ error: 'Transmitter lacks MANAGE_RELAYS clearance' });
     }
 
+    const audience = await resolveRelayAudience(db, relayId);
+
     await db.delete(relays).where(eq(relays.id, relayId));
+
+    await publishGatewayEvent(
+      app,
+      'RELAY_DELETE',
+      { beaconId: existingRelay.beaconId, relayId },
+      { transmitterIds: audience }
+    );
 
     return reply.send({ message: 'Relay decommissioned successfully' });
   });

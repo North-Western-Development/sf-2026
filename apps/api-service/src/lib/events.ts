@@ -5,6 +5,7 @@ import {
   pointToPointLinks,
   resolveRelayAudience,
   resolveMeshAudience,
+  resolveBeaconAudience,
 } from '@subspace/database';
 
 export const GATEWAY_DISPATCH_CHANNEL = 'gateway:transmission:events';
@@ -13,6 +14,7 @@ export const GATEWAY_SESSION_CHANNEL = 'gateway:session:events';
 export type Audience =
   | { relayId: string }
   | { meshId: string }
+  | { beaconId: string; requiredPermission?: bigint }
   | { transmitterIds: string[] };
 
 /**
@@ -34,6 +36,8 @@ export async function publishGatewayEvent(
   try {
     if ('relayId' in audience) ids = db ? await resolveRelayAudience(db, audience.relayId) : [];
     else if ('meshId' in audience) ids = db ? await resolveMeshAudience(db, audience.meshId) : [];
+    else if ('beaconId' in audience)
+      ids = db ? await resolveBeaconAudience(db, audience.beaconId, audience.requiredPermission) : [];
     else ids = [...new Set(audience.transmitterIds.filter(Boolean))];
   } catch (err) {
     app.log.warn({ err, type }, 'Failed to resolve gateway audience; event dropped');
