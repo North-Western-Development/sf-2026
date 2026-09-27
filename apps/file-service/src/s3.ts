@@ -2,9 +2,11 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   DeleteObjectCommand,
   HeadBucketCommand,
   CreateBucketCommand,
+  PutBucketPolicyCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -52,18 +54,44 @@ export class SubspaceS3Storage {
   /**
    * Ensures the configured bucket exists; creates it if missing
    */
-  async ensureBucketExists(): Promise<void> {
+  async ensureBucketExists(bucket: string = this.bucket): Promise<void> {
     try {
-      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      await this.client.send(new HeadBucketCommand({ Bucket: bucket }));
     } catch (err: any) {
       if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
         try {
-          await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
-          console.log(`[File Service] Provisioned MinIO bucket: ${this.bucket}`);
+          await this.client.send(new CreateBucketCommand({ Bucket: bucket }));
+          console.log(`[File Service] Provisioned MinIO bucket: ${bucket}`);
         } catch (createErr: any) {
           console.warn(`[File Service] Bucket creation warning:`, createErr.message);
         }
       }
+    }
+  }
+
+  /**
+   * Applies an anonymous, read-only bucket policy (GetObject only). Used for the
+   * public-read `subspace-media` bucket so uploaded avatars/icons/glyphs are servable
+   * without presigning.
+   */
+  async setPublicReadPolicy(bucket: string): Promise<void> {
+    const policy = {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: { AWS: ['*'] },
+          Action: ['s3:GetObject'],
+          Resource: [`arn:aws:s3:::${bucket}/*`],
+        },
+      ],
+    };
+    try {
+      await this.client.send(
+        new PutBucketPolicyCommand({ Bucket: bucket, Policy: JSON.stringify(policy) })
+      );
+    } catch (err: any) {
+      console.warn(`[File Service] Bucket policy warning for ${bucket}:`, err.message);
     }
   }
 
@@ -73,10 +101,11 @@ export class SubspaceS3Storage {
   async getPresignedUploadUrl(
     storageKey: string,
     contentType: string,
-    expiresInSeconds = 900 // 15 minutes
+    expiresInSeconds = 900, // 15 minutes
+    bucket: string = this.bucket
   ): Promise<string> {
     const command = new PutObjectCommand({
-      Bucket: this.bucket,
+      Bucket: bucket,
       Key: storageKey,
       ContentType: contentType,
     });
@@ -88,10 +117,11 @@ export class SubspaceS3Storage {
    */
   async getPresignedDownloadUrl(
     storageKey: string,
-    expiresInSeconds = 3600 // 1 hour
+    expiresInSeconds = 3600, // 1 hour
+    bucket: string = this.bucket
   ): Promise<string> {
     const command = new GetObjectCommand({
-      Bucket: this.bucket,
+      Bucket: bucket,
       Key: storageKey,
     });
     return getSignedUrl(this.signer, command, { expiresIn: expiresInSeconds });
@@ -100,12 +130,24 @@ export class SubspaceS3Storage {
   /**
    * Remove an object from storage
    */
-  async deleteObject(storageKey: string): Promise<void> {
+  async deleteObject(storageKey: string, bucket: string = this.bucket): Promise<void> {
     await this.client.send(
       new DeleteObjectCommand({
-        Bucket: this.bucket,
+        Bucket: bucket,
         Key: storageKey,
       })
     );
+  }
+
+  /**
+   * HEAD an object to verify it exists (after a client PUT) and read back its actual
+   * size/content-type. Throws if the object is missing.
+   */
+  async headObject(
+    storageKey: string,
+    bucket: string = this.bucket
+  ): Promise<{ sizeBytes: number; contentType: string | undefined }> {
+    const result = await this.client.send(new HeadObjectCommand({ Bucket: bucket, Key: storageKey }));
+    return { sizeBytes: Number(result.ContentLength || 0), contentType: result.ContentType };
   }
 }
