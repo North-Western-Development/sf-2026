@@ -49,6 +49,17 @@ export function generateTotpSecret(issuer: string, label: string) {
   };
 }
 
+/** Computes the current valid TOTP code for a base32 secret (test/debug helper). */
+export function generateCurrentTotpCode(secret: string): string {
+  const totp = new OTPAuth.TOTP({
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secret),
+  });
+  return totp.generate();
+}
+
 export function verifyTotpToken(secret: string, token: string): boolean {
   const totp = new OTPAuth.TOTP({
     algorithm: 'SHA1',
@@ -110,9 +121,10 @@ export function signRefreshToken(
   transmitterId: string,
   secret: string,
   expiresIn: jwt.SignOptions['expiresIn'] = '30d',
-  jti: string = randomBytes(16).toString('hex')
+  jti: string = randomBytes(16).toString('hex'),
+  tokenVersion: number = 0
 ): string {
-  return jwt.sign({ transmitterId, typ: 'refresh', jti }, secret, { expiresIn });
+  return jwt.sign({ transmitterId, typ: 'refresh', jti, tokenVersion }, secret, { expiresIn });
 }
 
 /** Short-lived ticket proving the password step passed; only redeemable at /auth/2fa/verify. */
