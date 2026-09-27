@@ -195,6 +195,51 @@ export const GATEWAY_OPCODES = {
 export type GatewayOpcode = typeof GATEWAY_OPCODES[keyof typeof GATEWAY_OPCODES];
 
 /**
+ * Media upload purposes and their limits (section 7 of the parity contract).
+ * Object keys are `<purpose>/<uuid>.<ext>` in the public-read `subspace-media` bucket.
+ */
+export const MEDIA_PURPOSES = {
+  avatar: { maxBytes: 8 * 1024 * 1024 },
+  banner: { maxBytes: 10 * 1024 * 1024 },
+  beacon_icon: { maxBytes: 8 * 1024 * 1024 },
+  beacon_banner: { maxBytes: 10 * 1024 * 1024 },
+  glyph: { maxBytes: 256 * 1024 },
+  mesh_icon: { maxBytes: 8 * 1024 * 1024 },
+} as const;
+
+export type MediaPurpose = keyof typeof MEDIA_PURPOSES;
+
+export const MEDIA_ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
+
+export const MEDIA_MIME_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+};
+
+/**
+ * Discord-parity username rule (section 9): 2-32 chars, lowercase letters/digits/underscore/period,
+ * no consecutive periods, cannot start or end with a period.
+ */
+export const USERNAME_REGEX = /^[a-z0-9_.]{2,32}$/;
+
+export function isValidUsername(username: string): boolean {
+  if (!USERNAME_REGEX.test(username)) return false;
+  if (username.startsWith('.') || username.endsWith('.')) return false;
+  if (username.includes('..')) return false;
+  return true;
+}
+
+export const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+
+export const DISPLAY_NAME_STYLE_FONTS = ['default', 'orbitron', 'rajdhani', 'space_grotesk', 'jetbrains'] as const;
+export const DISPLAY_NAME_STYLE_EFFECTS = ['solid', 'gradient', 'neon', 'toon', 'pop'] as const;
+
+export const PROFILE_VISIBILITY_LEVELS = ['everyone', 'beacons', 'friends'] as const;
+export type ProfileVisibility = typeof PROFILE_VISIBILITY_LEVELS[number];
+
+/**
  * Subspace Directives: the instance rules every transmitter must accept.
  * Bump `version` whenever the text changes so existing accounts are re-prompted.
  */

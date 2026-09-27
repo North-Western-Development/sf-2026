@@ -39,6 +39,18 @@ export const transmitters = pgTable('transmitters', {
   backupCodes: jsonb('backup_codes').$type<string[]>().default([]).notNull(),
   hasAcceptedUploadDisclaimer: boolean('has_accepted_upload_disclaimer').default(false).notNull(),
   lastAgreedRulesVersion: integer('last_agreed_rules_version').default(0).notNull(),
+  tokenVersion: integer('token_version').default(0).notNull(),
+  // Discord-parity profile fields (section 9 of the parity contract)
+  pronouns: text('pronouns'),
+  themePrimary: text('theme_primary'),
+  themeAccent: text('theme_accent'),
+  displayNameStyle: jsonb('display_name_style').$type<{
+    font: string;
+    effect: string;
+    colors: string[];
+  }>(),
+  customStatus: jsonb('custom_status').$type<{ text: string; emoji?: string; expiresAt?: string } | null>(),
+  profileVisibility: text('profile_visibility').default('everyone').notNull(), // 'everyone' | 'beacons' | 'friends'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -117,6 +129,18 @@ export const beaconMembers = pgTable('beacon_members', {
   nickname: text('nickname'),
   hasCompletedOnboarding: boolean('has_completed_onboarding').default(false).notNull(),
   clearanceIds: jsonb('clearance_ids').$type<string[]>().default([]).notNull(),
+  // Per-beacon profile overrides (section 9); null means "use global profile field"
+  avatarUrl: text('avatar_url'),
+  bannerUrl: text('banner_url'),
+  bio: text('bio'),
+  pronouns: text('pronouns'),
+  themePrimary: text('theme_primary'),
+  themeAccent: text('theme_accent'),
+  displayNameStyle: jsonb('display_name_style').$type<{
+    font: string;
+    effect: string;
+    colors: string[];
+  }>(),
   joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.beaconId, table.transmitterId] }),
@@ -134,6 +158,7 @@ export const relays = pgTable('relays', {
   topic: text('topic'),
   position: integer('position').default(0).notNull(),
   isUnhideable: boolean('is_unhideable').default(false).notNull(),
+  permissionsSynced: boolean('permissions_synced').default(true).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -341,5 +366,7 @@ export const beaconEmojis = pgTable('beacon_emojis', {
   uploaderId: uuid('uploader_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+export * from './schema-community.js';
 
 
