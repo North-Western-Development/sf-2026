@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { eq, and, desc, sql, transmitters, vaultFiles } from '@subspace/database';
-import { verifyToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
+import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from '../s3.js';
 import { getCloudIntegrations } from '../integrations/index.js';
 import crypto from 'crypto';
@@ -15,7 +15,7 @@ export function extractAuthToken(request: FastifyRequest): TokenPayload | null {
     return null;
   }
   const token = authHeader.split(' ')[1];
-  return verifyToken<TokenPayload>(token, JWT_SECRET);
+  return verifyAccessToken(token, JWT_SECRET);
 }
 
 export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {

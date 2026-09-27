@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, and, transmitters, transmitterPasskeys } from '@subspace/database';
 import {
@@ -9,7 +10,9 @@ import {
   verifyBackupCode,
   signAccessToken,
   signRefreshToken,
-  verifyToken,
+  signTwoFactorChallengeToken,
+  verifyAccessToken,
+  verifyTypedToken,
   TokenPayload,
   PasskeyManager,
   getJwtSecret,
@@ -20,6 +23,47 @@ const RP_NAME = process.env.RP_NAME || 'Subspace Frequency';
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:3000';
 const CURRENT_RULES_VERSION = 1;
+
+const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+export function serializeTransmitter(user: any) {
+  return {
+    id: user.id,
+    username: user.username,
+    discriminator: user.discriminator,
+    email: user.email,
+    displayName: user.displayName,
+    displayColor: user.displayColor,
+    displayFont: user.displayFont,
+    avatarUrl: user.avatarUrl,
+    bannerUrl: user.bannerUrl,
+    bannerColor: user.bannerColor,
+    bio: user.bio,
+    staffRank: user.staffRank,
+  };
+}
+
+/**
+ * Issue an access + refresh pair. Refresh tokens are single-use: their jti is stored in
+ * Redis and consumed on /refresh, and removed on /logout.
+ */
+async function issueSession(redis: any, user: any) {
+  const jti = randomBytes(16).toString('hex');
+  const accessToken = signAccessToken(
+    { transmitterId: user.id, username: user.username, staffRank: user.staffRank },
+    JWT_SECRET
+  );
+  const refreshToken = signRefreshToken(user.id, JWT_SECRET, '30d', jti);
+  if (redis) {
+    await redis.set(`refresh:${jti}`, user.id, 'EX', REFRESH_TTL_SECONDS).catch(() => {});
+  }
+  return {
+    accessToken,
+    refreshToken,
+    transmitter: serializeTransmitter(user),
+    requiresRulesAgreement: (user.lastAgreedRulesVersion ?? 0) < CURRENT_RULES_VERSION,
+  };
+}
 
 /**
  * Generate a random non-sequential 4-digit discriminator (0001 - 9999)
@@ -71,7 +115,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    */
   app.post('/register', async (request, reply) => {
     const body = request.body as any;
-    const { username, email, password, displayName } = body || {};
+    const { username, email, password, displayName, acceptDirectives } = body || {};
 
     if (!username || !email || !password) {
       return reply.status(400).send({ error: 'Missing required credentials' });
@@ -116,35 +160,13 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         passwordHash,
         displayName: displayName?.trim() || username.trim(),
         isEmailVerified: true, // Default to true if SMTP toggle is off
-        lastAgreedRulesVersion: CURRENT_RULES_VERSION,
+        lastAgreedRulesVersion: acceptDirectives === true ? CURRENT_RULES_VERSION : 0,
       })
       .returning();
 
-    const accessToken = signAccessToken(
-      {
-        transmitterId: newTransmitter.id,
-        username: newTransmitter.username,
-        staffRank: newTransmitter.staffRank,
-      },
-      JWT_SECRET
-    );
-
-    const refreshToken = signRefreshToken(newTransmitter.id, JWT_SECRET);
-
     return reply.status(201).send({
       message: 'Transmitter registered successfully',
-      transmitter: {
-        id: newTransmitter.id,
-        username: newTransmitter.username,
-        discriminator: newTransmitter.discriminator,
-        email: newTransmitter.email,
-        displayName: newTransmitter.displayName,
-        displayColor: newTransmitter.displayColor,
-        displayFont: newTransmitter.displayFont,
-        staffRank: newTransmitter.staffRank,
-      },
-      accessToken,
-      refreshToken,
+      ...(await issueSession(redis, newTransmitter)),
     });
   });
 
@@ -179,17 +201,27 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         )
         .limit(1);
       user = users[0];
-    } else {
-      // Find by username or email
+    } else if (cleanInput.includes('@')) {
       const users = await db
         .select()
         .from(transmitters)
-        .where(
-          cleanInput.includes('@')
-            ? eq(transmitters.email, cleanInput.toLowerCase())
-            : eq(transmitters.username, cleanInput.toLowerCase())
-        )
+        .where(eq(transmitters.email, cleanInput.toLowerCase()))
         .limit(1);
+      user = users[0];
+    } else {
+      // Usernames are only unique together with their discriminator; a bare
+      // username is accepted only when it identifies exactly one transmitter.
+      const users = await db
+        .select()
+        .from(transmitters)
+        .where(eq(transmitters.username, cleanInput.toLowerCase()))
+        .limit(2);
+      if (users.length > 1) {
+        return reply.status(400).send({
+          error: 'Multiple transmitters share this username; sign in with username#0000 or email',
+          code: 'AMBIGUOUS_USERNAME',
+        });
+      }
       user = users[0];
     }
 
@@ -213,53 +245,15 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     // Check if 2FA is active
     if (user.is2faEnabled) {
-      const tempToken = signAccessToken(
-        {
-          transmitterId: user.id,
-          username: user.username,
-          staffRank: user.staffRank,
-        },
-        JWT_SECRET,
-        '5m'
-      );
       return reply.send({
         requires2FA: true,
-        tempToken,
+        tempToken: signTwoFactorChallengeToken(user.id, JWT_SECRET),
       });
     }
 
-    // Check Directives Rules agreement
-    const requiresRulesAgreement = user.lastAgreedRulesVersion < CURRENT_RULES_VERSION;
-
-    const accessToken = signAccessToken(
-      {
-        transmitterId: user.id,
-        username: user.username,
-        staffRank: user.staffRank,
-      },
-      JWT_SECRET
-    );
-    const refreshToken = signRefreshToken(user.id, JWT_SECRET);
-
     return reply.send({
       message: 'Transmitter authenticated',
-      requiresRulesAgreement,
-      transmitter: {
-        id: user.id,
-        username: user.username,
-        discriminator: user.discriminator,
-        email: user.email,
-        displayName: user.displayName,
-        displayColor: user.displayColor,
-        displayFont: user.displayFont,
-        avatarUrl: user.avatarUrl,
-        bannerUrl: user.bannerUrl,
-        bannerColor: user.bannerColor,
-        bio: user.bio,
-        staffRank: user.staffRank,
-      },
-      accessToken,
-      refreshToken,
+      ...(await issueSession(redis, user)),
     });
   });
 
@@ -273,7 +267,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const payload = verifyToken<TokenPayload>(token, JWT_SECRET);
+    const payload = verifyAccessToken(token, JWT_SECRET);
     if (!payload) {
       return reply.status(401).send({ error: 'Invalid or expired token' });
     }
@@ -308,7 +302,10 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(400).send({ error: 'Token and 2FA code required' });
     }
 
-    const payload = verifyToken<TokenPayload>(token, JWT_SECRET);
+    // Either a login challenge (password already verified) or an access token
+    // confirming a pending 2FA setup. Nothing else is accepted.
+    const challenge = verifyTypedToken<{ transmitterId: string }>(token, JWT_SECRET, '2fa_challenge');
+    const payload = challenge ?? verifyAccessToken(token, JWT_SECRET);
     if (!payload) {
       return reply.status(401).send({ error: 'Invalid or expired token' });
     }
@@ -325,6 +322,10 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     if (!user) {
       return reply.status(404).send({ error: 'Transmitter not found' });
+    }
+
+    if (!user.is2faEnabled && challenge) {
+      return reply.status(400).send({ error: '2FA is not enabled for this transmitter' });
     }
 
     // If setting up for the first time
@@ -353,6 +354,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.send({ message: '2FA security protocol activated successfully' });
     }
 
+    // Completing a login requires the challenge ticket issued by /login.
+    if (!challenge) {
+      return reply.status(400).send({ error: '2FA is already enabled' });
+    }
+
     // Logging in with active 2FA
     if (isBackupCode) {
       const { valid, remaining } = verifyBackupCode(code, user.backupCodes || []);
@@ -373,21 +379,55 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       }
     }
 
-    const accessToken = signAccessToken(
-      {
-        transmitterId: user.id,
-        username: user.username,
-        staffRank: user.staffRank,
-      },
-      JWT_SECRET
-    );
-    const refreshToken = signRefreshToken(user.id, JWT_SECRET);
-
     return reply.send({
       message: '2FA verification verified',
-      accessToken,
-      refreshToken,
+      ...(await issueSession(redis, user)),
     });
+  });
+
+  /**
+   * POST /api/v1/auth/refresh
+   * Exchange a refresh token for a new session (rotating the refresh token).
+   */
+  app.post('/refresh', async (request, reply) => {
+    const { refreshToken } = (request.body as any) || {};
+    const payload =
+      typeof refreshToken === 'string'
+        ? verifyTypedToken<{ transmitterId: string }>(refreshToken, JWT_SECRET, 'refresh')
+        : null;
+    if (!payload || !payload.jti) {
+      return reply.status(401).send({ error: 'Invalid or expired refresh token' });
+    }
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    if (redis) {
+      const owner = await redis.getdel(`refresh:${payload.jti}`).catch(() => null);
+      if (owner !== payload.transmitterId) {
+        return reply.status(401).send({ error: 'Refresh token revoked or already used' });
+      }
+    }
+
+    const [user] = await db.select().from(transmitters).where(eq(transmitters.id, payload.transmitterId)).limit(1);
+    if (!user) return reply.status(401).send({ error: 'Transmitter not found' });
+    if (user.isBanned) {
+      return reply.status(403).send({ error: 'Transmitter account has been suspended', code: 'TRANSMITTER_SUSPENDED' });
+    }
+
+    return reply.send(await issueSession(redis, user));
+  });
+
+  /**
+   * POST /api/v1/auth/logout
+   * Revoke the supplied refresh token.
+   */
+  app.post('/logout', async (request, reply) => {
+    const { refreshToken } = (request.body as any) || {};
+    const payload =
+      typeof refreshToken === 'string'
+        ? verifyTypedToken<{ transmitterId: string }>(refreshToken, JWT_SECRET, 'refresh')
+        : null;
+    if (payload?.jti && redis) await redis.del(`refresh:${payload.jti}`).catch(() => {});
+    return reply.status(204).send();
   });
 
   /**
@@ -400,7 +440,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const payload = verifyToken<TokenPayload>(token, JWT_SECRET);
+    const payload = verifyAccessToken(token, JWT_SECRET);
     if (!payload) {
       return reply.status(401).send({ error: 'Invalid or expired token' });
     }
@@ -430,7 +470,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const payload = verifyToken<TokenPayload>(token, JWT_SECRET);
+    const payload = verifyAccessToken(token, JWT_SECRET);
     if (!payload) {
       return reply.status(401).send({ error: 'Invalid or expired token' });
     }
@@ -450,20 +490,8 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
 
     return reply.send({
-      transmitter: {
-        id: user.id,
-        username: user.username,
-        discriminator: user.discriminator,
-        email: user.email,
-        displayName: user.displayName,
-        displayColor: user.displayColor,
-        displayFont: user.displayFont,
-        avatarUrl: user.avatarUrl,
-        bannerUrl: user.bannerUrl,
-        bannerColor: user.bannerColor,
-        bio: user.bio,
-        staffRank: user.staffRank,
-      },
+      transmitter: serializeTransmitter(user),
+      requiresRulesAgreement: (user.lastAgreedRulesVersion ?? 0) < CURRENT_RULES_VERSION,
     });
   });
 
@@ -479,7 +507,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const payload = verifyToken<TokenPayload>(token, JWT_SECRET);
+    const payload = verifyAccessToken(token, JWT_SECRET);
     if (!payload) {
       return reply.status(401).send({ error: 'Invalid or expired token' });
     }

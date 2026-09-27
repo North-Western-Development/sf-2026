@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import dotenv from 'dotenv';
 import { randomUUID } from 'node:crypto';
 import { GATEWAY_OPCODES, PRESENCE_STATES, PresenceState } from '@subspace/constants';
-import { verifyToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
+import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import {
   createDatabaseClient,
   resolvePresencePeers,
@@ -331,7 +331,7 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
           ws.close(4002, 'Malformed IDENTIFY payload');
           return;
         }
-        const decoded = verifyToken<TokenPayload>(token, JWT_SECRET);
+        const decoded = verifyAccessToken(token, JWT_SECRET);
         if (!decoded) {
           ws.close(4003, 'Invalid or expired authentication ticket');
           return;

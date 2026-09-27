@@ -11,9 +11,6 @@ rtc:
 redis:
   address: redis:6379
 
-keys:
-  subspace_api_key: subspace_secret_key_frequency
-
 logging:
   json: false
   level: info

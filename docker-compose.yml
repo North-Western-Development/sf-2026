@@ -1,5 +1,13 @@
 name: subspace-frequency
 
+# Shared service environment. Secrets have no defaults here: copy .env.example to .env
+# and fill them in (compose refuses to start when a required value is missing).
+x-service-env: &service-env
+  NODE_ENV: production
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
+  REDIS_URL: redis://redis:6379
+
 networks:
   subspace_net:
     driver: bridge
@@ -16,7 +24,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-subspace}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-subspace_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-subspace_frequency}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -49,15 +57,14 @@ services:
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_subspace}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_secret_subspace}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
     volumes:
       - minio_data:/data
     networks:
       - subspace_net
-    # Ports accessible internally over loopback for host reverse proxying
+    # Object access goes through the web edge; the console stays loopback-only.
     ports:
-      - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -70,12 +77,13 @@ services:
     container_name: subspace-livekit
     restart: unless-stopped
     command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"
     volumes:
       - ./docker/livekit.yaml:/etc/livekit.yaml:ro
     networks:
       - subspace_net
     ports:
-      - "127.0.0.1:7880:7880"
       - "7881:7881"
       - "50000-50100:50000-50100/udp"
     depends_on:
@@ -89,11 +97,11 @@ services:
     container_name: subspace-api
     restart: unless-stopped
     environment:
-      PORT: 3001
-      DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:-subspace_secret}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
-      REDIS_URL: redis://redis:6379
-    ports:
-      - "3001:3001"
+      <<: *service-env
+      API_PORT: 3001
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:-}
     networks:
       - subspace_net
     depends_on:
@@ -109,13 +117,13 @@ services:
     container_name: subspace-gateway
     restart: unless-stopped
     environment:
+      <<: *service-env
       GATEWAY_PORT: 3002
-      REDIS_URL: redis://redis:6379
-    ports:
-      - "3002:3002"
     networks:
       - subspace_net
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -126,14 +134,22 @@ services:
     container_name: subspace-file
     restart: unless-stopped
     environment:
+      <<: *service-env
       FILE_PORT: 3003
-      DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:-subspace_secret}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
       S3_ENDPOINT: minio:9000
-    ports:
-      - "127.0.0.1:3003:3003"
+      S3_PUBLIC_ENDPOINT: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env}
+      S3_BUCKET: subspace-vault
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      ONEDRIVE_CLIENT_ID: ${ONEDRIVE_CLIENT_ID:-}
+      DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
     networks:
       - subspace_net
     depends_on:
+      postgres:
+        condition: service_healthy
       minio:
         condition: service_healthy
 
@@ -144,10 +160,28 @@ services:
     container_name: subspace-badge-worker
     restart: unless-stopped
     environment:
-      REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:-subspace_secret}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
+      <<: *service-env
     networks:
       - subspace_net
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Single public entrypoint: SPA + reverse proxy for api, gateway, vault, storage and LiveKit signaling.
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: subspace-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    networks:
+      - subspace_net
+    depends_on:
+      - api-service
+      - gateway-service
+      - file-service
+      - livekit

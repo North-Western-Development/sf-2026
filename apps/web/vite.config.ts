@@ -2,7 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-const BACKEND_HOST = process.env.VITE_BACKEND_HOST || '192.168.1.9';
+// Dev-server proxy mirrors docker/nginx/web.conf so the client always talks to its own origin.
+const BACKEND_HOST = process.env.VITE_BACKEND_HOST || '127.0.0.1';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -10,14 +11,11 @@ export default defineConfig({
     port: 5173,
     host: '127.0.0.1',
     proxy: {
-      '/api': {
-        target: `http://${BACKEND_HOST}:3001`,
-        changeOrigin: true,
-      },
-      '/gateway': {
-        target: `ws://${BACKEND_HOST}:3002`,
-        ws: true,
-      },
+      '/api/v1/vault': { target: `http://${BACKEND_HOST}:3003`, changeOrigin: true },
+      '/api': { target: `http://${BACKEND_HOST}:3001`, changeOrigin: true },
+      '/gateway': { target: `ws://${BACKEND_HOST}:3002`, ws: true },
+      '/rtc': { target: `ws://${BACKEND_HOST}:7880`, ws: true },
+      '/subspace-vault': { target: `http://${BACKEND_HOST}:9000` },
     },
   },
 });

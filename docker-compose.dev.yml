@@ -1,0 +1,19 @@
+# Local development overlay: publishes infrastructure on loopback so services can run
+# on the host with `pnpm dev` and the Vite proxy can reach them.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up postgres redis minio livekit
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+  minio:
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+  livekit:
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"

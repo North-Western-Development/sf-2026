@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and, beacons, clearances, beaconMembers, transmitters } from '@subspace/database';
-import { verifyToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
+import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import {
   computeMemberPermissions,
   getHighestRank,
@@ -27,7 +27,7 @@ export function extractAuthToken(request: FastifyRequest): TokenPayload | null {
     return null;
   }
   const token = authHeader.split(' ')[1];
-  return verifyToken<TokenPayload>(token, JWT_SECRET);
+  return verifyAccessToken(token, JWT_SECRET);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import * as OTPAuth from 'otpauth';
 import jwt from 'jsonwebtoken';
@@ -94,20 +95,52 @@ export interface TokenPayload {
   staffRank: number;
 }
 
+/**
+ * Every token carries a `typ` claim so each kind is only accepted where it belongs:
+ * a refresh token or 2FA challenge can never be replayed as an access token.
+ */
+export type TokenType = 'access' | 'refresh' | '2fa_challenge';
+
 export function signAccessToken(payload: TokenPayload, secret: string, expiresIn: jwt.SignOptions['expiresIn'] = '15m'): string {
-  return jwt.sign(payload, secret, { expiresIn });
+  const { transmitterId, username, staffRank } = payload;
+  return jwt.sign({ transmitterId, username, staffRank, typ: 'access' }, secret, { expiresIn });
 }
 
-export function signRefreshToken(transmitterId: string, secret: string, expiresIn: jwt.SignOptions['expiresIn'] = '7d'): string {
-  return jwt.sign({ transmitterId, type: 'refresh' }, secret, { expiresIn });
+export function signRefreshToken(
+  transmitterId: string,
+  secret: string,
+  expiresIn: jwt.SignOptions['expiresIn'] = '30d',
+  jti: string = randomBytes(16).toString('hex')
+): string {
+  return jwt.sign({ transmitterId, typ: 'refresh', jti }, secret, { expiresIn });
 }
 
+/** Short-lived ticket proving the password step passed; only redeemable at /auth/2fa/verify. */
+export function signTwoFactorChallengeToken(transmitterId: string, secret: string): string {
+  return jwt.sign({ transmitterId, typ: '2fa_challenge' }, secret, { expiresIn: '5m' });
+}
+
+/** Low-level verification. Prefer verifyAccessToken / verifyTypedToken. */
 export function verifyToken<T>(token: string, secret: string): T | null {
   try {
-    return jwt.verify(token, secret) as T;
+    return jwt.verify(token, secret, { algorithms: ['HS256'] }) as T;
   } catch {
     return null;
   }
+}
+
+export function verifyTypedToken<T extends object>(
+  token: string,
+  secret: string,
+  typ: TokenType
+): (T & { typ: TokenType; exp?: number; jti?: string }) | null {
+  const decoded = verifyToken<any>(token, secret);
+  if (!decoded || typeof decoded !== 'object' || decoded.typ !== typ) return null;
+  return decoded;
+}
+
+export function verifyAccessToken(token: string, secret: string): TokenPayload | null {
+  return verifyTypedToken<TokenPayload>(token, secret, 'access');
 }
 
 export function signJwt(payload: string | object | Buffer, secret: string, options?: jwt.SignOptions): string {
