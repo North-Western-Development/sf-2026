@@ -307,6 +307,20 @@ describe('Text Relays, Transmissions & Direct Messaging E2E Suite', () => {
   });
 
   it('creates and manages Subspace Meshes (Group DMs with max 10 members)', async () => {
+    // Mesh membership requires affiliation with the creator (Discord parity contract §5).
+    const reqRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/affiliations/request',
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { targetId: userBId },
+    });
+    const affId = JSON.parse(reqRes.payload).affiliation.id;
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/affiliations/${affId}/accept`,
+      headers: { authorization: `Bearer ${tokenB}` },
+    });
+
     // 1. Exceeding 10 members -> rejected
     const tooManyMembers = [
       '11111111-1111-1111-1111-111111111111',
