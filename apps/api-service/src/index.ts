@@ -87,6 +87,15 @@ export async function buildApp() {
   const { transmissionRoutes } = await import('./modules/transmissions/transmissions.routes.js');
   await app.register(transmissionRoutes, { prefix: '/api/v1' });
 
+  const { messagingRoutes } = await import('./modules/messaging/messaging.routes.js');
+  await app.register(messagingRoutes, { prefix: '/api/v1' });
+
+  const { readStateRoutes } = await import('./modules/messaging/read-state.routes.js');
+  await app.register(readStateRoutes, { prefix: '/api/v1' });
+
+  const { usersRoutes } = await import('./modules/users/users.routes.js');
+  await app.register(usersRoutes, { prefix: '/api/v1/users' });
+
   const { linkRoutes } = await import('./modules/links/links.routes.js');
   await app.register(linkRoutes, { prefix: '/api/v1/links' });
 

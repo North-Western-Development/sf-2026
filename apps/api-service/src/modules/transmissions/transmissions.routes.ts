@@ -15,6 +15,9 @@ import {
   assertCanModerateTarget,
 } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, audienceForTransmission } from '../../lib/events.js';
+import { loadChannel } from '../../lib/channels.js';
+import { parseMentions } from '../../lib/mentions.js';
+import { beaconMembers as beaconMembersTable, subspaceMeshMembers as subspaceMeshMembersTable } from '@subspace/database';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
 
@@ -255,12 +258,44 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       });
     }
 
+    const channel = await loadChannel(
+      db,
+      existing.threadId ? 'thread' : existing.relayId ? 'relay' : existing.p2pLinkId ? 'link' : 'mesh',
+      existing.threadId || existing.relayId || existing.p2pLinkId || existing.meshId
+    );
+
+    const validUserIds = new Set<string>();
+    if (channel?.channelType === 'relay' || channel?.channelType === 'thread') {
+      const members = await db.select().from(beaconMembersTable).where(eq(beaconMembersTable.beaconId, channel.beaconId!));
+      members.forEach((m: any) => validUserIds.add(m.transmitterId));
+    } else if (channel?.channelType === 'link') {
+      (channel.participants || []).forEach((id) => validUserIds.add(id));
+    } else if (channel?.channelType === 'mesh') {
+      const members = await db.select().from(subspaceMeshMembersTable).where(eq(subspaceMeshMembersTable.meshId, channel.channelId));
+      members.forEach((m: any) => validUserIds.add(m.transmitterId));
+    }
+
+    let mentionEveryoneAllowed = false;
+    if (channel?.beaconId) {
+      const actorCtx = await resolveBeaconActorContext(db, existing.transmitterId, channel.beaconId);
+      mentionEveryoneAllowed = !!actorCtx && hasPermission(actorCtx.effectivePermissions, PERMISSIONS.MENTION_EVERYONE);
+    }
+
+    const parsed = await parseMentions(db, content.trim(), {
+      beaconId: channel?.beaconId || null,
+      validUserIds,
+      authorHasMentionEveryone: mentionEveryoneAllowed,
+    });
+
     const [updated] = await db
       .update(transmissions)
       .set({
         content: content.trim(),
         isEdited: true,
         updatedAt: new Date(),
+        mentions: parsed.mentions,
+        mentionRoles: parsed.mentionRoles,
+        mentionEveryone: parsed.mentionEveryone,
       })
       .where(eq(transmissions.id, transmissionId))
       .returning();
