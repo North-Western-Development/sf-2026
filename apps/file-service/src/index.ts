@@ -9,7 +9,8 @@ import { requireSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from './s3.js';
 import { vaultRoutes } from './routes/vault.routes.js';
 
-dotenv.config();
+// Package-local .env first, then the repo-root .env (native runs); existing env always wins.
+dotenv.config({ path: ['.env', '../../.env'] });
 
 const port = Number(process.env.FILE_PORT) || 3003;
 const host = process.env.FILE_HOST || '0.0.0.0';

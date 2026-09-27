@@ -6,7 +6,8 @@ import { TERMINOLOGY } from '@subspace/constants';
 import { createDatabaseClient } from '@subspace/database';
 import { Redis } from 'ioredis';
 
-dotenv.config();
+// Package-local .env first, then the repo-root .env (native runs); existing env always wins.
+dotenv.config({ path: ['.env', '../../.env'] });
 
 const port = Number(process.env.API_PORT) || 3001;
 const host = process.env.API_HOST || '0.0.0.0';

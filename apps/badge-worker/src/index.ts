@@ -10,7 +10,8 @@ import {
   transmitters,
 } from '@subspace/database';
 
-dotenv.config();
+// Package-local .env first, then the repo-root .env (native runs); existing env always wins.
+dotenv.config({ path: ['.env', '../../.env'] });
 
 const redisUrl = process.env.REDIS_URL || 'redis://redis:6379';
 const databaseUrl =

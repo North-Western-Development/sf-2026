@@ -11,7 +11,9 @@
     "test:web": "pnpm --filter @subspace/web test",
     "test:e2e": "vitest run --config vitest.config.ts",
     "lint": "turbo run lint",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "dev:native": "node scripts/native/dev.mjs",
+    "test:native": "node scripts/native/test.mjs"
   },
   "devDependencies": {
     "turbo": "^2.4.4",

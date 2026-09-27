@@ -11,7 +11,8 @@ import {
 } from '@subspace/database';
 import { Redis } from 'ioredis';
 
-dotenv.config();
+// Package-local .env first, then the repo-root .env (native runs); existing env always wins.
+dotenv.config({ path: ['.env', '../../.env'] });
 
 const port = Number(process.env.GATEWAY_PORT) || 3002;
 const redisUrl = process.env.REDIS_URL || 'redis://redis:6379';
