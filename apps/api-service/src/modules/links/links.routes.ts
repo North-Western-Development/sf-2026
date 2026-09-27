@@ -13,6 +13,7 @@ import {
   signalBlacklist,
 } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
 
@@ -173,16 +174,12 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         })
         .returning();
 
-      const redis = (app as any).redis;
-      if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
-        redis.publish('gateway:transmission:events', JSON.stringify({
-          type: 'DIRECT_TRANSMISSION_CREATE',
-          link_id: link.id,
-          recipient_id: targetId,
-          sender_id: senderId,
-          transmission: newTransmission,
-        })).catch(() => {});
-      }
+      await publishGatewayEvent(
+        app,
+        'DIRECT_TRANSMISSION_CREATE',
+        { link_id: link.id, recipient_id: targetId, sender_id: senderId, transmission: newTransmission },
+        { transmitterIds: [senderId, targetId] }
+      );
 
       return reply.status(201).send({
         message: 'Point-to-Point transmission dispatched',
@@ -261,15 +258,12 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       })
       .returning();
 
-    const redis = (app as any).redis;
-    if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
-      redis.publish('gateway:transmission:events', JSON.stringify({
-        type: 'TRANSMISSION_REQUEST_CREATE',
-        recipient_id: targetId,
-        sender_id: senderId,
-        request: newRequest,
-      })).catch(() => {});
-    }
+    await publishGatewayEvent(
+      app,
+      'TRANSMISSION_REQUEST_CREATE',
+      { recipient_id: targetId, sender_id: senderId, request: newRequest },
+      { transmitterIds: [senderId, targetId] }
+    );
 
     return reply.status(201).send({
       message: 'Transmission request dispatched to recipient',

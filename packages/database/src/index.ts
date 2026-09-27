@@ -3,6 +3,7 @@ import pg from 'pg';
 import * as schema from './schema.js';
 
 export * from './schema.js';
+export * from './access.js';
 export * from 'drizzle-orm';
 
 export function createDatabaseClient(connectionString: string) {

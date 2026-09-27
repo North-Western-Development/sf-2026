@@ -10,6 +10,7 @@ import {
   signalBlacklist,
 } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 
 const MAX_MESH_MEMBERS = 10;
 const MAX_TRANSMISSION_LENGTH = 2000;
@@ -58,6 +59,8 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         transmitterId: memId,
       });
     }
+
+    await publishSessionRefresh(app, uniqueMembers);
 
     return reply.status(201).send({
       message: 'Subspace Mesh initialized',
@@ -137,6 +140,8 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       transmitterId: targetId,
     });
 
+    await publishSessionRefresh(app, [...existingMembers.map((m: any) => m.transmitterId), targetId]);
+
     return reply.status(201).send({
       message: 'Transmitter affiliated with Subspace Mesh',
       memberCount: existingMembers.length + 1,
@@ -212,15 +217,12 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       authorAvatar: authorProfile?.avatarUrl || null,
     };
 
-    const redis = (app as any).redis;
-    if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
-      redis.publish('gateway:transmission:events', JSON.stringify({
-        type: 'MESH_TRANSMISSION_CREATE',
-        mesh_id: meshId,
-        sender_id: token.transmitterId,
-        transmission: formatted,
-      })).catch(() => {});
-    }
+    await publishGatewayEvent(
+      app,
+      'MESH_TRANSMISSION_CREATE',
+      { mesh_id: meshId, sender_id: token.transmitterId, transmission: formatted },
+      { meshId }
+    );
 
     return reply.status(201).send({
       message: 'Mesh transmission dispatched',

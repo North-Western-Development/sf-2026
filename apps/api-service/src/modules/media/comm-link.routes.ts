@@ -2,11 +2,13 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, relays } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
+import { requireSecret } from '@subspace/crypto';
 import { createLiveKitAccessToken } from './livekit.js';
 
-const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'subspace_api_key';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'subspace_secret_key_frequency';
-const LIVEKIT_URL = process.env.LIVEKIT_URL || 'http://localhost:7880';
+const LIVEKIT_API_KEY = requireSecret('LIVEKIT_API_KEY', 'subspace_api_key');
+const LIVEKIT_API_SECRET = requireSecret('LIVEKIT_API_SECRET', 'subspace_secret_key_frequency');
+// Browser-facing signaling URL. Null means "same origin": the web proxy forwards /rtc to LiveKit.
+const LIVEKIT_PUBLIC_URL = process.env.LIVEKIT_PUBLIC_URL || null;
 
 export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -68,7 +70,7 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       return reply.send({
         message: 'Comm-Link access token issued',
         token: roomToken,
-        livekitUrl: LIVEKIT_URL,
+        livekitUrl: LIVEKIT_PUBLIC_URL,
         roomName: relayId,
         canSpeak:
           actorContext.isOwner ||

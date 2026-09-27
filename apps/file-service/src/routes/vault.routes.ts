@@ -1,11 +1,11 @@
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { eq, and, desc, sql, transmitters, vaultFiles } from '@subspace/database';
-import { verifyToken, TokenPayload } from '@subspace/crypto';
+import { verifyToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from '../s3.js';
 import { getCloudIntegrations } from '../integrations/index.js';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
+const JWT_SECRET = getJwtSecret();
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB per file default
 const DEFAULT_USER_QUOTA_BYTES = 500 * 1024 * 1024; // 500MB personal quota
 

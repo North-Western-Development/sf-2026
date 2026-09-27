@@ -9,6 +9,7 @@ import {
   clearances,
   transmitters,
   beaconEmojis,
+  resolveBeaconAudience,
 } from '@subspace/database';
 import {
   PERMISSIONS,
@@ -20,6 +21,7 @@ import {
   resolveBeaconActorContext,
   assertCanModerateTarget,
 } from '../../middleware/hierarchy.js';
+import { publishSessionRefresh } from '../../lib/events.js';
 
 export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -314,6 +316,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       })
       .returning();
 
+    await publishSessionRefresh(app, await resolveBeaconAudience(db, beaconId));
+
     return reply.status(201).send({
       message: 'Joined Beacon successfully. Onboarding required.',
       member: newMember,
@@ -355,6 +359,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
           eq(beaconMembers.transmitterId, token.transmitterId)
         )
       );
+
+    await publishSessionRefresh(app, [token.transmitterId, ...(await resolveBeaconAudience(db, beaconId))]);
 
     return reply.send({ message: 'Departed from Beacon' });
   });
@@ -473,6 +479,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
           eq(beaconMembers.transmitterId, targetId)
         )
       );
+
+    await publishSessionRefresh(app, [targetId, ...(await resolveBeaconAudience(db, beaconId))]);
 
     return reply.send({ message: 'Target transmitter expelled from Beacon' });
   });

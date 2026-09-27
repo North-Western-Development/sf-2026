@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { eq, and, beacons, clearances, beaconMembers, transmitters } from '@subspace/database';
-import { verifyToken, TokenPayload } from '@subspace/crypto';
+import { verifyToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import {
   computeMemberPermissions,
   getHighestRank,
@@ -9,7 +9,7 @@ import {
   PERMISSIONS,
 } from '@subspace/constants';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
+const JWT_SECRET = getJwtSecret();
 
 export interface ClearanceContext {
   transmitterId: string;

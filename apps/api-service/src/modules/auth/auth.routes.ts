@@ -12,9 +12,10 @@ import {
   verifyToken,
   TokenPayload,
   PasskeyManager,
+  getJwtSecret,
 } from '@subspace/crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
+const JWT_SECRET = getJwtSecret();
 const RP_NAME = process.env.RP_NAME || 'Subspace Frequency';
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:3000';

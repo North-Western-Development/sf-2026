@@ -15,10 +15,16 @@ export interface S3Config {
   secretAccessKey: string;
   bucket: string;
   forcePathStyle?: boolean;
+  /**
+   * Browser-reachable S3 origin used only for presigning (e.g. https://subspace.example).
+   * The web proxy forwards /<bucket>/ to MinIO preserving Host, so signatures still verify.
+   */
+  publicEndpoint?: string;
 }
 
 export class SubspaceS3Storage {
   private client: S3Client;
+  private signer: S3Client;
   public bucket: string;
 
   constructor(config: S3Config) {
@@ -28,17 +34,19 @@ export class SubspaceS3Storage {
       config.endpoint.includes('localhost') ||
       config.endpoint.includes('127.0.0.1');
 
-    this.client = new S3Client({
-      endpoint: config.endpoint.startsWith('http')
-        ? config.endpoint
-        : `http://${config.endpoint}`,
-      region: config.region || 'us-east-1',
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-      },
-      forcePathStyle: config.forcePathStyle ?? isLocalOrMinio,
-    });
+    const makeClient = (endpoint: string, forcePathStyle: boolean) =>
+      new S3Client({
+        endpoint: endpoint.startsWith('http') ? endpoint : `http://${endpoint}`,
+        region: config.region || 'us-east-1',
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+        forcePathStyle,
+      });
+
+    this.client = makeClient(config.endpoint, config.forcePathStyle ?? isLocalOrMinio);
+    this.signer = config.publicEndpoint ? makeClient(config.publicEndpoint, true) : this.client;
   }
 
   /**
@@ -72,7 +80,7 @@ export class SubspaceS3Storage {
       Key: storageKey,
       ContentType: contentType,
     });
-    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    return getSignedUrl(this.signer, command, { expiresIn: expiresInSeconds });
   }
 
   /**
@@ -86,7 +94,7 @@ export class SubspaceS3Storage {
       Bucket: this.bucket,
       Key: storageKey,
     });
-    return getSignedUrl(this.client, command, { expiresIn: expiresInSeconds });
+    return getSignedUrl(this.signer, command, { expiresIn: expiresInSeconds });
   }
 
   /**

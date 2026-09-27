@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, and, or, affiliations, transmitters, signalBlacklist } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+import { publishSessionRefresh } from '../../lib/events.js';
 
 const MAX_GREETING_NOTE_LENGTH = 200;
 
@@ -148,6 +149,8 @@ export const affiliationRoutes: FastifyPluginAsync = async (app: FastifyInstance
       .set({ status: 'accepted', updatedAt: new Date() })
       .where(eq(affiliations.id, reqId))
       .returning();
+
+    await publishSessionRefresh(app, [req.transmitterId, req.targetId]);
 
     return reply.send({
       message: 'Affiliation confirmed',

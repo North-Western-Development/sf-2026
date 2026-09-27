@@ -5,6 +5,7 @@ import { TERMINOLOGY } from '@subspace/constants';
 
 import helmet from '@fastify/helmet';
 import { createDatabaseClient } from '@subspace/database';
+import { requireSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from './s3.js';
 import { vaultRoutes } from './routes/vault.routes.js';
 
@@ -15,9 +16,10 @@ const host = process.env.FILE_HOST || '0.0.0.0';
 const databaseUrl = process.env.DATABASE_URL || 'postgresql://subspace:subspace_secret@postgres:5432/subspace_frequency';
 
 const s3Endpoint = process.env.S3_ENDPOINT || 'minio:9000';
-const s3AccessKey = process.env.MINIO_ROOT_USER || 'minio_subspace';
-const s3SecretKey = process.env.MINIO_ROOT_PASSWORD || 'minio_secret_subspace';
+const s3AccessKey = requireSecret('MINIO_ROOT_USER', 'minio_subspace');
+const s3SecretKey = requireSecret('MINIO_ROOT_PASSWORD', 'minio_secret_subspace');
 const s3Bucket = process.env.S3_BUCKET || 'subspace-vault';
+const s3PublicEndpoint = process.env.S3_PUBLIC_ENDPOINT || undefined;
 
 export async function buildFileApp() {
   const app = Fastify({
@@ -47,6 +49,7 @@ export async function buildFileApp() {
     accessKeyId: s3AccessKey,
     secretAccessKey: s3SecretKey,
     bucket: s3Bucket,
+    publicEndpoint: s3PublicEndpoint,
   });
 
   // Provision bucket asynchronously

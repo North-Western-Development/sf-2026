@@ -125,3 +125,21 @@ export const PasskeyManager = {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 };
+
+/**
+ * Reads a secret from the environment. In production a missing value is fatal so that
+ * deployments can never silently run on the well-known development defaults.
+ */
+export function requireSecret(name: string, devFallback: string): string {
+  const value = process.env[name];
+  if (value && value.length > 0) return value;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`[Subspace] Missing required secret ${name}; refusing to start with a development default`);
+  }
+  return devFallback;
+}
+
+export const DEV_JWT_SECRET = 'subspace_jwt_super_secret_key_2026';
+export function getJwtSecret(): string {
+  return requireSecret('JWT_SECRET', DEV_JWT_SECRET);
+}
