@@ -43,6 +43,9 @@ class SubspaceGatewayClient {
   private transmissionListeners: Set<EventListener<TransmissionEvent>> = new Set();
   private readyListeners: Set<EventListener<{ transmitter: any; voice_states: any[] }>> = new Set();
   private cachedVoiceStates: Map<string, VoiceStateEvent> = new Map();
+  private dispatchListeners: Set<(type: string, data: any) => void> = new Set();
+  private statusListeners: Set<(status: 'connecting' | 'ready' | 'reconnecting' | 'offline') => void> = new Set();
+  private presence: string = 'online';
 
   private shouldReconnect = false;
   private reconnectAttempts = 0;
@@ -78,7 +81,11 @@ class SubspaceGatewayClient {
       this.isConnecting = false;
       this.stopHeartbeat();
       this.ws = null;
-      if (!this.shouldReconnect) return;
+      if (!this.shouldReconnect) {
+        this.emitStatus('offline');
+        return;
+      }
+      this.emitStatus('reconnecting');
       // Exponential backoff with jitter, capped at 30s.
       const delay = Math.min(30_000, 1000 * 2 ** this.reconnectAttempts) * (0.75 + Math.random() * 0.5);
       this.reconnectAttempts += 1;
@@ -113,7 +120,7 @@ class SubspaceGatewayClient {
           return;
         }
         if (this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({ op: 2 /* IDENTIFY */, d: { token, presence: 'online' } }));
+          this.ws.send(JSON.stringify({ op: 2 /* IDENTIFY */, d: { token, presence: this.presence } }));
         }
       });
       return;
@@ -126,8 +133,10 @@ class SubspaceGatewayClient {
 
     // 0: DISPATCH
     if (payload.op === 0) {
+      this.dispatchListeners.forEach((fn) => fn(payload.t, payload.d));
       if (payload.t === 'READY') {
         this.reconnectAttempts = 0;
+        this.emitStatus('ready');
         const voiceStates = payload.d?.voice_states || [];
         voiceStates.forEach((vs: any) => {
           if (vs.relay_id) {
@@ -196,6 +205,33 @@ class SubspaceGatewayClient {
           },
         })
       );
+    }
+  }
+
+  /** Every DISPATCH event, by type. Returns an unsubscribe function. */
+  public onDispatch(fn: (type: string, data: any) => void) {
+    this.dispatchListeners.add(fn);
+    return () => {
+      this.dispatchListeners.delete(fn);
+    };
+  }
+
+  public onStatus(fn: (status: 'connecting' | 'ready' | 'reconnecting' | 'offline') => void) {
+    this.statusListeners.add(fn);
+    return () => {
+      this.statusListeners.delete(fn);
+    };
+  }
+
+  private emitStatus(status: 'connecting' | 'ready' | 'reconnecting' | 'offline') {
+    this.statusListeners.forEach((fn) => fn(status));
+  }
+
+  /** Set own presence; also used on reconnect IDENTIFY. */
+  public updatePresence(presence: string) {
+    this.presence = presence;
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ op: 3, d: { presence } }));
     }
   }
 

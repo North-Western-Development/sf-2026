@@ -1,0 +1,198 @@
+import { create } from 'zustand';
+import type {
+  Beacon,
+  ChannelActivity,
+  ChannelKey,
+  Clearance,
+  Cluster,
+  CustomStatus,
+  DirectLink,
+  Member,
+  Mesh,
+  NotificationSetting,
+  Presence,
+  ReadState,
+  Relationship,
+  Relay,
+  SelfUser,
+  Transmission,
+  UserRef,
+  VoiceState,
+} from '../lib/types';
+
+export interface ChannelMessages {
+  ids: string[];
+  byId: Record<string, Transmission>;
+  hasMoreBefore: boolean;
+  loading: boolean;
+  loaded: boolean;
+  error?: string;
+}
+
+export interface PresenceEntry {
+  status: Presence;
+  customStatus?: CustomStatus | null;
+}
+
+export interface SubspaceState {
+  me: SelfUser | null;
+  ready: boolean;
+
+  beacons: Record<string, Beacon>;
+  beaconOrder: string[];
+  clusters: Cluster[];
+  relays: Record<string, Relay>;
+  relayIdsByBeacon: Record<string, string[]>;
+  clearances: Record<string, Clearance[]>;
+  members: Record<string, Record<string, Member>>;
+  users: Record<string, UserRef>;
+  presence: Record<string, PresenceEntry>;
+
+  links: Record<string, DirectLink>;
+  meshes: Record<string, Mesh>;
+  relationships: Record<string, Relationship>;
+
+  messages: Record<ChannelKey, ChannelMessages>;
+  readStates: Record<ChannelKey, ReadState>;
+  activity: Record<ChannelKey, ChannelActivity>;
+  notificationSettings: Record<string, NotificationSetting>;
+  /** channelKey -> userId -> expiry epoch ms */
+  typing: Record<ChannelKey, Record<string, number>>;
+  voice: Record<string, VoiceState>;
+  gatewayStatus: 'connecting' | 'ready' | 'reconnecting' | 'offline';
+  /** Channel currently on screen (drives auto-ack and notification suppression). */
+  activeChannel: ChannelKey | null;
+}
+
+const initial: SubspaceState = {
+  me: null,
+  ready: false,
+  beacons: {},
+  beaconOrder: [],
+  clusters: [],
+  relays: {},
+  relayIdsByBeacon: {},
+  clearances: {},
+  members: {},
+  users: {},
+  presence: {},
+  links: {},
+  meshes: {},
+  relationships: {},
+  messages: {},
+  readStates: {},
+  activity: {},
+  notificationSettings: {},
+  typing: {},
+  voice: {},
+  gatewayStatus: 'connecting',
+  activeChannel: null,
+};
+
+export const useStore = create<SubspaceState>()(() => ({ ...initial }));
+
+export const resetStore = () => useStore.setState({ ...initial }, true);
+
+// ---------------------------------------------------------------------------
+// Pure update helpers (used by actions and the gateway bridge)
+// ---------------------------------------------------------------------------
+
+const set = useStore.setState;
+const get = useStore.getState;
+
+export const emptyChannel = (): ChannelMessages => ({
+  ids: [],
+  byId: {},
+  hasMoreBefore: true,
+  loading: false,
+  loaded: false,
+});
+
+const byTime = (a: Transmission, b: Transmission) =>
+  a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : a.createdAt < b.createdAt ? -1 : 1;
+
+export function upsertMessages(key: ChannelKey, incoming: Transmission[], opts: Partial<ChannelMessages> = {}) {
+  set((s) => {
+    const ch = s.messages[key] ?? emptyChannel();
+    const byId = { ...ch.byId };
+    for (const t of incoming) {
+      // Reconcile an optimistic message by nonce.
+      if (t.nonce) {
+        const pendingId = ch.ids.find((id) => byId[id]?.nonce === t.nonce && byId[id]?.pending);
+        if (pendingId && pendingId !== t.id) delete byId[pendingId];
+      }
+      byId[t.id] = { ...byId[t.id], ...t, pending: false, failed: false };
+    }
+    const ids = Object.values(byId).sort(byTime).map((t) => t.id);
+    const latest = ids.length ? byId[ids[ids.length - 1]] : null;
+    const activity = latest && !latest.pending
+      ? {
+          ...s.activity,
+          [key]: {
+            ...s.activity[key],
+            lastId: latest.id,
+            lastAt:
+              s.activity[key]?.lastAt && s.activity[key]!.lastAt! > latest.createdAt
+                ? s.activity[key]!.lastAt
+                : latest.createdAt,
+          },
+        }
+      : s.activity;
+    return { messages: { ...s.messages, [key]: { ...ch, ...opts, ids, byId } }, activity };
+  });
+}
+
+export function patchMessage(key: ChannelKey, id: string, patch: Partial<Transmission> | ((t: Transmission) => Partial<Transmission>)) {
+  set((s) => {
+    const ch = s.messages[key];
+    const cur = ch?.byId[id];
+    if (!ch || !cur) return {};
+    const next = { ...cur, ...(typeof patch === 'function' ? patch(cur) : patch) };
+    return { messages: { ...s.messages, [key]: { ...ch, byId: { ...ch.byId, [id]: next } } } };
+  });
+}
+
+export function removeMessage(key: ChannelKey, id: string) {
+  set((s) => {
+    const ch = s.messages[key];
+    if (!ch?.byId[id]) return {};
+    const byId = { ...ch.byId };
+    delete byId[id];
+    return { messages: { ...s.messages, [key]: { ...ch, byId, ids: ch.ids.filter((x) => x !== id) } } };
+  });
+}
+
+export function setChannelMeta(key: ChannelKey, meta: Partial<ChannelMessages>) {
+  set((s) => ({ messages: { ...s.messages, [key]: { ...(s.messages[key] ?? emptyChannel()), ...meta } } }));
+}
+
+export function rememberUsers(users: UserRef[]) {
+  if (!users.length) return;
+  set((s) => {
+    const next = { ...s.users };
+    for (const u of users) if (u?.id) next[u.id] = { ...next[u.id], ...u };
+    return { users: next };
+  });
+}
+
+export function setPresence(id: string, entry: Partial<PresenceEntry>) {
+  set((s) => ({ presence: { ...s.presence, [id]: { ...(s.presence[id] ?? { status: 'offline' as Presence }), ...entry } } }));
+}
+
+export function setTyping(key: ChannelKey, userId: string, expiresAt: number | null) {
+  set((s) => {
+    const cur = { ...(s.typing[key] ?? {}) };
+    if (expiresAt) cur[userId] = expiresAt;
+    else delete cur[userId];
+    return { typing: { ...s.typing, [key]: cur } };
+  });
+}
+
+export const selectors = {
+  beaconRelays: (beaconId: string) => (s: SubspaceState) =>
+    (s.relayIdsByBeacon[beaconId] ?? []).map((id) => s.relays[id]).filter(Boolean),
+  member: (beaconId: string | undefined, userId: string) => (s: SubspaceState) =>
+    beaconId ? s.members[beaconId]?.[userId] : undefined,
+};
+
+export { get as getState, set as setState };

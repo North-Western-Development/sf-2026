@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronRight, Check } from 'lucide-react';
+import { clsx } from 'clsx';
 
 export interface ContextMenuItem {
   id?: string;
@@ -11,6 +13,8 @@ export interface ContextMenuItem {
   disabled?: boolean;
   checked?: boolean;
   separator?: boolean;
+  /** Section heading (non-interactive). */
+  heading?: boolean;
   children?: ContextMenuItem[];
   onClick?: () => void;
 }
@@ -20,251 +24,179 @@ interface ContextMenuProps {
   x: number;
   y: number;
   onClose: () => void;
+  /** Submenus open beside their parent row. */
+  isSubmenu?: boolean;
+  /** Submenus: left edge of the parent row, used when flipping to the left. */
+  flipX?: number;
 }
 
-export const ContextMenu: React.FC<ContextMenuProps> = ({ items, x, y, onClose }) => {
+const PADDING = 8;
+const interactive = (i: ContextMenuItem) => !i.separator && !i.heading && !i.disabled;
+
+export const ContextMenu: React.FC<ContextMenuProps> = ({ items, x, y, onClose, isSubmenu, flipX }) => {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [activeSubmenuId, setActiveSubmenuId] = useState<string | null>(null);
-  const [coords, setCoords] = useState({ x, y });
+  const [coords, setCoords] = useState({ x, y, ready: false });
+  const [active, setActive] = useState(-1);
+  const [submenu, setSubmenu] = useState<{ index: number; x: number; y: number; flipX: number } | null>(null);
 
-  // Boundary clamping for main menu
-  useEffect(() => {
-    if (menuRef.current) {
-      const rect = menuRef.current.getBoundingClientRect();
-      const padding = 12;
-      let adjustedX = x;
-      let adjustedY = y;
-
-      if (adjustedX + rect.width > window.innerWidth - padding) {
-        adjustedX = window.innerWidth - rect.width - padding;
-      }
-      if (adjustedY + rect.height > window.innerHeight - padding) {
-        if (y - rect.height - padding > 0) {
-          adjustedY = y - rect.height - 8;
-        } else {
-          adjustedY = window.innerHeight - rect.height - padding;
-        }
-      }
-
-      setCoords({
-        x: Math.max(padding, adjustedX),
-        y: Math.max(padding, adjustedY),
-      });
+  // Clamp to the viewport; flip upward / leftward when needed.
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    let nx = x;
+    let ny = y;
+    if (nx + rect.width > window.innerWidth - PADDING) {
+      nx = isSubmenu && flipX !== undefined ? flipX - rect.width - 4 : window.innerWidth - rect.width - PADDING;
     }
-  }, [x, y, items]);
+    if (ny + rect.height > window.innerHeight - PADDING) {
+      ny = Math.max(PADDING, window.innerHeight - rect.height - PADDING);
+    }
+    setCoords({ x: Math.max(PADDING, nx), y: Math.max(PADDING, ny), ready: true });
+  }, [x, y, items, isSubmenu, flipX]);
 
-  // Global dismiss on click outside or escape key
   useEffect(() => {
-    const handlePointerDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
+    if (!isSubmenu) menuRef.current?.focus();
+  }, [isSubmenu]);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
+  const openSubmenuAt = useCallback((index: number) => {
+    const row = menuRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`);
+    if (!row) return;
+    const r = row.getBoundingClientRect();
+    setSubmenu({ index, x: r.right + 4, y: r.top - 6, flipX: r.left });
+  }, []);
 
-    window.addEventListener('pointerdown', handlePointerDown);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onClose]);
+  const move = (dir: 1 | -1) => {
+    if (!items.some(interactive)) return;
+    let next = active;
+    do {
+      next = (next + dir + items.length) % items.length;
+    } while (!interactive(items[next]));
+    setActive(next);
+  };
+
+  const activate = (index: number) => {
+    const item = items[index];
+    if (!item || !interactive(item)) return;
+    if (item.children?.length) {
+      openSubmenuAt(index);
+      return;
+    }
+    item.onClick?.();
+    onClose();
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      move(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      move(-1);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      activate(active);
+    } else if (e.key === 'ArrowRight' && items[active]?.children?.length) {
+      e.preventDefault();
+      openSubmenuAt(active);
+    } else if (e.key === 'ArrowLeft' && isSubmenu) {
+      e.preventDefault();
+      onClose();
+    }
+  };
 
   return (
     <div
       ref={menuRef}
       role="menu"
-      className="fixed z-[9999] min-w-[200px] bg-[#111214] border border-[#1e1f22] rounded-[4px] shadow-[0_8px_16px_rgba(0,0,0,0.6)] p-1.5 select-none text-left"
-      style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      data-context-menu
+      className="fixed z-[2000] min-w-[208px] max-w-[320px] bg-overlay rounded-md shadow-pop p-1.5 select-none text-left outline-none animate-[fade-in_80ms_ease-out]"
+      style={{ left: coords.x, top: coords.y, visibility: coords.ready ? 'visible' : 'hidden' }}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
       }}
     >
       {items.map((item, index) => {
-        if (item.separator) {
+        if (item.separator) return <div key={item.id || `sep-${index}`} className="h-px bg-line my-1 mx-1" />;
+        if (item.heading) {
           return (
-            <div
-              key={item.id || `sep-${index}`}
-              className="h-[1px] bg-[#232428] my-1 mx-1"
-            />
+            <div key={item.id || `h-${index}`} className="px-2 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
+              {item.label}
+            </div>
           );
         }
-
-        const itemId = item.id || item.label || `item-${index}`;
-        const isSubmenuOpen = activeSubmenuId === itemId;
-        const hasChildren = Boolean(item.children && item.children.length > 0);
-
+        const hasChildren = !!item.children?.length;
+        const isActive = active === index;
         return (
           <div
-            key={itemId}
-            className="relative"
+            key={item.id || item.label || index}
+            data-index={index}
+            role="menuitem"
+            aria-disabled={item.disabled || undefined}
+            aria-haspopup={hasChildren || undefined}
             onMouseEnter={() => {
-              if (hasChildren) {
-                setActiveSubmenuId(itemId);
-              } else {
-                setActiveSubmenuId(null);
-              }
+              setActive(index);
+              if (hasChildren) openSubmenuAt(index);
+              else setSubmenu(null);
             }}
-          >
-            <button
-              type="button"
-              disabled={item.disabled}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (item.disabled) return;
-                if (hasChildren) {
-                  setActiveSubmenuId(prev => prev === itemId ? null : itemId);
-                  return;
-                }
-                if (item.onClick) {
-                  item.onClick();
-                  onClose();
-                }
-              }}
-              className={`w-full flex items-center justify-between gap-3 px-2 py-1.5 rounded-[2px] text-xs font-medium transition-colors group ${
-                item.disabled
-                  ? 'opacity-40 cursor-not-allowed text-[#80848e]'
-                  : item.danger
-                  ? 'text-[#fa777c] hover:bg-[#da373c] hover:text-white'
-                  : isSubmenuOpen
-                  ? 'bg-[#5865f2] text-white'
-                  : 'text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                {item.icon && (
-                  <span className="w-4 h-4 shrink-0 flex items-center justify-center opacity-80 group-hover:opacity-100">
-                    {item.icon}
-                  </span>
-                )}
-                <div className="min-w-0 text-left">
-                  <div className="truncate">{item.label}</div>
-                  {item.sublabel && (
-                    <div className="text-[10px] text-[#64748B] font-normal truncate">
-                      {item.sublabel}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0 ml-2">
-                {item.checked !== undefined && (
-                  <span className="w-4 h-4 rounded bg-[#00F0FF]/20 border border-[#00F0FF]/40 flex items-center justify-center text-[#00F0FF]">
-                    {item.checked && <Check className="w-3 h-3" />}
-                  </span>
-                )}
-                {item.shortcut && (
-                  <span className="text-[10px] font-mono text-[#64748B] group-hover:text-[#94A3B8]">
-                    {item.shortcut}
-                  </span>
-                )}
-                {hasChildren && (
-                  <ChevronRight className="w-3.5 h-3.5 text-[#64748B] group-hover:text-[#F0F4F8]" />
-                )}
-              </div>
-            </button>
-
-            {/* Nested Submenu */}
-            {hasChildren && isSubmenuOpen && item.children && (
-              <Submenu items={item.children} onClose={onClose} />
+            onClick={(e) => {
+              e.stopPropagation();
+              activate(index);
+            }}
+            className={clsx(
+              'flex items-center gap-2 px-2 h-8 rounded-xs text-sm cursor-pointer',
+              item.disabled && 'opacity-40 cursor-not-allowed',
+              !item.disabled && isActive && (item.danger ? 'bg-danger text-white' : 'bg-brand text-on-brand'),
+              !item.disabled && !isActive && (item.danger ? 'text-danger' : 'text-fg-muted')
             )}
+          >
+            <span className="flex-1 min-w-0">
+              <span className="block truncate">{item.label}</span>
+              {item.sublabel && <span className="block truncate text-[11px] opacity-70">{item.sublabel}</span>}
+            </span>
+            {item.shortcut && <span className="text-[11px] opacity-60 font-mono">{item.shortcut}</span>}
+            {item.checked !== undefined && (
+              <span
+                className={clsx(
+                  'h-4 w-4 rounded-xs border flex items-center justify-center',
+                  item.checked ? 'bg-brand border-brand text-on-brand' : 'border-line-strong'
+                )}
+              >
+                {item.checked && <Check className="h-3 w-3" />}
+              </span>
+            )}
+            {item.icon && <span className="shrink-0 opacity-80">{item.icon}</span>}
+            {hasChildren && <ChevronRight className="h-4 w-4 shrink-0" />}
           </div>
         );
       })}
+
+      {submenu && items[submenu.index]?.children && (
+        <ContextMenu
+          isSubmenu
+          items={items[submenu.index].children!}
+          x={submenu.x}
+          y={submenu.y}
+          flipX={submenu.flipX}
+          onClose={() => {
+            setSubmenu(null);
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 };
 
-const Submenu: React.FC<{ items: ContextMenuItem[]; onClose: () => void }> = ({
-  items,
-  onClose,
-}) => {
-  const submenuRef = useRef<HTMLDivElement>(null);
-  const [placementLeft, setPlacementLeft] = useState(false);
+// ---------------------------------------------------------------------------
+// Provider: the only context menu that ever appears in Subspace.
+// ---------------------------------------------------------------------------
 
-  useEffect(() => {
-    if (submenuRef.current) {
-      const rect = submenuRef.current.getBoundingClientRect();
-      if (rect.right > window.innerWidth - 10) {
-        setPlacementLeft(true);
-      }
-    }
-  }, []);
-
-  return (
-    <div
-      ref={submenuRef}
-      className={`absolute top-0 min-w-[190px] bg-[#111214] border border-[#1e1f22] rounded-[4px] shadow-[0_8px_16px_rgba(0,0,0,0.6)] p-1.5 select-none z-50 ${
-        placementLeft ? 'right-full mr-1' : 'left-full ml-1'
-      }`}
-    >
-      {items.map((sub, idx) => {
-        if (sub.separator) {
-          return (
-            <div
-              key={sub.id || `sub-sep-${idx}`}
-              className="h-[1px] bg-[#232428] my-1 mx-1"
-            />
-          );
-        }
-        return (
-          <button
-            key={sub.id || `sub-${idx}`}
-            type="button"
-            disabled={sub.disabled}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (sub.disabled) return;
-              if (sub.onClick) {
-                sub.onClick();
-                onClose();
-              }
-            }}
-            className={`w-full flex items-center justify-between gap-3 px-2 py-1.5 rounded-[2px] text-xs font-medium transition-colors group ${
-              sub.disabled
-                ? 'opacity-40 cursor-not-allowed text-[#80848e]'
-                : sub.danger
-                ? 'text-[#fa777c] hover:bg-[#da373c] hover:text-white'
-                : 'text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
-            }`}
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              {sub.icon && (
-                <span className="w-4 h-4 shrink-0 flex items-center justify-center opacity-80 group-hover:opacity-100">
-                  {sub.icon}
-                </span>
-              )}
-              <span className="truncate text-left">{sub.label}</span>
-            </div>
-            {sub.checked !== undefined && (
-              <span className="w-4 h-4 rounded bg-[#00F0FF]/20 border border-[#00F0FF]/40 flex items-center justify-center text-[#00F0FF]">
-                {sub.checked && <Check className="w-3 h-3" />}
-              </span>
-            )}
-            {sub.shortcut && (
-              <span className="text-[10px] font-mono text-[#64748B] group-hover:text-[#94A3B8]">
-                {sub.shortcut}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-};
-
-// React Context & Provider for ergonomic application-wide custom context menus
 interface ContextMenuContextType {
-  openContextMenu: (
-    event: React.MouseEvent | { clientX: number; clientY: number },
-    items: ContextMenuItem[]
-  ) => void;
+  openContextMenu: (event: React.MouseEvent | { clientX: number; clientY: number }, items: ContextMenuItem[]) => void;
   closeContextMenu: () => void;
 }
 
@@ -277,115 +209,171 @@ export const useContextMenu = () => React.useContext(ContextMenuContext);
 
 export interface ContextMenuProviderProps {
   children: React.ReactNode;
+  /** Shown on right-click where nothing more specific handled the event. */
   fallbackItems?: ContextMenuItem[];
 }
 
-export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({
-  children,
-  fallbackItems,
-}) => {
-  const [menuState, setMenuState] = useState<{
-    isOpen: boolean;
-    items: ContextMenuItem[];
-    x: number;
-    y: number;
-  }>({
-    isOpen: false,
-    items: [],
-    x: 0,
-    y: 0,
-  });
+const isEditable = (el: EventTarget | null): el is HTMLInputElement | HTMLTextAreaElement | HTMLElement => {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el instanceof HTMLTextAreaElement) return !el.readOnly;
+  if (el instanceof HTMLInputElement) {
+    return !el.readOnly && ['text', 'search', 'email', 'url', 'tel', 'password', 'number', ''].includes(el.type);
+  }
+  return el.isContentEditable;
+};
 
-  const handledInCycleRef = useRef(false);
+/** Cut / Copy / Paste / Select All for text fields, Copy for selected page text. */
+function textActions(target: EventTarget | null): ContextMenuItem[] {
+  const selection = window.getSelection()?.toString() ?? '';
+  if (isEditable(target)) {
+    const field = target as HTMLInputElement | HTMLTextAreaElement;
+    const isPassword = field instanceof HTMLInputElement && field.type === 'password';
+    const hasSelection =
+      'selectionStart' in field && field.selectionStart !== null && field.selectionStart !== field.selectionEnd;
+    return [
+      {
+        label: 'Cut',
+        shortcut: 'Ctrl+X',
+        disabled: !hasSelection || isPassword,
+        onClick: () => {
+          field.focus();
+          document.execCommand('cut');
+        },
+      },
+      {
+        label: 'Copy',
+        shortcut: 'Ctrl+C',
+        disabled: !hasSelection || isPassword,
+        onClick: () => {
+          field.focus();
+          document.execCommand('copy');
+        },
+      },
+      {
+        label: 'Paste',
+        shortcut: 'Ctrl+V',
+        onClick: async () => {
+          field.focus();
+          try {
+            const text = await navigator.clipboard.readText();
+            document.execCommand('insertText', false, text);
+          } catch {
+            /* clipboard permission denied: nothing to paste */
+          }
+        },
+      },
+      { separator: true },
+      {
+        label: 'Select All',
+        shortcut: 'Ctrl+A',
+        onClick: () => {
+          field.focus();
+          if ('select' in field) (field as HTMLInputElement).select();
+          else document.execCommand('selectAll');
+        },
+      },
+    ];
+  }
+  if (selection.trim()) {
+    return [
+      {
+        label: 'Copy',
+        shortcut: 'Ctrl+C',
+        onClick: () => void navigator.clipboard?.writeText(selection),
+      },
+    ];
+  }
+  return [];
+}
 
-  const openContextMenu = (
-    event: React.MouseEvent | { clientX: number; clientY: number },
-    items: ContextMenuItem[]
-  ) => {
-    handledInCycleRef.current = true;
-    setTimeout(() => {
-      handledInCycleRef.current = false;
-    }, 100);
+export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ children, fallbackItems }) => {
+  const [menu, setMenu] = useState<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
+  const handledRef = useRef(false);
 
+  const closeContextMenu = useCallback(() => setMenu(null), []);
+
+  const openContextMenu = useCallback<ContextMenuContextType['openContextMenu']>((event, items) => {
     if ('preventDefault' in event && typeof event.preventDefault === 'function') {
       event.preventDefault();
       event.stopPropagation();
     }
-    let targetX = event.clientX;
-    let targetY = event.clientY;
-
-    if ((!targetX && !targetY) && 'currentTarget' in event && event.currentTarget) {
-      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect?.();
-      if (rect) {
-        targetX = rect.left;
-        targetY = rect.top;
-      }
-    }
-
-    setMenuState({
-      isOpen: true,
-      items,
-      x: targetX || 0,
-      y: targetY || 0,
+    // Specific menus get text actions prepended when the click landed on a field or selection.
+    const target = 'target' in event ? (event.target as EventTarget) : null;
+    const text = textActions(target);
+    const merged = text.length && items.length ? [...text, { separator: true }, ...items] : text.length ? text : items;
+    if (!merged.length) return;
+    handledRef.current = true;
+    queueMicrotask(() => {
+      handledRef.current = false;
     });
-  };
+    let { clientX, clientY } = event;
+    if (!clientX && !clientY && 'currentTarget' in event && event.currentTarget) {
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      clientX = rect.left;
+      clientY = rect.bottom;
+    }
+    setMenu({ items: merged, x: clientX, y: clientY });
+  }, []);
 
-  const closeContextMenu = () => {
-    setMenuState((prev) => ({ ...prev, isOpen: false }));
-  };
-
-  // Permanently intercept and neutralize native browser/OS context menus
+  // The browser menu never appears. Unhandled right-clicks get text actions or the fallback.
   useEffect(() => {
-    const handleGlobalContextMenu = (e: MouseEvent) => {
+    const onContextMenu = (e: MouseEvent) => {
       e.preventDefault();
-      if (handledInCycleRef.current) {
-        return;
-      }
-      if (fallbackItems && fallbackItems.length > 0) {
-        setMenuState({
-          isOpen: true,
-          items: fallbackItems,
-          x: e.clientX,
-          y: e.clientY,
-        });
-      }
+      if (handledRef.current) return;
+      if ((e.target as HTMLElement | null)?.closest?.('[data-context-menu]')) return;
+      const text = textActions(e.target);
+      const items = text.length ? text : fallbackItems ?? [];
+      if (items.length) setMenu({ items, x: e.clientX, y: e.clientY });
+      else setMenu(null);
     };
-
-    window.addEventListener('contextmenu', handleGlobalContextMenu);
+    const onPointerDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement | null)?.closest?.('[data-context-menu]')) setMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenu(null);
+    };
+    const onBlur = () => setMenu(null);
+    window.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('resize', onBlur);
     return () => {
-      window.removeEventListener('contextmenu', handleGlobalContextMenu);
+      window.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('resize', onBlur);
     };
   }, [fallbackItems]);
 
+  const value = useMemo(() => ({ openContextMenu, closeContextMenu }), [openContextMenu, closeContextMenu]);
+
   return (
-    <ContextMenuContext.Provider value={{ openContextMenu, closeContextMenu }}>
+    <ContextMenuContext.Provider value={value}>
       {children}
-      {menuState.isOpen && (
-        <ContextMenu
-          items={menuState.items}
-          x={menuState.x}
-          y={menuState.y}
-          onClose={closeContextMenu}
-        />
-      )}
+      {menu &&
+        createPortal(
+          <ContextMenu items={menu.items} x={menu.x} y={menu.y} onClose={closeContextMenu} />,
+          document.body
+        )}
     </ContextMenuContext.Provider>
   );
 };
 
-// Ergonomic wrapper component
+/** Wraps children so right-click opens `items`. */
 export const ContextMenuTrigger: React.FC<{
-  items: ContextMenuItem[];
+  items: ContextMenuItem[] | (() => ContextMenuItem[]);
   children: React.ReactNode;
   className?: string;
   onClick?: (e: React.MouseEvent) => void;
 }> = ({ items, children, className, onClick }) => {
   const { openContextMenu } = useContextMenu();
-
   return (
     <div
       className={className}
       onClick={onClick}
-      onContextMenu={(e) => openContextMenu(e, items)}
+      onContextMenu={(e) => openContextMenu(e, typeof items === 'function' ? items() : items)}
     >
       {children}
     </div>
