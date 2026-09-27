@@ -33,10 +33,11 @@ describe('@subspace/constants Suite', () => {
     expect(hasPermission(adminBits, PERMISSIONS.CONNECT_AUDIO)).toBe(true);
   });
 
-  it('exposes exactly the 5 required presence states', () => {
+  it('exposes the presence states (Discord-parity dnd plus legacy away)', () => {
     expect(Object.values(PRESENCE_STATES)).toEqual([
       'online',
       'idle',
+      'dnd',
       'away',
       'invisible',
       'offline',
