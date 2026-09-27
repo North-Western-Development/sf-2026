@@ -39,6 +39,7 @@ export async function buildApp() {
     dbStatus = 'connected';
   } catch (err) {
     app.log.warn({ err }, 'PostgreSQL connection delayed or unavailable during boot');
+    dbClient = null;
   }
 
   try {
@@ -46,16 +47,22 @@ export async function buildApp() {
       maxRetriesPerRequest: 1,
       connectTimeout: 2000,
       lazyConnect: true,
+      retryStrategy: () => null,
+      enableOfflineQueue: false,
+    });
+    redisClient.on('error', (err) => {
+      app.log.warn({ err }, 'Redis client background error suppressed');
     });
     await redisClient.connect();
     redisStatus = 'connected';
   } catch (err) {
     app.log.warn({ err }, 'Redis connection delayed or unavailable during boot');
+    redisClient = null;
   }
 
   // Decorate app with db and redis clients
-  (app as any).db = dbClient ? dbClient.db : null;
-  (app as any).redis = redisClient;
+  (app as any).db = dbStatus === 'connected' && dbClient ? dbClient.db : null;
+  (app as any).redis = redisStatus === 'connected' ? redisClient : null;
 
   // Import and register routes
   const { authRoutes } = await import('./modules/auth/auth.routes.js');

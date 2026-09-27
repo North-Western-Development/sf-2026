@@ -6,7 +6,9 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "test": "turbo run test",
+    "test": "vitest run tests/unit && turbo run test",
+    "test:unit": "vitest run tests/unit",
+    "test:web": "pnpm --filter @subspace/web test",
     "test:e2e": "vitest run --config vitest.config.ts",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules"

@@ -17,6 +17,20 @@ export interface PresenceEvent {
   timestamp: string;
 }
 
+export interface TransmissionEvent {
+  type: string;
+  action?: 'create' | 'update' | 'delete';
+  relay_id?: string;
+  beacon_id?: string;
+  transmission?: any;
+  transmissionId?: string;
+  link_id?: string;
+  recipient_id?: string;
+  sender_id?: string;
+  mesh_id?: string;
+  request?: any;
+}
+
 type EventListener<T> = (data: T) => void;
 
 class SubspaceGatewayClient {
@@ -26,6 +40,7 @@ class SubspaceGatewayClient {
   private isConnecting: boolean = false;
   private voiceListeners: Set<EventListener<VoiceStateEvent>> = new Set();
   private presenceListeners: Set<EventListener<PresenceEvent>> = new Set();
+  private transmissionListeners: Set<EventListener<TransmissionEvent>> = new Set();
   private readyListeners: Set<EventListener<{ transmitter: any; voice_states: any[] }>> = new Set();
   private cachedVoiceStates: Map<string, VoiceStateEvent> = new Map();
 
@@ -121,6 +136,16 @@ class SubspaceGatewayClient {
         this.voiceListeners.forEach((fn) => fn(evt));
       } else if (payload.t === 'PRESENCE_UPDATE') {
         this.presenceListeners.forEach((fn) => fn(payload.d));
+      } else if (
+        payload.t === 'TRANSMISSION_CREATE' ||
+        payload.t === 'TRANSMISSION_UPDATE' ||
+        payload.t === 'TRANSMISSION_DELETE' ||
+        payload.t === 'DIRECT_TRANSMISSION_CREATE' ||
+        payload.t === 'MESH_TRANSMISSION_CREATE' ||
+        payload.t === 'TRANSMISSION_REQUEST_CREATE'
+      ) {
+        const evt: TransmissionEvent = payload.d;
+        this.transmissionListeners.forEach((fn) => fn(evt));
       }
     }
   }
@@ -173,6 +198,11 @@ class SubspaceGatewayClient {
   public onPresence(fn: EventListener<PresenceEvent>) {
     this.presenceListeners.add(fn);
     return () => this.presenceListeners.delete(fn);
+  }
+
+  public onTransmission(fn: EventListener<TransmissionEvent>) {
+    this.transmissionListeners.add(fn);
+    return () => this.transmissionListeners.delete(fn);
   }
 
   public onReady(fn: EventListener<{ transmitter: any; voice_states: any[] }>) {

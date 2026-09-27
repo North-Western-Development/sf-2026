@@ -173,6 +173,17 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         })
         .returning();
 
+      const redis = (app as any).redis;
+      if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+        redis.publish('gateway:transmission:events', JSON.stringify({
+          type: 'DIRECT_TRANSMISSION_CREATE',
+          link_id: link.id,
+          recipient_id: targetId,
+          sender_id: senderId,
+          transmission: newTransmission,
+        })).catch(() => {});
+      }
+
       return reply.status(201).send({
         message: 'Point-to-Point transmission dispatched',
         transmission: newTransmission,
@@ -249,6 +260,16 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         expiresAt,
       })
       .returning();
+
+    const redis = (app as any).redis;
+    if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+      redis.publish('gateway:transmission:events', JSON.stringify({
+        type: 'TRANSMISSION_REQUEST_CREATE',
+        recipient_id: targetId,
+        sender_id: senderId,
+        request: newRequest,
+      })).catch(() => {});
+    }
 
     return reply.status(201).send({
       message: 'Transmission request dispatched to recipient',

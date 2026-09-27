@@ -190,9 +190,41 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       })
       .returning();
 
+    const [authorProfile] = await db
+      .select({
+        id: transmitters.id,
+        username: transmitters.username,
+        discriminator: transmitters.discriminator,
+        displayName: transmitters.displayName,
+        displayColor: transmitters.displayColor,
+        avatarUrl: transmitters.avatarUrl,
+        staffRank: transmitters.staffRank,
+      })
+      .from(transmitters)
+      .where(eq(transmitters.id, token.transmitterId))
+      .limit(1);
+
+    const formatted = {
+      ...newMsg,
+      author: authorProfile || null,
+      authorName: authorProfile?.displayName || authorProfile?.username || 'Transmitter',
+      authorUsername: authorProfile?.username || 'transmitter',
+      authorAvatar: authorProfile?.avatarUrl || null,
+    };
+
+    const redis = (app as any).redis;
+    if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+      redis.publish('gateway:transmission:events', JSON.stringify({
+        type: 'MESH_TRANSMISSION_CREATE',
+        mesh_id: meshId,
+        sender_id: token.transmitterId,
+        transmission: formatted,
+      })).catch(() => {});
+    }
+
     return reply.status(201).send({
       message: 'Mesh transmission dispatched',
-      transmission: newMsg,
+      transmission: formatted,
     });
   });
 

@@ -346,11 +346,22 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     const ctx = await resolveRelayContext(request, reply);
     if (!ctx) return;
 
-    const { actorContext } = ctx;
+    const { token, actorContext } = ctx;
     const { threadId } = request.params as { threadId: string };
 
-    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_TRANSMISSIONS)) {
-      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_TRANSMISSIONS clearance' });
+    const [thread] = await db
+      .select()
+      .from(archivalThreads)
+      .where(eq(archivalThreads.id, threadId))
+      .limit(1);
+
+    if (!thread) {
+      return reply.status(404).send({ error: 'Thread not found' });
+    }
+
+    const isAuthor = thread.transmitterId === token.transmitterId;
+    if (!isAuthor && !actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_TRANSMISSIONS)) {
+      return reply.status(403).send({ error: 'Transmitter lacks clearance to modify this thread' });
     }
 
     const body = request.body as any;
@@ -370,10 +381,6 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       .set(updates)
       .where(eq(archivalThreads.id, threadId))
       .returning();
-
-    if (!updated) {
-      return reply.status(404).send({ error: 'Thread not found' });
-    }
 
     return reply.send({
       message: 'Thread parameters updated',

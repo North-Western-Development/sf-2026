@@ -55,7 +55,7 @@ export function createGatewayServer(customPort = port) {
     });
 
     redisSub.connect().then(() => {
-      redisSub?.subscribe('gateway:presence:events', 'gateway:voice:events', (err) => {
+      redisSub?.subscribe('gateway:presence:events', 'gateway:voice:events', 'gateway:transmission:events', (err) => {
         if (err) console.warn('[Gateway] Redis Sub subscription error:', err);
       });
 
@@ -107,6 +107,38 @@ export function createGatewayServer(customPort = port) {
             });
           } catch (e) {
             console.warn('[Gateway] Error parsing redis voice event:', e);
+          }
+        } else if (channel === 'gateway:transmission:events') {
+          try {
+            const event = JSON.parse(message);
+            wss.clients.forEach((client) => {
+              const sess = sessions.get(client);
+              if (sess && sess.isAuthenticated) {
+                // If it's a DM, only dispatch to sender or recipient
+                if (event.type === 'DIRECT_TRANSMISSION_CREATE' || event.type === 'TRANSMISSION_REQUEST_CREATE') {
+                  if (sess.transmitterId === event.recipient_id || sess.transmitterId === event.sender_id) {
+                    client.send(
+                      JSON.stringify({
+                        op: GATEWAY_OPCODES.DISPATCH,
+                        t: event.type,
+                        d: event,
+                      })
+                    );
+                  }
+                } else {
+                  // Relay and mesh transmissions broadcast to all authenticated clients
+                  client.send(
+                    JSON.stringify({
+                      op: GATEWAY_OPCODES.DISPATCH,
+                      t: event.type,
+                      d: event,
+                    })
+                  );
+                }
+              }
+            });
+          } catch (e) {
+            console.warn('[Gateway] Error parsing redis transmission event:', e);
           }
         }
       });

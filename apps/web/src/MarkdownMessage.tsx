@@ -4,9 +4,16 @@ import { ExternalLink, FileText, Download } from 'lucide-react';
 interface MarkdownMessageProps {
   content: string;
   suffix?: React.ReactNode;
+  onMentionClick?: (mention: string) => void;
+  onChannelClick?: (channelName: string) => void;
 }
 
-export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, suffix }) => {
+export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ 
+  content, 
+  suffix,
+  onMentionClick,
+  onChannelClick
+}) => {
   // Check for CloudTether tag: [CloudTether:google|Quantum Telemetry.pdf|https://...|1.4 MB]
   const cloudTetherRegex = /\[CloudTether:([a-z]+)\|([^|]+)\|([^|]+)\|([^\]]+)\]/g;
   const cloudMatches = Array.from(content.matchAll(cloudTetherRegex));
@@ -25,7 +32,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, suffi
 
   return (
     <div className={hasCards ? "space-y-2" : "inline"}>
-      {cleanedContent && renderContentBody(cleanedContent, suffix)}
+      {cleanedContent && renderContentBody(cleanedContent, suffix, { onMentionClick, onChannelClick })}
       {!cleanedContent && suffix}
 
       {/* Render Cloud Drive Tethers */}
@@ -127,7 +134,12 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({ content, suffi
   );
 };
 
-function renderContentBody(content: string, suffix?: React.ReactNode): React.ReactNode {
+interface MarkdownHandlers {
+  onMentionClick?: (mention: string) => void;
+  onChannelClick?: (channelName: string) => void;
+}
+
+function renderContentBody(content: string, suffix?: React.ReactNode, handlers?: MarkdownHandlers): React.ReactNode {
   // If content contains code blocks ```lang ... ```
   if (content.includes('```')) {
     const parts = content.split(/(```[\s\S]*?```)/g);
@@ -169,7 +181,7 @@ function renderContentBody(content: string, suffix?: React.ReactNode): React.Rea
           const isLast = i === parts.length - 1;
           return (
             <React.Fragment key={i}>
-              {renderMarkdownLines(part)}
+              {renderMarkdownLines(part, handlers)}
               {isLast && suffix}
             </React.Fragment>
           );
@@ -180,13 +192,13 @@ function renderContentBody(content: string, suffix?: React.ReactNode): React.Rea
 
   return (
     <>
-      {renderMarkdownLines(content)}
+      {renderMarkdownLines(content, handlers)}
       {suffix}
     </>
   );
 }
 
-function renderMarkdownLines(text: string): React.ReactNode {
+function renderMarkdownLines(text: string, handlers?: MarkdownHandlers): React.ReactNode {
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
   let i = 0;
@@ -198,7 +210,7 @@ function renderMarkdownLines(text: string): React.ReactNode {
     if (line.startsWith('-# ')) {
       elements.push(
         <div key={`line-${i}`} className="text-xs text-[#949ba4] mt-0.5 leading-normal">
-          {renderInlineMarkdown(line.slice(3))}
+          {renderInlineMarkdown(line.slice(3), handlers)}
         </div>
       );
       i++;
@@ -209,7 +221,7 @@ function renderMarkdownLines(text: string): React.ReactNode {
     if (line.startsWith('# ')) {
       elements.push(
         <h1 key={`line-${i}`} className="text-xl font-extrabold text-white my-1 leading-tight">
-          {renderInlineMarkdown(line.slice(2))}
+          {renderInlineMarkdown(line.slice(2), handlers)}
         </h1>
       );
       i++;
@@ -218,7 +230,7 @@ function renderMarkdownLines(text: string): React.ReactNode {
     if (line.startsWith('## ')) {
       elements.push(
         <h2 key={`line-${i}`} className="text-lg font-bold text-white my-1 leading-tight">
-          {renderInlineMarkdown(line.slice(3))}
+          {renderInlineMarkdown(line.slice(3), handlers)}
         </h2>
       );
       i++;
@@ -227,7 +239,7 @@ function renderMarkdownLines(text: string): React.ReactNode {
     if (line.startsWith('### ')) {
       elements.push(
         <h3 key={`line-${i}`} className="text-base font-bold text-white my-0.5 leading-snug">
-          {renderInlineMarkdown(line.slice(4))}
+          {renderInlineMarkdown(line.slice(4), handlers)}
         </h3>
       );
       i++;
@@ -247,62 +259,75 @@ function renderMarkdownLines(text: string): React.ReactNode {
           className="border-l-4 border-[#4e5058] pl-3 py-0.5 my-1 text-[#dbdee1] bg-[#111214]/50 rounded-r text-xs leading-relaxed"
         >
           {quoteLines.map((ql, qidx) => (
-            <div key={qidx}>{renderInlineMarkdown(ql) || '\u00A0'}</div>
+            <div key={qidx}>{renderInlineMarkdown(ql, handlers) || '\u00A0'}</div>
           ))}
         </blockquote>
       );
       continue;
     }
 
-    // Unordered lists: - item or * item
-    if (/^[-*]\s+/.test(line)) {
+    // Unordered lists: - or *
+    if (line.startsWith('- ') || line.startsWith('* ')) {
       const listItems: string[] = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
-        listItems.push(lines[i].replace(/^[-*]\s+/, ''));
+      while (i < lines.length && (lines[i].startsWith('- ') || lines[i].startsWith('* '))) {
+        listItems.push(lines[i].slice(2));
         i++;
       }
       elements.push(
-        <ul key={`ul-${i}`} className="list-disc list-inside space-y-0.5 my-1 pl-1 text-xs text-[#dbdee1]">
+        <ul key={`ul-${i}`} className="list-disc list-inside space-y-0.5 my-1 text-xs text-[#dbdee1]">
           {listItems.map((item, lidx) => (
-            <li key={lidx}>{renderInlineMarkdown(item)}</li>
+            <li key={lidx}>{renderInlineMarkdown(item, handlers)}</li>
           ))}
         </ul>
       );
       continue;
     }
 
-    // Ordered lists: 1. item
-    if (/^\d+\.\s+/.test(line)) {
+    // Ordered lists: 1. 2. ...
+    if (/^\d+\.\s/.test(line)) {
       const listItems: string[] = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
-        listItems.push(lines[i].replace(/^\d+\.\s+/, ''));
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\d+\.\s/, '');
+        listItems.push(itemText);
         i++;
       }
       elements.push(
-        <ol key={`ol-${i}`} className="list-decimal list-inside space-y-0.5 my-1 pl-1 text-xs text-[#dbdee1]">
+        <ol key={`ol-${i}`} className="list-decimal list-inside space-y-0.5 my-1 text-xs text-[#dbdee1]">
           {listItems.map((item, lidx) => (
-            <li key={lidx}>{renderInlineMarkdown(item)}</li>
+            <li key={lidx}>{renderInlineMarkdown(item, handlers)}</li>
           ))}
         </ol>
       );
       continue;
     }
 
-    // Normal line
+    // Empty line / paragraph spacing
+    if (!line.trim()) {
+      elements.push(<div key={`blank-${i}`} className="h-1" />);
+      i++;
+      continue;
+    }
+
+    // Standard text line
     elements.push(
-      <React.Fragment key={`line-${i}`}>
-        {renderInlineMarkdown(line)}
-        {i < lines.length - 1 && <br />}
-      </React.Fragment>
+      <div key={`line-${i}`} className="text-xs text-[#dbdee1] leading-relaxed break-words">
+        {renderInlineMarkdown(line, handlers)}
+      </div>
     );
     i++;
   }
 
-  return elements;
+  return <>{elements}</>;
 }
 
-const SpoilerBox: React.FC<{ content: string }> = ({ content }) => {
+interface SpoilerBoxProps {
+  content: string;
+  handlers?: MarkdownHandlers;
+}
+
+const SpoilerBox: React.FC<SpoilerBoxProps> = ({ content, handlers }) => {
   const [revealed, setRevealed] = React.useState(false);
+
   return (
     <span
       onClick={(e) => {
@@ -316,12 +341,12 @@ const SpoilerBox: React.FC<{ content: string }> = ({ content }) => {
       }`}
       title={revealed ? 'Click to conceal spoiler' : 'Click to reveal spoiler'}
     >
-      {renderInlineMarkdown(content)}
+      {renderInlineMarkdown(content, handlers)}
     </span>
   );
 };
 
-function renderInlineMarkdown(text: string): React.ReactNode {
+function renderInlineMarkdown(text: string, handlers?: MarkdownHandlers): React.ReactNode {
   if (!text) return null;
 
   // Regex tokens:
@@ -334,14 +359,14 @@ function renderInlineMarkdown(text: string): React.ReactNode {
   // 7. Markdown Link: [label](url)
   // 8. Raw URL: https://...
   // 9. Mentions: @username, @everyone, @here, #channel
-  const tokenRegex = /((\|\|[\s\S]+?\|\|)|(`[^`]+`)|(\*\*[^*]+\*\*)|(__[^_]+__)|(\*[^*]+\*)|(_[^_]+_)|(~~[^~]+~~)|(\[[^\]]+\]\([^)]+\))|(https?:\/\/[^\s]+)|(@(?:everyone|here|[a-zA-Z0-9_.-]+))|(#[a-zA-Z0-9_.-]+))/g;
+  const tokenRegex = /((?:\|\|[\s\S]+?\|\|)|(?:`[^`]+`)|(?:\*\*[^*]+\*\*)|(?:__[^_]+__)|(?:\*[^*]+\*)|(?:_[^_]+_)|(?:~~[^~]+~~)|(?:\[[^\]]+\]\([^)]+\))|(?:https?:\/\/[^\s]+)|(?:@(?:everyone|here|[a-zA-Z0-9_.-]+))|(?:#[a-zA-Z0-9_.-]+))/g;
 
   const parts = text.split(tokenRegex).filter(p => p !== undefined && p !== '');
 
   return parts.map((part, idx) => {
     // Spoilers: ||text||
     if (part.startsWith('||') && part.endsWith('||') && part.length >= 4) {
-      return <SpoilerBox key={idx} content={part.slice(2, -2)} />;
+      return <SpoilerBox key={idx} content={part.slice(2, -2)} handlers={handlers} />;
     }
 
     // Inline Code: `code`
@@ -358,23 +383,23 @@ function renderInlineMarkdown(text: string): React.ReactNode {
 
     // Bold: **bold**
     if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
-      return <strong key={idx} className="font-bold text-white">{renderInlineMarkdown(part.slice(2, -2))}</strong>;
+      return <strong key={idx} className="font-bold text-white">{renderInlineMarkdown(part.slice(2, -2), handlers)}</strong>;
     }
 
     // Underline: __underline__
     if (part.startsWith('__') && part.endsWith('__') && part.length >= 4) {
-      return <span key={idx} className="underline underline-offset-2">{renderInlineMarkdown(part.slice(2, -2))}</span>;
+      return <span key={idx} className="underline underline-offset-2">{renderInlineMarkdown(part.slice(2, -2), handlers)}</span>;
     }
 
     // Strikethrough: ~~strikethrough~~
     if (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) {
-      return <del key={idx} className="line-through text-[#80848e]">{renderInlineMarkdown(part.slice(2, -2))}</del>;
+      return <del key={idx} className="line-through text-[#80848e]">{renderInlineMarkdown(part.slice(2, -2), handlers)}</del>;
     }
 
     // Italic: *italic* or _italic_
     if ((part.startsWith('*') && part.endsWith('*') && part.length >= 2) ||
         (part.startsWith('_') && part.endsWith('_') && part.length >= 2)) {
-      return <em key={idx} className="italic text-[#dbdee1]">{renderInlineMarkdown(part.slice(1, -1))}</em>;
+      return <em key={idx} className="italic text-[#dbdee1]">{renderInlineMarkdown(part.slice(1, -1), handlers)}</em>;
     }
 
     // Markdown link: [label](url)
@@ -413,6 +438,10 @@ function renderInlineMarkdown(text: string): React.ReactNode {
       return (
         <span
           key={idx}
+          onClick={(e) => {
+            e.stopPropagation();
+            handlers?.onMentionClick?.(part.slice(1));
+          }}
           className="bg-[#5865f2]/20 hover:bg-[#5865f2]/30 text-[#c9cdfb] font-medium px-1 py-0.5 rounded cursor-pointer transition-colors"
         >
           {part}
@@ -425,6 +454,10 @@ function renderInlineMarkdown(text: string): React.ReactNode {
       return (
         <span
           key={idx}
+          onClick={(e) => {
+            e.stopPropagation();
+            handlers?.onChannelClick?.(part.slice(1));
+          }}
           className="bg-[#00f0ff]/10 hover:bg-[#00f0ff]/20 text-[#00f0ff] font-medium px-1 py-0.5 rounded cursor-pointer transition-colors font-mono text-xs"
         >
           {part}

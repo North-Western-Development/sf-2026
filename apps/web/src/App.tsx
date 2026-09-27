@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Radio, 
   Hash, 
@@ -56,7 +56,9 @@ import {
   School,
   BellOff,
   Eye,
-  EyeOff
+  EyeOff,
+  Unlock,
+  Slash
 } from 'lucide-react';
 import { 
   Modal, 
@@ -94,6 +96,9 @@ import { CommandConsoleModal } from './CommandConsoleModal';
 import { ArchivalForumView } from './ArchivalForumView';
 import { VisualGalleryView } from './VisualGalleryView';
 import { CreateMeshModal } from './CreateMeshModal';
+import { rtcManager } from './services/rtc';
+import { MentionAutocomplete, MentionItem } from './components/composer/MentionAutocomplete';
+import { VoiceParticipantTile } from './components/VoiceParticipantTile';
 
 // Data Interfaces
 interface Beacon {
@@ -121,6 +126,8 @@ interface Channel {
   isMuted?: boolean;
   notifSetting?: 'all' | 'mentions' | 'nothing';
   isUnhideable?: boolean;
+  canSend?: boolean;
+  isLocked?: boolean;
 }
 
 export interface ServerFolder {
@@ -286,6 +293,9 @@ export const AppContent: React.FC = () => {
   const [selectedChannelId, setSelectedChannelId] = useState<string>('chan-quantum');
   const [selectedDmId, setSelectedDmId] = useState<string>('friends');
   const [friendsTab, setFriendsTab] = useState<'online' | 'all' | 'pending' | 'blocked' | 'add'>('online');
+  const [addFriendCallsign, setAddFriendCallsign] = useState<string>('');
+  const [addFriendNote, setAddFriendNote] = useState<string>('');
+  const [isSendingFriendRequest, setIsSendingFriendRequest] = useState<boolean>(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   // Resizable Panels State
@@ -420,6 +430,8 @@ export const AppContent: React.FC = () => {
   const [selectedFont, setSelectedFont] = useState('default');
   const [messageInput, setMessageInput] = useState('');
   const [quickScanQuery, setQuickScanQuery] = useState('');
+  const [quickScanResults, setQuickScanResults] = useState<{ beacons?: any[]; relays?: any[]; transmitters?: any[] } | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<{ type: 'user' | 'channel'; filter: string } | null>(null);
   const [browseChannelQuery, setBrowseChannelQuery] = useState('');
   const [friendsFilterQuery, setFriendsFilterQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -607,7 +619,7 @@ export const AppContent: React.FC = () => {
   ]);
 
   // Friends Directory
-  const [friendsList] = useState<FriendItem[]>([
+  const [friendsList, setFriendsList] = useState<FriendItem[]>([
     {
       id: 'f-vance',
       user: directConversations[0].user,
@@ -778,6 +790,58 @@ export const AppContent: React.FC = () => {
         // Fetch discoverable beacons
         const disc = await api.getDiscoverableBeacons();
         if (mounted) setDiscoverableBeacons(disc);
+
+        // Fetch real affiliations and direct link conversations
+        try {
+          const [affiliations, directLinks] = await Promise.all([
+            api.getAffiliations().catch(() => []),
+            api.getDirectLinks().catch(() => []),
+          ]);
+          if (mounted && affiliations && affiliations.length > 0) {
+            const mappedFriends: FriendItem[] = affiliations.map(a => {
+              const u = a.targetTransmitter || (a as any).transmitter;
+              return {
+                id: a.id,
+                user: {
+                  id: u?.id || a.targetTransmitterId,
+                  name: u?.displayName || u?.username || 'Affiliate',
+                  callsign: u?.username || 'affiliate',
+                  avatar: u?.avatarUrl || '👨‍🚀',
+                  status: 'online',
+                  statusText: 'Subspace Frequency Link Active',
+                  staffRank: u?.staffRank ?? 0,
+                  roles: ['Affiliate'],
+                },
+                relationship: a.status === 'accepted' ? 'online' : 'pending',
+                customActivity: 'Quantum Link Connected',
+              };
+            });
+            setFriendsList(prev => [...mappedFriends, ...prev]);
+          }
+
+          if (mounted && directLinks && directLinks.length > 0) {
+            const mappedDms: DirectConversation[] = directLinks.map(l => {
+              const u = l.otherParticipant || (l as any).participant;
+              return {
+                id: l.id,
+                user: {
+                  id: u?.id || l.id,
+                  name: u?.displayName || u?.username || 'Direct Link',
+                  callsign: u?.username || 'direct_link',
+                  avatar: u?.avatarUrl || '🛰️',
+                  status: 'online',
+                  statusText: 'E2EE Subspace Tunnel',
+                  roles: ['Direct Link'],
+                },
+                lastMessage: 'Quantum secure comm-link initialized.',
+                e2eeFingerprint: `SF-QKD-${l.id.slice(0, 4).toUpperCase()}`,
+              };
+            });
+            setDirectConversations(prev => [...mappedDms, ...prev]);
+          }
+        } catch (e) {
+          console.warn('Affiliations / DirectLinks load warning:', e);
+        }
       } catch (err: any) {
         console.warn('Real backend connection warning:', err);
       } finally {
@@ -818,9 +882,79 @@ export const AppContent: React.FC = () => {
       });
     });
 
+    const unsubTransmission = gateway.onTransmission((evt) => {
+      const isCreate = evt.action === 'create' || (evt.type && evt.type.includes('CREATE'));
+      const isUpdate = evt.action === 'update' || (evt.type && evt.type.includes('UPDATE'));
+      const isDelete = evt.action === 'delete' || (evt.type && evt.type.includes('DELETE'));
+      const tx = evt.transmission || (evt as any);
+      const targetKey = tx?.relayId || evt.relay_id || tx?.linkId || evt.link_id || tx?.meshId || evt.mesh_id;
+      if (!targetKey) return;
+
+      setChannelMessages((prev) => {
+        const currentList = prev[targetKey] || [];
+        if (isCreate && tx) {
+          if (currentList.some(m => m.id === tx.id)) {
+            return prev;
+          }
+          const authorObj = tx.author || (tx as any).authorProfile;
+          const createdDate = new Date(tx.createdAt || Date.now());
+          const newMsg: Message = {
+            id: tx.id,
+            author: authorObj?.displayName || (tx as any).authorName || authorObj?.username || 'Transmitter',
+            callsign: authorObj?.username || 'transmitter',
+            discriminator: authorObj?.discriminator || '0001',
+            avatar: authorObj?.avatarUrl || '⚡',
+            content: tx.content,
+            timestamp: createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestampMs: createdDate.getTime(),
+            roleColor: authorObj?.displayColor || '#00f0ff',
+            staffRank: authorObj?.staffRank ?? 0,
+            roleBadge: (authorObj?.staffRank ?? 0) >= 2 ? 'COMMAND STAFF' : undefined,
+            isEdited: false,
+          };
+          return {
+            ...prev,
+            [targetKey]: [...currentList, newMsg],
+          };
+        } else if (isUpdate && tx) {
+          return {
+            ...prev,
+            [targetKey]: currentList.map(m => m.id === tx.id ? { ...m, content: tx.content, isEdited: true } : m),
+          };
+        } else if (isDelete && (tx?.id || evt.transmissionId)) {
+          const deleteId = tx?.id || evt.transmissionId;
+          return {
+            ...prev,
+            [targetKey]: currentList.filter(m => m.id !== deleteId),
+          };
+        }
+        return prev;
+      });
+    });
+
+    const unsubSpeaking = rtcManager.onSpeakingChanged((speakers) => {
+      setVoiceUsers((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        Object.keys(next).forEach((cId) => {
+          next[cId] = next[cId].map((vu) => {
+            const isSpeaking = speakers.includes(vu.id) || speakers.includes(vu.name);
+            if (vu.isSpeaking !== isSpeaking) {
+              changed = true;
+              return { ...vu, isSpeaking };
+            }
+            return vu;
+          });
+        });
+        return changed ? next : prev;
+      });
+    });
+
     return () => {
       mounted = false;
       unsubVoice();
+      unsubTransmission();
+      unsubSpeaking();
     };
   }, []);
 
@@ -940,6 +1074,58 @@ export const AppContent: React.FC = () => {
     loadTransmissions();
     return () => { mounted = false; };
   }, [selectedChannelId, selectedBeaconId]);
+
+  // 3b. Fetch real Transmissions whenever a Direct Message is selected
+  useEffect(() => {
+    if (selectedBeaconId !== 'home' || !selectedDmId || selectedDmId === 'friends') return;
+    let mounted = true;
+
+    async function loadDmTransmissions() {
+      try {
+        const txs = await api.getLinkTransmissions(selectedDmId);
+        if (!mounted || !txs) return;
+
+        const sortedTxs = [...txs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        const mapped: Message[] = sortedTxs.map(tx => {
+          const authorObj = tx.author || (tx as any).authorProfile;
+          const authorName = authorObj?.displayName || (tx as any).authorName || authorObj?.username || 'Transmitter';
+          const callsign = authorObj?.username || (tx as any).authorUsername || 'transmitter';
+          const discriminator = authorObj?.discriminator || '0001';
+          const avatar = authorObj?.avatarUrl || '⚡';
+          const displayColor = authorObj?.displayColor || '#00f0ff';
+          const staffRank = authorObj?.staffRank ?? 0;
+          const createdDate = new Date(tx.createdAt);
+
+          return {
+            id: tx.id,
+            author: authorName,
+            callsign,
+            discriminator,
+            avatar,
+            content: tx.content,
+            timestamp: createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestampMs: createdDate.getTime(),
+            roleColor: displayColor,
+            staffRank,
+            roleBadge: staffRank >= 2 ? 'COMMAND STAFF' : undefined,
+            isEdited: (tx as any).isEdited ?? false,
+          };
+        });
+
+        if (mapped.length > 0) {
+          setChannelMessages(prev => ({
+            ...prev,
+            [selectedDmId]: mapped,
+          }));
+        }
+      } catch (err: any) {
+        console.warn('Failed to load real link transmissions:', err);
+      }
+    }
+
+    loadDmTransmissions();
+    return () => { mounted = false; };
+  }, [selectedDmId, selectedBeaconId]);
 
   // Column Resize Handlers
   useEffect(() => {
@@ -1441,6 +1627,21 @@ export const AppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Real-time backend search for Quick Scan
+  useEffect(() => {
+    if (!quickScanQuery.trim()) {
+      setQuickScanResults(null);
+      return;
+    }
+    let active = true;
+    api.quickScanSearch(quickScanQuery).then(res => {
+      if (active && res) {
+        setQuickScanResults(res);
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [quickScanQuery]);
+
   // When switching servers, automatically pick the first channel in that server
   const currentServer = serverData[selectedBeaconId] || {
     name: beacons.find(b => b.id === selectedBeaconId)?.name || 'Loading Beacon...',
@@ -1517,8 +1718,8 @@ export const AppContent: React.FC = () => {
     }
   };
 
-  // Two-Click Voice Channel Workflow with Switch Confirmation
-  const handleVoiceChannelClick = (channelId: string) => {
+  // Two-Click Voice Channel Workflow with Real LiveKit Connection
+  const handleVoiceChannelClick = async (channelId: string) => {
     // If clicking a different voice channel while already connected to one
     if (inVoiceRoom && inVoiceRoom !== channelId) {
       setPendingSwitchChannelId(channelId);
@@ -1530,6 +1731,20 @@ export const AppContent: React.FC = () => {
     if (inVoiceRoom !== channelId) {
       setInVoiceRoom(channelId);
       gateway.updateVoiceState(channelId, isMuted, isDeafened, false);
+
+      try {
+        const commData = await api.getCommLinkToken(channelId);
+        if (commData && commData.token) {
+          await rtcManager.connect(commData.livekitUrl, commData.token, {
+            canSpeak: commData.canSpeak !== false,
+            isMuted,
+            isDeafened,
+          });
+        }
+      } catch (err: any) {
+        console.warn('LiveKit Comm-Link connection notice:', err);
+      }
+
       showToast('Connected to Voice in background. Click again to view voice stage.');
     } else {
       // Click 2: Already connected, so navigate into the voice lounge stage
@@ -1537,15 +1752,31 @@ export const AppContent: React.FC = () => {
     }
   };
 
-  const confirmSwitchVoiceChannel = (channelId: string) => {
+  const confirmSwitchVoiceChannel = async (channelId: string) => {
     setInVoiceRoom(channelId);
     gateway.updateVoiceState(channelId, isMuted, isDeafened, false);
     setPendingSwitchChannelId(null);
+
+    try {
+      await rtcManager.disconnect();
+      const commData = await api.getCommLinkToken(channelId);
+      if (commData && commData.token) {
+        await rtcManager.connect(commData.livekitUrl, commData.token, {
+          canSpeak: commData.canSpeak !== false,
+          isMuted,
+          isDeafened,
+        });
+      }
+    } catch (err: any) {
+      console.warn('LiveKit switch error:', err);
+    }
+
     showToast('Switched voice channels. Click again to view voice stage.');
   };
 
   const handleDisconnectVoice = () => {
     if (inVoiceRoom) {
+      rtcManager.disconnect().catch(() => {});
       gateway.updateVoiceState(null, false, false, false);
       setInVoiceRoom(null);
       setIsVideoOn(false);
@@ -1555,6 +1786,38 @@ export const AppContent: React.FC = () => {
     }
   };
 
+  const handleToggleMute = async () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    await rtcManager.setMicrophoneEnabled(!nextMuted);
+    if (inVoiceRoom) {
+      gateway.updateVoiceState(inVoiceRoom, nextMuted, isDeafened, false);
+    }
+  };
+
+  const handleToggleDeafen = () => {
+    const nextDeafened = !isDeafened;
+    setIsDeafened(nextDeafened);
+    rtcManager.setDeafened(nextDeafened);
+    if (inVoiceRoom) {
+      gateway.updateVoiceState(inVoiceRoom, isMuted, nextDeafened, false);
+    }
+  };
+
+  const handleToggleVideo = async () => {
+    const nextVideo = !isVideoOn;
+    setIsVideoOn(nextVideo);
+    await rtcManager.setCameraEnabled(nextVideo);
+    showToast(!nextVideo ? 'Holo-Cast Video Deactivated' : 'Holo-Cast Video Activated');
+  };
+
+  const handleToggleScreenShare = async () => {
+    const nextScreen = !isScreenSharing;
+    setIsScreenSharing(nextScreen);
+    await rtcManager.setScreenShareEnabled(nextScreen);
+    showToast(!nextScreen ? 'Holo-Cast Screen Share Stopped' : 'Holo-Cast Screen Share Activated');
+  };
+
   // Send message to active channel or active DM (Real API POST)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1562,10 +1825,39 @@ export const AppContent: React.FC = () => {
 
     const content = messageInput.trim();
     setMessageInput('');
+    setMentionQuery(null);
 
     if (selectedBeaconId === 'home') {
-      // Local DM simulation with E2EE double-ratchet indicator
       const now = new Date();
+      if (selectedDmId !== 'friends') {
+        try {
+          const tx = await api.sendDirectTransmission(selectedDmId, content);
+          const authorObj = tx.author || (tx as any).authorProfile;
+          const createdDate = new Date(tx.createdAt || Date.now());
+          const newMsg: Message = {
+            id: tx.id,
+            author: authorObj?.displayName || currentUser.name,
+            callsign: authorObj?.username || currentUser.callsign,
+            discriminator: authorObj?.discriminator || currentUser.discriminator || '0001',
+            avatar: authorObj?.avatarUrl || currentUser.avatar,
+            content: tx.content,
+            timestamp: 'Today at ' + createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestampMs: createdDate.getTime(),
+            roleColor: '#00f0ff',
+            staffRank: currentUser.staffRank,
+            isEdited: false,
+          };
+          setChannelMessages(prev => ({
+            ...prev,
+            [selectedDmId]: [...(prev[selectedDmId] || []), newMsg],
+          }));
+          return;
+        } catch (err: any) {
+          console.warn('Direct transmission API fallback to local ratcheting:', err);
+        }
+      }
+
+      // Local fallback
       const newMsg: Message = {
         id: `dm-${Date.now()}`,
         author: currentUser.name,
@@ -1611,6 +1903,77 @@ export const AppContent: React.FC = () => {
       }));
     } catch (err: any) {
       showToast(`Failed to dispatch transmission: ${err.message}`);
+    }
+  };
+
+  // Composer mention auto-complete items and handlers
+  const currentMentionItems: MentionItem[] = useMemo(() => {
+    if (mentionQuery?.type === 'user') {
+      const userItems: MentionItem[] = members.map(m => ({
+        id: m.id,
+        type: 'user' as const,
+        name: m.name,
+        subtitle: m.callsign ? `@${m.callsign}` : undefined,
+        avatar: m.avatar,
+        color: (m as any).displayColor,
+      }));
+      userItems.unshift(
+        { id: 'everyone', type: 'special' as const, name: 'everyone', subtitle: 'Notify everyone in channel' },
+        { id: 'here', type: 'special' as const, name: 'here', subtitle: 'Notify active members in channel' }
+      );
+      return userItems;
+    } else if (mentionQuery?.type === 'channel') {
+      return allCurrentChannels.map(c => ({
+        id: c.id,
+        type: 'channel' as const,
+        name: c.name,
+        subtitle: c.type,
+        channelType: c.type === 'voice' ? 'voice' : c.type === 'archive' ? 'forum' : 'text',
+      }));
+    }
+    return [];
+  }, [mentionQuery, members, allCurrentChannels]);
+
+  const handleComposerInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setMessageInput(val);
+
+    const selStart = e.target.selectionStart || 0;
+    const beforeCursor = val.slice(0, selStart);
+    const match = beforeCursor.match(/(?:^|\s)([@#])([a-zA-Z0-9_.-]*)$/);
+    if (match) {
+      setMentionQuery({
+        type: match[1] === '@' ? 'user' : 'channel',
+        filter: match[2],
+      });
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const handleSelectMention = (item: MentionItem) => {
+    if (!mentionQuery) return;
+    const prefix = mentionQuery.type === 'user' ? '@' : '#';
+    const token = `${prefix}${mentionQuery.filter}`;
+    const lastIndex = messageInput.lastIndexOf(token);
+    if (lastIndex !== -1) {
+      const nextVal = messageInput.slice(0, lastIndex) + `${prefix}${item.name} ` + messageInput.slice(lastIndex + token.length);
+      setMessageInput(nextVal);
+    }
+    setMentionQuery(null);
+  };
+
+  const handleMentionClick = (mention: string) => {
+    const member = members.find(u => u.callsign.toLowerCase() === mention.toLowerCase() || u.name.toLowerCase() === mention.toLowerCase());
+    if (member) {
+      setFullProfileUser(member);
+    }
+  };
+
+  const handleChannelClick = (channelName: string) => {
+    const chan = allCurrentChannels.find(c => c.name.toLowerCase() === channelName.toLowerCase());
+    if (chan) {
+      setSelectedChannelId(chan.id);
     }
   };
 
@@ -1673,10 +2036,20 @@ export const AppContent: React.FC = () => {
           const cur = m.reactions || [];
           const existing = cur.find(r => r.emoji === emoji);
           if (existing) {
-            return {
-              ...m,
-              reactions: cur.map(r => r.emoji === emoji ? { ...r, count: r.count + 1 } : r),
-            };
+            const hasReacted = existing.users.includes('You');
+            if (hasReacted) {
+              const updatedUsers = existing.users.filter(u => u !== 'You');
+              const newCount = existing.count - 1;
+              const nextReactions = newCount <= 0
+                ? cur.filter(r => r.emoji !== emoji)
+                : cur.map(r => r.emoji === emoji ? { ...r, count: newCount, users: updatedUsers } : r);
+              return { ...m, reactions: nextReactions };
+            } else {
+              return {
+                ...m,
+                reactions: cur.map(r => r.emoji === emoji ? { ...r, count: r.count + 1, users: [...r.users, 'You'] } : r),
+              };
+            }
           } else {
             return {
               ...m,
@@ -1686,7 +2059,6 @@ export const AppContent: React.FC = () => {
         }),
       };
     });
-    showToast(`Reacted with ${emoji}`);
   };
 
   const handleTogglePin = (messageId: string) => {
@@ -1781,6 +2153,11 @@ export const AppContent: React.FC = () => {
     const isMuted = Boolean(mutedChannels[channel.id]);
     const currentNotif = channelNotifSettings[channel.id] || 'all';
     const isHidden = Boolean(channel.isHidden);
+    const isStaffOrAdmin = Boolean(
+      (currentUser.staffRank && currentUser.staffRank >= 1) ||
+      (currentUser as any).isOwner ||
+      currentUser.roles?.some((r: string) => ['command staff', 'admin', 'moderator', 'sysop'].some(role => r.toLowerCase().includes(role)))
+    );
 
     const handleSetMute = (duration: '15m' | '1h' | '8h' | '24h' | 'indefinite' | 'unmute') => {
       setMutedChannels(prev => {
@@ -1897,6 +2274,53 @@ export const AppContent: React.FC = () => {
           setIsEditingTopicModalOpen(true);
         },
       },
+      ...(isStaffOrAdmin ? [
+        { separator: true },
+        {
+          label: channel.isLocked ? 'Unlock Channel' : 'Lock Channel',
+          icon: channel.isLocked ? <Unlock className="w-3.5 h-3.5 text-[#23a55a]" /> : <Lock className="w-3.5 h-3.5 text-[#e5a50a]" />,
+          onClick: () => {
+            const nextLocked = !channel.isLocked;
+            setServerData(prev => {
+              const s = prev[selectedBeaconId];
+              if (!s) return prev;
+              return {
+                ...prev,
+                [selectedBeaconId]: {
+                  ...s,
+                  categories: s.categories.map(cat => ({
+                    ...cat,
+                    channels: cat.channels.map(c => c.id === channel.id ? { ...c, isLocked: nextLocked } : c),
+                  })),
+                },
+              };
+            });
+            showToast(nextLocked ? `Locked #${channel.name}` : `Unlocked #${channel.name}`);
+          },
+        },
+        {
+          label: channel.canSend === false ? 'Allow Sending Messages' : 'Restrict Sending Messages',
+          icon: channel.canSend === false ? <CheckCircle2 className="w-3.5 h-3.5 text-[#23a55a]" /> : <Slash className="w-3.5 h-3.5 text-[#f23f43]" />,
+          onClick: () => {
+            const nextCanSend = channel.canSend === false ? true : false;
+            setServerData(prev => {
+              const s = prev[selectedBeaconId];
+              if (!s) return prev;
+              return {
+                ...prev,
+                [selectedBeaconId]: {
+                  ...s,
+                  categories: s.categories.map(cat => ({
+                    ...cat,
+                    channels: cat.channels.map(c => c.id === channel.id ? { ...c, canSend: nextCanSend } : c),
+                  })),
+                },
+              };
+            });
+            showToast(nextCanSend ? `Allowed message sending in #${channel.name}` : `Restricted message sending in #${channel.name}`);
+          },
+        },
+      ] : []),
       { separator: true },
       {
         label: 'Copy Channel ID',
@@ -2094,15 +2518,16 @@ export const AppContent: React.FC = () => {
     ]);
   };
 
-  const getChannelIcon = (type: Channel['type']) => {
+  const getChannelIcon = (type: Channel['type'], extraClass?: string) => {
+    const iconClass = `w-4 h-4 shrink-0 ${extraClass || 'text-[#80848e]'}`;
     switch (type) {
-      case 'voice': return <Volume2 className="w-4 h-4 text-[#80848e] shrink-0" />;
-      case 'announcement': return <Activity className="w-4 h-4 text-[#80848e] shrink-0" />;
-      case 'archive': return <Archive className="w-4 h-4 text-[#80848e] shrink-0" />;
-      case 'gallery': return <ImageIcon className="w-4 h-4 text-[#80848e] shrink-0" />;
+      case 'voice': return <Volume2 className={iconClass} />;
+      case 'announcement': return <Activity className={iconClass} />;
+      case 'archive': return <Archive className={iconClass} />;
+      case 'gallery': return <ImageIcon className={iconClass} />;
       case 'text':
       default:
-        return <Hash className="w-4 h-4 text-[#80848e] shrink-0" />;
+        return <Hash className={iconClass} />;
     }
   };
 
@@ -2348,72 +2773,75 @@ export const AppContent: React.FC = () => {
                           </div>
                         </div>
                       ) : (
-                        /* Expanded Folder Accordion Container */
-                        <div 
-                          className="w-full rounded-[24px] flex flex-col items-center gap-2 py-2 px-1 border transition-all shadow-inner"
-                          style={{
-                            backgroundColor: folder.color ? `${folder.color}15` : 'rgba(255, 255, 255, 0.04)',
-                            borderColor: folder.color ? `${folder.color}40` : '#1f2024',
-                          }}
-                        >
-                          {/* Folder Header Icon / Collapse Button */}
-                          <div
-                            onClick={() => {
-                              setServerFolders(prev => prev.map(f => f.id === folder.id ? { ...f, isExpanded: false } : f));
-                            }}
-                            onContextMenu={(e) => openContextMenu(e, getFolderContextMenu(folder))}
-                            className="w-10 h-7 rounded-[12px] flex items-center justify-center cursor-pointer transition-all hover:scale-105 border border-white/10"
+                        /* Expanded Folder Accordion Container (48px width centered in 72px rail) */
+                        <div className="w-full flex flex-col items-center">
+                          <div 
+                            className="w-12 rounded-[24px] flex flex-col items-center gap-2 py-2 border transition-all duration-300 shadow-inner"
                             style={{
-                              backgroundColor: folder.color ? `${folder.color}35` : 'rgba(0, 240, 255, 0.25)',
-                              color: folder.color || '#00F0FF',
+                              backgroundColor: folder.color ? `${folder.color}15` : 'rgba(255, 255, 255, 0.04)',
+                              borderColor: folder.color ? `${folder.color}40` : '#1f2024',
                             }}
-                            title={`Collapse ${folder.name} (Right-click for options)`}
                           >
-                            <ChevronDown className="w-4 h-4" />
-                          </div>
+                            {/* Folder Header Icon / Collapse Button */}
+                            <div
+                              onClick={() => {
+                                setServerFolders(prev => prev.map(f => f.id === folder.id ? { ...f, isExpanded: false } : f));
+                              }}
+                              onContextMenu={(e) => openContextMenu(e, getFolderContextMenu(folder))}
+                              className="w-10 h-6 rounded-[12px] flex items-center justify-center cursor-pointer transition-all hover:scale-105 border border-white/10"
+                              style={{
+                                backgroundColor: folder.color ? `${folder.color}35` : 'rgba(0, 240, 255, 0.25)',
+                                color: folder.color || '#00F0FF',
+                              }}
+                              title={`Collapse ${folder.name} (Right-click for options)`}
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </div>
 
-                          {/* Children Beacons in Expanded Folder */}
-                          {folderBeacons.map((beacon) => {
-                            const isSelected = selectedBeaconId === beacon.id;
-                            const isTarget = dragOverTargetId === beacon.id;
-                            return (
-                              <div 
-                                key={beacon.id} 
-                                className="relative flex items-center justify-center w-full group"
-                                draggable
-                                onDragStart={(e) => handleFolderBeaconDragStart(e, beacon.id, folder.id)}
-                                onDragOver={(e) => handleRailDragOver(e, beacon.id)}
-                                onDragLeave={() => setDragOverTargetId(null)}
-                                onDrop={(e) => handleRailDrop(e, beacon.id, 'beacon', folder.id)}
-                              >
-                                <span 
-                                  className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
-                                    isSelected ? 'h-10' : beacon.unreadCount ? 'h-2 group-hover:h-5' : 'h-0 group-hover:h-5'
-                                  }`} 
-                                />
-                                <button
-                                  onClick={() => handleSelectServer(beacon.id)}
-                                  onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
-                                  style={{ background: isSelected ? beacon.gradient : undefined }}
-                                  className={`w-11 h-11 flex items-center justify-center font-bold text-xs transition-all duration-200 relative ${
-                                    isTarget ? 'ring-2 ring-[#00f0ff] scale-105' : ''
-                                  } ${
-                                    isSelected 
-                                      ? 'rounded-[14px] text-white shadow-lg' 
-                                      : 'rounded-[20px] hover:rounded-[14px] bg-[#1c1d22] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
-                                  }`}
-                                  title={beacon.name}
+                            {/* Children Beacons in Expanded Folder */}
+                            {folderBeacons.map((beacon) => {
+                              const isSelected = selectedBeaconId === beacon.id;
+                              const isTarget = dragOverTargetId === beacon.id;
+                              return (
+                                <div 
+                                  key={beacon.id} 
+                                  className="relative flex items-center justify-center w-12 group"
+                                  draggable
+                                  onDragStart={(e) => handleFolderBeaconDragStart(e, beacon.id, folder.id)}
+                                  onDragOver={(e) => handleRailDragOver(e, beacon.id)}
+                                  onDragLeave={() => setDragOverTargetId(null)}
+                                  onDrop={(e) => handleRailDrop(e, beacon.id, 'beacon', folder.id)}
                                 >
-                                  {beacon.iconText}
-                                  {beacon.unreadCount && beacon.unreadCount > 0 && (
-                                    <span className="absolute -bottom-1 -right-1 bg-[#f23f43] text-white text-[10px] font-bold h-4 min-w-[18px] px-1 rounded-full flex items-center justify-center border-[2px] border-[#080809] z-20 pointer-events-none shadow-md">
-                                      {beacon.unreadCount}
-                                    </span>
-                                  )}
-                                </button>
-                              </div>
-                            );
-                          })}
+                                  {/* White Indicator Pill - Positioned strictly at rail edge: -left-3 (-12px) touches x=0 of 72px rail */}
+                                  <span 
+                                    className={`absolute -left-3 top-1/2 -translate-y-1/2 w-1 bg-white rounded-r-full transition-all duration-200 z-40 ${
+                                      isSelected ? 'h-10' : beacon.unreadCount ? 'h-2 group-hover:h-5' : 'h-0 group-hover:h-5'
+                                    }`} 
+                                  />
+                                  <button
+                                    onClick={() => handleSelectServer(beacon.id)}
+                                    onContextMenu={(e) => openContextMenu(e, getBeaconContextMenu(beacon))}
+                                    style={{ background: isSelected ? beacon.gradient : undefined }}
+                                    className={`w-11 h-11 flex items-center justify-center font-bold text-xs transition-all duration-200 relative ${
+                                      isTarget ? 'ring-2 ring-[#00f0ff] scale-105' : ''
+                                    } ${
+                                      isSelected 
+                                        ? 'rounded-[14px] text-white shadow-lg' 
+                                        : 'rounded-[20px] hover:rounded-[14px] bg-[#1c1d22] text-[#dbdee1] hover:bg-[#5865f2] hover:text-white'
+                                    }`}
+                                    title={beacon.name}
+                                  >
+                                    {beacon.iconText}
+                                    {beacon.unreadCount && beacon.unreadCount > 0 && (
+                                      <span className="absolute -bottom-1 -right-1 bg-[#f23f43] text-white text-[10px] font-bold h-4 min-w-[18px] px-1 rounded-full flex items-center justify-center border-[2px] border-[#080809] z-20 pointer-events-none shadow-md">
+                                        {beacon.unreadCount}
+                                      </span>
+                                    )}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2776,7 +3204,13 @@ export const AppContent: React.FC = () => {
                 const isCollapsed = collapsedCategories[cat.id];
                 const isCategoryDragOver = dragOverCategoryId === cat.id;
 
-                const visibleChannels = cat.channels.filter(c => showHiddenChannels || !c.isHidden);
+                // Channels are visible if: unhidden, showHiddenChannels is active, or the hidden channel is currently open
+                const visibleChannels = cat.channels.filter(c => 
+                  showHiddenChannels || 
+                  !c.isHidden || 
+                  c.id === selectedChannelId || 
+                  c.id === inVoiceRoom
+                );
 
                 return (
                   <div
@@ -2843,7 +3277,10 @@ export const AppContent: React.FC = () => {
                           const isSelected = selectedChannelId === chan.id;
                           const isChannelDragOver = dragOverChannelId === chan.id;
                           const usersInThisVoice = chan.type === 'voice' ? (voiceUsers[chan.id] || []) : [];
-                          const isChannelMuted = Boolean(mutedChannels[chan.id]);
+                          const isChannelMuted = Boolean(mutedChannels[chan.id] || chan.isMuted);
+                          const isChannelHidden = Boolean(chan.isHidden);
+                          const isTemporarilyVisibleHidden = isChannelHidden && !showHiddenChannels && (isSelected || inVoiceRoom === chan.id);
+                          const isGreyedOut = isChannelMuted || isChannelHidden;
 
                           return (
                             <div
@@ -2896,20 +3333,40 @@ export const AppContent: React.FC = () => {
                                 onContextMenu={(e) => openContextMenu(e, getChannelContextMenu(chan))}
                                 className={`group flex items-center gap-1.5 px-2 py-1.5 rounded-[6px] text-sm font-medium transition-colors cursor-pointer ${
                                   isSelected
-                                    ? 'bg-[#1a1b1e] text-white font-semibold'
-                                    : isChannelMuted
-                                    ? 'text-[#50545c] hover:bg-[#16171a] hover:text-[#949ba4]'
+                                    ? isGreyedOut
+                                      ? 'bg-[#16171a]/80 text-[#80848e] opacity-65 font-medium'
+                                      : 'bg-[#1a1b1e] text-white font-semibold'
+                                    : isGreyedOut
+                                    ? 'text-[#50545c] hover:bg-[#16171a] hover:text-[#72767d] opacity-55'
                                     : 'text-[#949ba4] hover:bg-[#16171a] hover:text-[#dbdee1]'
-                                } ${chan.isHidden ? 'opacity-60 italic' : ''}`}
+                                } ${isChannelHidden ? 'italic' : ''}`}
                               >
                                 <GripVertical className="w-3 h-3 text-[#4e5058] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-grab active:cursor-grabbing" />
-                                {getChannelIcon(chan.type)}
-                                <span className="truncate flex-1">{chan.name}</span>
+                                {getChannelIcon(chan.type, isGreyedOut ? 'text-[#50545c]' : undefined)}
+                                <span className={`truncate flex-1 ${isGreyedOut ? (isSelected ? 'text-[#80848e]' : 'text-[#50545c]') : ''}`}>
+                                  {chan.name}
+                                </span>
                                 {isChannelMuted && (
-                                  <span title="Muted"><BellOff className="w-3 h-3 text-[#50545c] shrink-0" /></span>
+                                  <span title="Muted Channel"><BellOff className="w-3.5 h-3.5 text-[#50545c] shrink-0" /></span>
                                 )}
-                                {chan.isHidden && (
-                                  <span title="Hidden Channel"><EyeOff className="w-3 h-3 text-[#50545c] shrink-0" /></span>
+                                {isChannelHidden && (
+                                  <span title={isTemporarilyVisibleHidden ? "Hidden channel (temporarily visible while open)" : "Hidden Channel"}>
+                                    <EyeOff className={`w-3.5 h-3.5 shrink-0 ${isTemporarilyVisibleHidden ? 'text-[#e5a50a]' : 'text-[#50545c]'}`} />
+                                  </span>
+                                )}
+                                {chan.type === 'voice' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedChannelId(chan.id);
+                                      setIsVoiceChatOpen(true);
+                                    }}
+                                    className="p-1 rounded hover:bg-[#2b2d31] text-[#949ba4] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                    title="Open Voice Text Subchannel (no audio connect)"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                  </button>
                                 )}
                                 {chan.type === 'voice' && usersInThisVoice.length > 0 && (
                                   <span className="text-[11px] text-[#23a55a] font-mono px-1 bg-[#23a55a]/10 rounded">
@@ -3050,14 +3507,14 @@ export const AppContent: React.FC = () => {
 
         <div className="flex items-center gap-0.5 text-[#b5bac1]">
           <button
-            onClick={() => setIsMuted(p => !p)}
+            onClick={handleToggleMute}
             className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isMuted ? 'text-[#f23f43]' : 'hover:text-white'}`}
             title={isMuted ? 'Unmute' : 'Mute'}
           >
             {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </button>
           <button
-            onClick={() => setIsDeafened(p => !p)}
+            onClick={handleToggleDeafen}
             className={`p-1.5 rounded-[4px] hover:bg-[#1a1b1e] ${isDeafened ? 'text-[#f23f43]' : 'hover:text-white'}`}
             title={isDeafened ? 'Undeafen' : 'Deafen'}
           >
@@ -3378,70 +3835,195 @@ export const AppContent: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="text-xs font-bold uppercase tracking-wider text-[#949ba4] mb-2">
-                  {friendsTab.toUpperCase()} — {friendsList.filter(f => friendsTab === 'all' || f.relationship === friendsTab).length}
-                </div>
+                {friendsTab === 'add' ? (
+                  <div className="max-w-xl space-y-4 pt-2">
+                    <div>
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-white">Add Subspace Operative</h3>
+                      <p className="text-xs text-[#949ba4] mt-1">
+                        You can send an affiliation beacon using an operative's callsign or username. Attach a greeting note if desired.
+                      </p>
+                    </div>
 
-                <div className="space-y-1">
-                  {friendsList
-                    .filter(f => (friendsTab === 'all' || f.relationship === friendsTab) && 
-                      (f.user.name.toLowerCase().includes(friendsFilterQuery.toLowerCase()) || 
-                       f.user.callsign.toLowerCase().includes(friendsFilterQuery.toLowerCase())))
-                    .map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between p-2.5 hover:bg-[#0b0c0e] rounded-[8px] border-t border-[#141518] transition-colors group"
-                      >
-                        <div 
-                          className="flex items-center gap-3 cursor-pointer"
-                          onClick={(e) => handleOpenUserPopout(e, item.user)}
-                        >
-                          <div className="relative">
-                            <div className="w-10 h-10 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-lg">
-                              {item.user.avatar}
-                            </div>
-                            <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#000000] ${getStatusColor(item.user.status)}`} />
-                          </div>
-                          <div>
-                            <div className="text-sm font-semibold text-white group-hover:underline flex items-center gap-1.5">
-                              <span>{item.user.name}</span>
-                              <span className="text-xs text-[#80848e] font-normal">@{item.user.callsign}</span>
-                            </div>
-                            <div className="text-xs text-[#949ba4]">{item.customActivity || item.user.statusText}</div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              let dm = directConversations.find(d => d.user.id === item.user.id);
-                              if (!dm) {
-                                const newDm: DirectConversation = {
-                                  id: `dm-${item.user.id}`,
-                                  user: item.user,
-                                  unreadCount: 0,
-                                };
-                                setDirectConversations(prev => [newDm, ...prev]);
-                                dm = newDm;
-                              }
-                              setSelectedDmId(dm.id);
-                            }}
-                            className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
-                            title="Message"
-                          >
-                            <MessageCircle className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={(e) => openContextMenu(e, getUserContextMenu(item.user))}
-                            className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
-                            title="More Actions"
-                          >
-                            <MoreVertical className="w-5 h-5" />
-                          </button>
-                        </div>
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!addFriendCallsign.trim()) return;
+                        setIsSendingFriendRequest(true);
+                        try {
+                          await api.sendAffiliationRequest(addFriendCallsign.trim(), addFriendNote.trim() || undefined);
+                          showToast(`Affiliation request dispatched to @${addFriendCallsign.trim()}`);
+                          setAddFriendCallsign('');
+                          setAddFriendNote('');
+                          setFriendsTab('pending');
+                        } catch (err: any) {
+                          showToast(`Failed to dispatch request: ${err.message}`);
+                        } finally {
+                          setIsSendingFriendRequest(false);
+                        }
+                      }}
+                      className="space-y-3"
+                    >
+                      <div className="bg-[#0b0c0e] border border-[#1f2024] rounded-[8px] p-3 focus-within:border-[#00f0ff] transition-colors">
+                        <label className="text-[11px] font-mono uppercase text-[#80848e] block mb-1">
+                          Operative Callsign or Transmitter ID
+                        </label>
+                        <input
+                          type="text"
+                          value={addFriendCallsign}
+                          onChange={(e) => setAddFriendCallsign(e.target.value)}
+                          placeholder="e.g. spock_01 or transmitter ID"
+                          className="w-full bg-transparent text-sm text-white outline-none placeholder-[#4e5058]"
+                        />
                       </div>
-                    ))}
-                </div>
+
+                      <div className="bg-[#0b0c0e] border border-[#1f2024] rounded-[8px] p-3 focus-within:border-[#00f0ff] transition-colors">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-mono uppercase text-[#80848e]">
+                            Greeting Note (Optional)
+                          </label>
+                          <span className="text-[10px] text-[#80848e] font-mono">
+                            {addFriendNote.length}/200
+                          </span>
+                        </div>
+                        <textarea
+                          value={addFriendNote}
+                          maxLength={200}
+                          rows={2}
+                          onChange={(e) => setAddFriendNote(e.target.value)}
+                          placeholder="Greetings from the USS Enterprise. Establishing frequency link..."
+                          className="w-full bg-transparent text-xs text-white outline-none placeholder-[#4e5058] resize-none"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={!addFriendCallsign.trim() || isSendingFriendRequest}
+                        className="px-4 py-2 rounded-[6px] text-xs font-semibold bg-[#23a55a] hover:bg-[#1f934f] disabled:bg-[#1f2024] disabled:text-[#4e5058] text-white transition-colors"
+                      >
+                        {isSendingFriendRequest ? 'Dispatching...' : 'Send Friend Request'}
+                      </button>
+                    </form>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-xs font-bold uppercase tracking-wider text-[#949ba4] mb-2">
+                      {friendsTab.toUpperCase()} — {friendsList.filter(f => friendsTab === 'all' || f.relationship === friendsTab).length}
+                    </div>
+
+                    <div className="space-y-1">
+                      {friendsList
+                        .filter(f => (friendsTab === 'all' || f.relationship === friendsTab) && 
+                          (f.user.name.toLowerCase().includes(friendsFilterQuery.toLowerCase()) || 
+                           f.user.callsign.toLowerCase().includes(friendsFilterQuery.toLowerCase())))
+                        .map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between p-2.5 hover:bg-[#0b0c0e] rounded-[8px] border-t border-[#141518] transition-colors group"
+                          >
+                            <div 
+                              className="flex items-center gap-3 cursor-pointer"
+                              onClick={(e) => handleOpenUserPopout(e, item.user)}
+                            >
+                              <div className="relative">
+                                <div className="w-10 h-10 rounded-full bg-[#000000] border border-[#1f2024] flex items-center justify-center text-lg">
+                                  {item.user.avatar}
+                                </div>
+                                <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#000000] ${getStatusColor(item.user.status)}`} />
+                              </div>
+                              <div>
+                                <div className="text-sm font-semibold text-white group-hover:underline flex items-center gap-1.5">
+                                  <span>{item.user.name}</span>
+                                  <span className="text-xs text-[#80848e] font-normal">@{item.user.callsign}</span>
+                                </div>
+                                <div className="text-xs text-[#949ba4]">{item.customActivity || item.user.statusText}</div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {friendsTab === 'pending' ? (
+                                <>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await api.acceptAffiliation(item.id);
+                                        setFriendsList(prev => prev.map(f => f.id === item.id ? { ...f, relationship: 'all' } : f));
+                                        showToast(`Affiliation with ${item.user.name} confirmed`);
+                                      } catch (err: any) {
+                                        showToast(`Failed to accept: ${err.message}`);
+                                      }
+                                    }}
+                                    className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#23a55a]/20 border border-[#23a55a]/40 flex items-center justify-center text-[#23a55a] transition-colors"
+                                    title="Accept Friend Request"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await api.declineAffiliation(item.id);
+                                        setFriendsList(prev => prev.filter(f => f.id !== item.id));
+                                        showToast('Affiliation dismissed');
+                                      } catch (err: any) {
+                                        showToast(`Failed to decline: ${err.message}`);
+                                      }
+                                    }}
+                                    className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#f23f43]/20 border border-[#f23f43]/40 flex items-center justify-center text-[#f23f43] transition-colors"
+                                    title="Decline Friend Request"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </>
+                              ) : friendsTab === 'blocked' ? (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await api.unblockTarget(item.user.id);
+                                      setFriendsList(prev => prev.filter(f => f.id !== item.id));
+                                      showToast(`Unblocked @${item.user.callsign}`);
+                                    } catch (err: any) {
+                                      showToast(`Failed to unblock: ${err.message}`);
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 rounded-[6px] text-xs font-semibold bg-[#1a1b1e] hover:bg-[#2b2d31] text-[#dbdee1] hover:text-white border border-[#35363c] transition-colors"
+                                >
+                                  Unblock
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      let dm = directConversations.find(d => d.user.id === item.user.id);
+                                      if (!dm) {
+                                        const newDm: DirectConversation = {
+                                          id: `dm-${item.user.id}`,
+                                          user: item.user,
+                                          unreadCount: 0,
+                                        };
+                                        setDirectConversations(prev => [newDm, ...prev]);
+                                        dm = newDm;
+                                      }
+                                      setSelectedDmId(dm.id);
+                                    }}
+                                    className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
+                                    title="Message"
+                                  >
+                                    <MessageCircle className="w-5 h-5" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => openContextMenu(e, getUserContextMenu(item.user))}
+                                    className="w-9 h-9 rounded-full bg-[#111214] hover:bg-[#1a1b1e] border border-[#1f2024] flex items-center justify-center text-[#b5bac1] hover:text-white transition-colors"
+                                    title="More Actions"
+                                  >
+                                    <MoreVertical className="w-5 h-5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Active Now Sidebar */}
@@ -3642,6 +4224,8 @@ export const AppContent: React.FC = () => {
                           <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] break-words">
                             <MarkdownMessage
                               content={m.content}
+                              onMentionClick={handleMentionClick}
+                              onChannelClick={handleChannelClick}
                               suffix={
                                 m.isEdited ? (
                                   <span
@@ -3759,6 +4343,8 @@ export const AppContent: React.FC = () => {
                           <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
                             <MarkdownMessage
                               content={m.content}
+                              onMentionClick={handleMentionClick}
+                              onChannelClick={handleChannelClick}
                               suffix={
                                 m.isEdited ? (
                                   <span
@@ -3795,7 +4381,28 @@ export const AppContent: React.FC = () => {
             </div>
 
             {/* DM Input Pill */}
-            <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#000000]">
+            <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#000000] relative">
+              {/* Mention Autocomplete Popover */}
+              <MentionAutocomplete
+                isOpen={Boolean(mentionQuery)}
+                type={mentionQuery?.type || null}
+                filter={mentionQuery?.filter || ''}
+                items={currentMentionItems}
+                onSelect={handleSelectMention}
+                onClose={() => setMentionQuery(null)}
+              />
+
+              {/* Emoji Picker Popover */}
+              <EmojiPickerPopdown
+                isOpen={isEmojiPickerOpen}
+                onClose={() => setIsEmojiPickerOpen(false)}
+                customEmojis={beaconEmojisList}
+                serverName={activeDm.user.name}
+                onSelectEmoji={(emoji) => {
+                  setMessageInput(prev => `${prev}${emoji}`);
+                }}
+              />
+
               <div className="bg-[#111214] border border-[#1f2024] rounded-[8px] flex items-center px-4 py-2.5 gap-3 focus-within:border-[#00f0ff]/50 transition-colors">
                 <button
                   type="button"
@@ -3808,7 +4415,7 @@ export const AppContent: React.FC = () => {
                 <input
                   type="text"
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
+                  onChange={handleComposerInputChange}
                   placeholder={`Message @${activeDm.user.name}`}
                   maxLength={2000}
                   className="bg-transparent flex-1 text-[#dbdee1] placeholder-[#80848e] text-[15px] outline-none"
@@ -3821,7 +4428,12 @@ export const AppContent: React.FC = () => {
                   <button type="button" className="hover:text-white text-xs font-bold font-mono px-1 rounded bg-[#1f2024]">
                     GIF
                   </button>
-                  <button type="button" className="hover:text-white" title="Select Emoji">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsEmojiPickerOpen(p => !p)} 
+                    className={`hover:text-white transition-colors ${isEmojiPickerOpen ? 'text-[#00f0ff]' : ''}`} 
+                    title="Select Signal Glyph (Emoji)"
+                  >
                     <Smile className="w-5 h-5" />
                   </button>
                   {messageInput.trim() && (
@@ -4189,156 +4801,189 @@ export const AppContent: React.FC = () => {
             {/* Split Voice View or Standard Feed */}
             <div className="flex-1 flex min-h-0 relative">
               {currentChannel.type === 'voice' ? (
-                <div className="flex-1 flex flex-col bg-[#000000] p-6 items-center justify-center relative select-none">
-                  {/* Voice Grid (1 video/avatar tile per active participant; if alone, 1 user + 1 invite/activity card) */}
-                  <div className="grid grid-cols-2 gap-6 max-w-4xl w-full h-full max-h-[500px] items-center">
-                    {/* User Tiles */}
-                    {(voiceUsers[currentChannel.id] || []).length === 0 ? (
-                      <>
-                        {/* Connected Self Tile */}
-                        <div className="bg-[#1a3328] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl border border-[#23a55a]/30">
-                          <div className="w-24 h-24 rounded-full bg-[#000000] border-2 border-[#23a55a] flex items-center justify-center text-4xl shadow-inner mb-4">
-                            {currentUser.avatar}
-                          </div>
-                          <div className="absolute bottom-4 left-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-[6px] text-xs font-semibold text-white">
-                            {currentUser.name}
-                          </div>
-                        </div>
+                (() => {
+                  const isUserInThisVc = inVoiceRoom === currentChannel.id;
+                  const channelVoiceUsers = voiceUsers[currentChannel.id] || [];
+                  const otherVoiceUsers = channelVoiceUsers.filter(
+                    (u) => u.id !== currentUser.callsign && u.id !== currentUser.id
+                  );
 
-                        {/* Invite / Activity Card matching media_1788737148844.png */}
-                        <div className="bg-[#1e1322] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl border border-[#7928ca]/30 p-6 text-center">
-                          <div className="text-5xl mb-4">🏆</div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <button
-                              onClick={() => setIsInviteModalOpen(true)}
-                              className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
-                            >
-                              <UserPlus className="w-3.5 h-3.5 text-[#00f0ff]" /> Invite to Voice
-                            </button>
-                            <button
-                              onClick={() => setIsActivityLauncherOpen(true)}
-                              className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
-                            >
-                              <Sparkles className="w-3.5 h-3.5 text-[#eb459e]" /> Choose Activity
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    ) : (voiceUsers[currentChannel.id] || []).length === 1 ? (
-                      <>
-                        {/* Single User Tile */}
-                        <div className="bg-[#1a3328] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl border border-[#23a55a]/30">
-                          <div className="w-24 h-24 rounded-full bg-[#000000] border-2 border-[#23a55a] flex items-center justify-center text-4xl shadow-inner mb-4">
-                            {voiceUsers[currentChannel.id][0].avatar}
-                          </div>
-                          <div className="absolute bottom-4 left-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-[6px] text-xs font-semibold text-white">
-                            {voiceUsers[currentChannel.id][0].name}
-                          </div>
-                        </div>
+                  return (
+                    <div className="flex-1 flex flex-col bg-[#000000] p-6 items-center justify-center relative select-none">
+                      {/* Voice Stage Grid */}
+                      {isUserInThisVc ? (
+                        /* User IS in VC: render self tile + other participants */
+                        <div className="grid grid-cols-2 gap-6 max-w-4xl w-full h-full max-h-[500px] items-center">
+                          {/* Connected Self Tile */}
+                          <VoiceParticipantTile
+                            id={currentUser.callsign}
+                            name={currentUser.name}
+                            avatar={currentUser.avatar}
+                            isLocal={true}
+                            isSpeaking={Boolean(channelVoiceUsers.find(u => u.id === currentUser.callsign || u.id === currentUser.id)?.isSpeaking)}
+                            isMuted={isMuted}
+                            isDeafened={isDeafened}
+                            isVideoOn={isVideoOn}
+                            isScreenSharing={isScreenSharing}
+                            videoTrack={isScreenSharing ? rtcManager.getLocalScreenTrack() : isVideoOn ? rtcManager.getLocalVideoTrack() : null}
+                          />
 
-                        {/* Solo Companion Invite Card */}
-                        <div className="bg-[#1e1322] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl border border-[#7928ca]/30 p-6 text-center">
-                          <div className="text-5xl mb-4">🏆</div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <button
-                              onClick={() => setIsInviteModalOpen(true)}
-                              className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
-                            >
-                              <UserPlus className="w-3.5 h-3.5 text-[#00f0ff]" /> Invite to Voice
-                            </button>
-                            <button
-                              onClick={() => setIsActivityLauncherOpen(true)}
-                              className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
-                            >
-                              <Sparkles className="w-3.5 h-3.5 text-[#eb459e]" /> Choose Activity
-                            </button>
-                          </div>
+                          {otherVoiceUsers.length === 0 ? (
+                            /* Solo Companion Invite Card */
+                            <div className="bg-[#1e1322] rounded-[16px] h-full min-h-[220px] flex flex-col items-center justify-center relative shadow-2xl border border-[#7928ca]/30 p-6 text-center">
+                              <div className="text-5xl mb-4">🏆</div>
+                              <div className="flex items-center gap-2 mt-2">
+                                <button
+                                  onClick={() => setIsInviteModalOpen(true)}
+                                  className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                                >
+                                  <UserPlus className="w-3.5 h-3.5 text-[#00f0ff]" /> Invite to Voice
+                                </button>
+                                <button
+                                  onClick={() => setIsActivityLauncherOpen(true)}
+                                  className="bg-[#2b2d31] hover:bg-[#35373c] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5 text-[#eb459e]" /> Choose Activity
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Other active participants in the VC */
+                            otherVoiceUsers.map((vu) => (
+                              <VoiceParticipantTile
+                                key={vu.id}
+                                id={vu.id}
+                                name={vu.name}
+                                avatar={vu.avatar}
+                                isLocal={false}
+                                isSpeaking={Boolean(vu.isSpeaking)}
+                                isMuted={vu.isMuted}
+                                isDeafened={vu.isDeafened}
+                                isVideoOn={false}
+                                isScreenSharing={false}
+                                videoTrack={null}
+                              />
+                            ))
+                          )}
                         </div>
-                      </>
-                    ) : (
-                      /* Multi-user tiles: 1 per participant */
-                      voiceUsers[currentChannel.id].map(vu => (
-                        <div
-                          key={vu.id}
-                          className={`bg-[#0b0c0e] rounded-[16px] h-full flex flex-col items-center justify-center relative shadow-2xl ${
-                            vu.isSpeaking ? 'ring-4 ring-[#23a55a]' : 'border border-[#1f2024]'
-                          }`}
-                        >
-                          <div className="w-20 h-20 rounded-full bg-[#000000] border border-[#2b2d33] flex items-center justify-center text-4xl mb-3 shadow-inner">
-                            {vu.avatar}
+                      ) : (
+                        /* User IS NOT in VC: currentUser must NOT have a tile */
+                        otherVoiceUsers.length === 0 ? (
+                          /* Empty Lounge State */
+                          <div className="flex flex-col items-center justify-center text-center p-8 max-w-md bg-[#0b0c0e] border border-[#1f2024] rounded-[16px] shadow-2xl">
+                            <div className="w-16 h-16 rounded-full bg-[#16171a] border border-[#2b2d33] flex items-center justify-center text-3xl mb-4 text-[#80848e]">
+                              <Volume2 className="w-8 h-8 text-[#00f0ff]" />
+                            </div>
+                            <h3 className="text-base font-bold text-white mb-1">
+                              {currentChannel.name} is quiet right now
+                            </h3>
+                            <p className="text-xs text-[#949ba4] mb-6 leading-relaxed">
+                              No operatives are currently transmitting on this frequency. Connect to voice audio to start talking.
+                            </p>
+                            <button
+                              onClick={() => handleVoiceChannelClick(currentChannel.id)}
+                              className="px-5 py-2.5 rounded-[8px] bg-[#23a55a] hover:bg-[#1f934f] text-white text-xs font-semibold flex items-center gap-2 shadow-[0_0_16px_rgba(35,165,90,0.4)] transition-all cursor-pointer"
+                            >
+                              <Volume2 className="w-4 h-4" />
+                              <span>Join Voice</span>
+                            </button>
                           </div>
-                          <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-md px-2.5 py-0.5 rounded-[4px] text-xs font-semibold text-white flex items-center gap-1.5">
-                            <span>{vu.name}</span>
-                            {vu.isSpeaking && <span className="w-2 h-2 rounded-full bg-[#23a55a] animate-pulse" />}
+                        ) : (
+                          /* Other participants in the VC (user viewing only) */
+                          <div className="grid grid-cols-2 gap-6 max-w-4xl w-full h-full max-h-[500px] items-center">
+                            {otherVoiceUsers.map((vu) => (
+                              <VoiceParticipantTile
+                                key={vu.id}
+                                id={vu.id}
+                                name={vu.name}
+                                avatar={vu.avatar}
+                                isLocal={false}
+                                isSpeaking={Boolean(vu.isSpeaking)}
+                                isMuted={vu.isMuted}
+                                isDeafened={vu.isDeafened}
+                                isVideoOn={false}
+                                isScreenSharing={false}
+                                videoTrack={null}
+                              />
+                            ))}
                           </div>
-                          <div className="absolute bottom-3 right-3 text-[#949ba4]">
-                            {vu.isMuted && <MicOff className="w-4 h-4 text-[#f23f43]" />}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                        )
+                      )}
 
-                  {/* Floating Bottom Pill Controls Bar (Replicating media_1788737148844.png) */}
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111214]/90 backdrop-blur-md border border-[#1f2024] rounded-full px-4 py-2 flex items-center gap-3 shadow-2xl z-20">
-                    <button
-                      onClick={() => setIsMuted(p => !p)}
-                      className={`p-2.5 rounded-full transition-colors ${
-                        isMuted ? 'bg-[#f23f43] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
-                      }`}
-                      title={isMuted ? 'Unmute' : 'Mute'}
-                    >
-                      {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                    </button>
-                    <button
-                      onClick={() => setIsDeafened(p => !p)}
-                      className={`p-2.5 rounded-full transition-colors ${
-                        isDeafened ? 'bg-[#f23f43] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
-                      }`}
-                      title={isDeafened ? 'Undeafen' : 'Deafen'}
-                    >
-                      {isDeafened ? <Headphones className="w-4 h-4" /> : <Headphones className="w-4 h-4" />}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsVideoOn(p => !p);
-                        showToast(!isVideoOn ? 'Holo-Cast Video Activated' : 'Holo-Cast Video Deactivated');
-                      }}
-                      className={`p-2.5 rounded-full transition-colors ${
-                        isVideoOn ? 'bg-[#23a55a] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
-                      }`}
-                      title={isVideoOn ? 'Stop Video' : 'Share Video'}
-                    >
-                      <Video className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsScreenSharing(p => !p);
-                        showToast(!isScreenSharing ? 'Holo-Cast Screen Share Activated' : 'Holo-Cast Screen Share Stopped');
-                      }}
-                      className={`p-2.5 rounded-full transition-colors ${
-                        isScreenSharing ? 'bg-[#23a55a] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
-                      }`}
-                      title={isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
-                    >
-                      <Monitor className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setIsActivityLauncherOpen(true)}
-                      className="p-2.5 rounded-full bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31] transition-colors"
-                      title="Activities"
-                    >
-                      <Sparkles className="w-4 h-4 text-[#eb459e]" />
-                    </button>
-                    <button
-                      onClick={handleDisconnectVoice}
-                      className="p-2.5 rounded-full bg-[#f23f43] hover:bg-[#da373b] text-white transition-colors"
-                      title="Disconnect"
-                    >
-                      <PhoneOff className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+                      {/* Floating Bottom Controls / Join Bar */}
+                      {isUserInThisVc ? (
+                        /* Floating Bottom Pill Controls Bar when in VC */
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111214]/90 backdrop-blur-md border border-[#1f2024] rounded-full px-4 py-2 flex items-center gap-3 shadow-2xl z-20">
+                          <button
+                            onClick={handleToggleMute}
+                            className={`p-2.5 rounded-full transition-colors ${
+                              isMuted ? 'bg-[#f23f43] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
+                            }`}
+                            title={isMuted ? 'Unmute' : 'Mute'}
+                          >
+                            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={handleToggleDeafen}
+                            className={`p-2.5 rounded-full transition-colors ${
+                              isDeafened ? 'bg-[#f23f43] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
+                            }`}
+                            title={isDeafened ? 'Undeafen' : 'Deafen'}
+                          >
+                            {isDeafened ? <Headphones className="w-4 h-4" /> : <Headphones className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={handleToggleVideo}
+                            className={`p-2.5 rounded-full transition-colors ${
+                              isVideoOn ? 'bg-[#23a55a] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
+                            }`}
+                            title={isVideoOn ? 'Stop Video' : 'Share Video'}
+                          >
+                            <Video className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={handleToggleScreenShare}
+                            className={`p-2.5 rounded-full transition-colors ${
+                              isScreenSharing ? 'bg-[#23a55a] text-white' : 'bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31]'
+                            }`}
+                            title={isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+                          >
+                            <Monitor className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setIsActivityLauncherOpen(true)}
+                            className="p-2.5 rounded-full bg-[#1e1f22] text-[#dbdee1] hover:bg-[#2b2d31] transition-colors"
+                            title="Activities"
+                          >
+                            <Sparkles className="w-4 h-4 text-[#eb459e]" />
+                          </button>
+                          <button
+                            onClick={handleDisconnectVoice}
+                            className="p-2.5 rounded-full bg-[#f23f43] hover:bg-[#da373b] text-white transition-colors cursor-pointer"
+                            title="Disconnect"
+                          >
+                            <PhoneOff className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        /* Floating Bottom Pill Bar when viewing VC without voice connection */
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111214]/95 backdrop-blur-md border border-[#1f2024] rounded-full px-5 py-2.5 flex items-center gap-4 shadow-2xl z-20">
+                          <span className="text-xs text-[#949ba4] font-medium flex items-center gap-2">
+                            <Volume2 className="w-4 h-4 text-[#00f0ff]" />
+                            <span>You are viewing this channel without voice audio</span>
+                          </span>
+                          <button
+                            onClick={() => handleVoiceChannelClick(currentChannel.id)}
+                            className="bg-[#23a55a] hover:bg-[#1f934f] text-white text-xs font-semibold px-4 py-1.5 rounded-full flex items-center gap-1.5 shadow-[0_0_12px_rgba(35,165,90,0.4)] transition-all cursor-pointer"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span>Join Voice</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
               ) : currentChannel.type === 'archive' ? (
                 <ArchivalForumView
                   relayId={currentChannel.id}
@@ -4471,6 +5116,8 @@ export const AppContent: React.FC = () => {
                                 <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] break-words">
                                   <MarkdownMessage
                                     content={m.content}
+                                    onMentionClick={handleMentionClick}
+                                    onChannelClick={handleChannelClick}
                                     suffix={
                                       m.isEdited ? (
                                         <span
@@ -4601,6 +5248,8 @@ export const AppContent: React.FC = () => {
                                 <div className="text-[15px] text-[#dbdee1] leading-[1.375rem] mt-0.5 break-words">
                                   <MarkdownMessage
                                     content={m.content}
+                                    onMentionClick={handleMentionClick}
+                                    onChannelClick={handleChannelClick}
                                     suffix={
                                       m.isEdited ? (
                                         <span
@@ -4646,56 +5295,98 @@ export const AppContent: React.FC = () => {
                   />
 
                   {/* Channel Message Input Container (Shown ONLY for standard text channels, NEVER in voice stage!) */}
-                  <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#000000] relative">
-                    {/* Emoji Picker Popover */}
-                    <EmojiPickerPopdown
-                      isOpen={isEmojiPickerOpen}
-                      onClose={() => setIsEmojiPickerOpen(false)}
-                      customEmojis={beaconEmojisList}
-                      onSelectEmoji={(emoji) => {
-                        setMessageInput(prev => `${prev}${emoji}`);
-                      }}
-                    />
+                  {(() => {
+                    const isStaffOrAdmin = Boolean(
+                      (currentUser.staffRank && currentUser.staffRank >= 1) ||
+                      (currentUser as any).isOwner ||
+                      currentUser.roles?.some((r: string) => ['command staff', 'admin', 'moderator', 'sysop'].some(role => r.toLowerCase().includes(role)))
+                    );
+                    const isChannelLocked = Boolean(currentChannel.isLocked);
+                    const canSendInChannel = currentChannel.canSend !== false && !isChannelLocked && (
+                      currentChannel.type !== 'announcement' || isStaffOrAdmin || currentChannel.canSend === true
+                    );
 
-                    <div className="bg-[#111214] border border-[#1f2024] rounded-[8px] flex items-center px-4 py-2.5 gap-3 focus-within:border-[#00f0ff]/50 transition-colors">
-                      <button
-                        type="button"
-                        onClick={handleAttachmentMenu}
-                        className="w-6 h-6 rounded-full bg-[#1f2024] hover:bg-[#2b2d33] text-[#dbdee1] flex items-center justify-center font-bold text-lg transition-colors cursor-pointer"
-                        title="Add attachment"
-                      >
-                        +
-                      </button>
+                    if (!canSendInChannel) {
+                      return (
+                        <div className="px-4 pb-6 pt-0 bg-[#000000] relative select-none">
+                          <div className="bg-[#16171a]/80 border border-[#232529] rounded-[8px] flex items-center justify-center px-4 py-3 text-center min-h-[44px]">
+                            <div className="flex items-center gap-2 text-[#80848e] text-xs font-medium">
+                              <Lock className={`w-3.5 h-3.5 ${isChannelLocked ? 'text-[#e5a50a]' : 'text-[#50545c]'}`} />
+                              <span>
+                                {isChannelLocked 
+                                  ? 'This channel is locked. You do not have permission to send transmissions.' 
+                                  : 'You do not have permission to send transmissions in this channel.'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
 
-                      <input
-                        type="text"
-                        value={messageInput}
-                        onChange={(e) => setMessageInput(e.target.value)}
-                        placeholder={`Message #${currentChannel.name}`}
-                        maxLength={2000}
-                        className="bg-transparent flex-1 text-[#dbdee1] placeholder-[#80848e] text-[15px] outline-none"
-                      />
+                    return (
+                      <form onSubmit={handleSendMessage} className="px-4 pb-6 pt-0 bg-[#000000] relative">
+                        {/* Mention Autocomplete Popover */}
+                        <MentionAutocomplete
+                          isOpen={Boolean(mentionQuery)}
+                          type={mentionQuery?.type || null}
+                          filter={mentionQuery?.filter || ''}
+                          items={currentMentionItems}
+                          onSelect={handleSelectMention}
+                          onClose={() => setMentionQuery(null)}
+                        />
 
-                      <div className="flex items-center gap-2.5 text-[#80848e]">
-                        <button type="button" className="hover:text-white text-xs font-bold font-mono px-1.5 py-0.5 rounded bg-[#1f2024] transition-colors" title="Open GIF picker">
-                          GIF
-                        </button>
-                        <button 
-                          type="button" 
-                          onClick={() => setIsEmojiPickerOpen(p => !p)} 
-                          className={`hover:text-white transition-colors ${isEmojiPickerOpen ? 'text-[#00f0ff]' : ''}`} 
-                          title="Select Signal Glyph (Emoji)"
-                        >
-                          <Smile className="w-5 h-5" />
-                        </button>
-                        {messageInput.trim() && (
-                          <button type="submit" className="text-[#00f0ff] hover:text-white transition-colors">
-                            <Send className="w-4 h-4" />
+                        {/* Emoji Picker Popover */}
+                        <EmojiPickerPopdown
+                          isOpen={isEmojiPickerOpen}
+                          onClose={() => setIsEmojiPickerOpen(false)}
+                          customEmojis={beaconEmojisList}
+                          serverName={currentServer?.name}
+                          onSelectEmoji={(emoji) => {
+                            setMessageInput(prev => `${prev}${emoji}`);
+                          }}
+                        />
+
+                        <div className="bg-[#111214] border border-[#1f2024] rounded-[8px] flex items-center px-4 py-2.5 gap-3 focus-within:border-[#00f0ff]/50 transition-colors">
+                          <button
+                            type="button"
+                            onClick={handleAttachmentMenu}
+                            className="w-6 h-6 rounded-full bg-[#1f2024] hover:bg-[#2b2d33] text-[#dbdee1] flex items-center justify-center font-bold text-lg transition-colors cursor-pointer"
+                            title="Add attachment"
+                          >
+                            +
                           </button>
-                        )}
-                      </div>
-                    </div>
-                  </form>
+
+                          <input
+                            type="text"
+                            value={messageInput}
+                            onChange={handleComposerInputChange}
+                            placeholder={`Message #${currentChannel.name}`}
+                            maxLength={2000}
+                            className="bg-transparent flex-1 text-[#dbdee1] placeholder-[#80848e] text-[15px] outline-none"
+                          />
+
+                          <div className="flex items-center gap-2.5 text-[#80848e]">
+                            <button type="button" className="hover:text-white text-xs font-bold font-mono px-1.5 py-0.5 rounded bg-[#1f2024] transition-colors" title="Open GIF picker">
+                              GIF
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => setIsEmojiPickerOpen(p => !p)} 
+                              className={`hover:text-white transition-colors ${isEmojiPickerOpen ? 'text-[#00f0ff]' : ''}`} 
+                              title="Select Signal Glyph (Emoji)"
+                            >
+                              <Smile className="w-5 h-5" />
+                            </button>
+                            {messageInput.trim() && (
+                              <button type="submit" className="text-[#00f0ff] hover:text-white transition-colors">
+                                <Send className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </form>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -4733,22 +5424,42 @@ export const AppContent: React.FC = () => {
                     )}
                   </div>
 
-                  <form onSubmit={handleSendMessage} className="p-3 border-t border-[#1a1b1e] bg-[#08080a]">
-                    <div className="bg-[#111214] border border-[#1f2024] rounded-[6px] flex items-center px-3 py-1.5 gap-2">
-                      <input
-                        type="text"
-                        value={messageInput}
-                        onChange={(e) => setMessageInput(e.target.value)}
-                        placeholder="Message in voice chat..."
-                        className="bg-transparent flex-1 text-xs text-white outline-none placeholder-[#80848e]"
-                      />
-                      {messageInput.trim() && (
-                        <button type="submit" className="text-[#00f0ff]">
-                          <Send className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </form>
+                  {(() => {
+                    const isChannelLocked = Boolean(currentChannel.isLocked);
+                    const canSendInChannel = currentChannel.canSend !== false && !isChannelLocked;
+
+                    if (!canSendInChannel) {
+                      return (
+                        <div className="p-3 border-t border-[#1a1b1e] bg-[#08080a] select-none">
+                          <div className="bg-[#16171a]/80 border border-[#232529] rounded-[6px] flex items-center justify-center px-3 py-2 text-center">
+                            <div className="flex items-center gap-1.5 text-[#80848e] text-[11px] font-medium">
+                              <Lock className={`w-3 h-3 ${isChannelLocked ? 'text-[#e5a50a]' : 'text-[#50545c]'}`} />
+                              <span>{isChannelLocked ? 'Voice chat locked' : 'No permission to send'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <form onSubmit={handleSendMessage} className="p-3 border-t border-[#1a1b1e] bg-[#08080a]">
+                        <div className="bg-[#111214] border border-[#1f2024] rounded-[6px] flex items-center px-3 py-1.5 gap-2">
+                          <input
+                            type="text"
+                            value={messageInput}
+                            onChange={(e) => setMessageInput(e.target.value)}
+                            placeholder="Message in voice chat..."
+                            className="bg-transparent flex-1 text-xs text-white outline-none placeholder-[#80848e]"
+                          />
+                          {messageInput.trim() && (
+                            <button type="submit" className="text-[#00f0ff]">
+                              <Send className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </form>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -4894,6 +5605,72 @@ export const AppContent: React.FC = () => {
           />
 
           <div className="space-y-1 mt-2 max-h-72 overflow-y-auto">
+            {quickScanResults && (
+              <>
+                {quickScanResults.beacons && quickScanResults.beacons.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-[11px] font-bold uppercase text-[#00f0ff] px-1 mb-1">Beacons</div>
+                    {quickScanResults.beacons.map((b: any) => (
+                      <div
+                        key={b.id}
+                        onClick={() => {
+                          setSelectedBeaconId(b.id);
+                          setIsQuickScanOpen(false);
+                        }}
+                        className="flex items-center justify-between p-2 rounded-[4px] hover:bg-[#35373c] cursor-pointer text-sm text-[#dbdee1] hover:text-white transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Radio className="w-4 h-4 text-[#00f0ff]" />
+                          <span>{b.name}</span>
+                        </div>
+                        <span className="text-[10px] text-[#949ba4] font-mono">ENTER</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {quickScanResults.transmitters && quickScanResults.transmitters.length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-[11px] font-bold uppercase text-[#eb459e] px-1 mb-1">Transmitters</div>
+                    {quickScanResults.transmitters.map((t: any) => (
+                      <div
+                        key={t.id}
+                        onClick={() => {
+                          handleSelectServer('home');
+                          let dm = directConversations.find(d => d.user.id === t.id);
+                          if (!dm) {
+                            const newDm: DirectConversation = {
+                              id: `dm-${t.id}`,
+                              user: {
+                                id: t.id,
+                                name: t.displayName || t.username,
+                                callsign: t.username,
+                                avatar: t.avatarUrl || '👨‍🚀',
+                                status: 'online',
+                                statusText: 'Direct Link',
+                              },
+                              unreadCount: 0,
+                            };
+                            setDirectConversations(prev => [newDm, ...prev]);
+                            dm = newDm;
+                          }
+                          setSelectedDmId(dm.id);
+                          setIsQuickScanOpen(false);
+                        }}
+                        className="flex items-center justify-between p-2 rounded-[4px] hover:bg-[#35373c] cursor-pointer text-sm text-[#dbdee1] hover:text-white transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{t.avatarUrl || '⚡'}</span>
+                          <span>{t.displayName || t.username}</span>
+                          <span className="text-[11px] text-[#949ba4]">@{t.username}</span>
+                        </div>
+                        <span className="text-[10px] text-[#949ba4] font-mono">MESSAGE</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
             <div className="text-[11px] font-bold uppercase text-[#949ba4] px-1">Channels across servers</div>
             {Object.entries(serverData).flatMap(([bId, srv]) => 
               srv.categories.flatMap(c => c.channels.map(chan => ({ ...chan, beaconId: bId, serverName: srv.name })))

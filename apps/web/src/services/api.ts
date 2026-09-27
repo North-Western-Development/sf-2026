@@ -222,6 +222,18 @@ class SubspaceApiClient {
     if (!res.ok) throw new Error(`Failed to delete transmission`);
   }
 
+  public async editTransmission(transmissionId: string, content: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/transmissions/${transmissionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Edit failed' }));
+      throw new Error(err.error || 'Failed to edit transmission');
+    }
+    return res.json();
+  }
+
   public async updateBeacon(beaconId: string, updates: Record<string, any>): Promise<void> {
     const res = await this.fetchAuth(`${API_BASE}/beacons/${beaconId}`, {
       method: 'PATCH',
@@ -474,6 +486,231 @@ class SubspaceApiClient {
       },
     });
     return this.recordVaultFile(ticket.storageKey, file.name, file.type || 'application/octet-stream', file.size);
+  }
+
+  // Comm-Link WebRTC Token
+  public async getCommLinkToken(relayId: string): Promise<{
+    message: string;
+    token: string;
+    livekitUrl: string;
+    roomName: string;
+    canSpeak: boolean;
+    canHoloCast: boolean;
+  }> {
+    const res = await this.fetchAuth(`${API_BASE}/relays/${relayId}/comm-link/token`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Comm-Link connection rejected' }));
+      throw new Error(err.error || 'Failed to get Comm-Link token');
+    }
+    return res.json();
+  }
+
+  // Point-to-Point Links (DMs)
+  public async getDirectLinks(): Promise<any[]> {
+    const res = await this.fetchAuth(`${API_BASE}/links`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.links || [];
+  }
+
+  public async getLinkTransmissions(linkId: string): Promise<ApiTransmission[]> {
+    const res = await this.fetchAuth(`${API_BASE}/links/${linkId}/transmissions`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.transmissions || [];
+  }
+
+  public async sendDirectTransmission(targetId: string, content: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/links/${targetId}/transmissions`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Transmission rejected' }));
+      throw new Error(err.error || 'Failed to send direct transmission');
+    }
+    return res.json();
+  }
+
+  public async respondTransmissionRequest(requestId: string, action: 'accept' | 'decline'): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/links/requests/${requestId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) throw new Error('Failed to respond to transmission request');
+    return res.json();
+  }
+
+  // Affiliations (Friends)
+  public async getAffiliations(): Promise<any[]> {
+    const res = await this.fetchAuth(`${API_BASE}/affiliations`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.affiliations || [];
+  }
+
+  public async sendAffiliationRequest(targetId: string, greetingNote?: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/affiliations/request`, {
+      method: 'POST',
+      body: JSON.stringify({ targetId, greetingNote }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Friend request failed' }));
+      throw new Error(err.error || 'Failed to send friend request');
+    }
+    return res.json();
+  }
+
+  public async acceptAffiliation(requestId: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/affiliations/${requestId}/accept`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to accept affiliation');
+    return res.json();
+  }
+
+  public async declineAffiliation(requestId: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/affiliations/${requestId}/decline`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to decline affiliation');
+    return res.json();
+  }
+
+  // Signal Blacklist (Blocking)
+  public async blockTarget(targetId: string, targetType: 'transmitter' | 'transmission' | 'beacon' = 'transmitter'): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/blacklist`, {
+      method: 'POST',
+      body: JSON.stringify({ targetId, targetType }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Block failed' }));
+      throw new Error(err.error || 'Failed to block target');
+    }
+    return res.json();
+  }
+
+  public async unblockTarget(targetId: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/blacklist/${targetId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to unblock target');
+    return res.json();
+  }
+
+  public async getBlacklist(): Promise<any[]> {
+    const res = await this.fetchAuth(`${API_BASE}/blacklist`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.blacklist || [];
+  }
+
+  // Subspace Meshes (Group DMs)
+  public async getMeshes(): Promise<any[]> {
+    const res = await this.fetchAuth(`${API_BASE}/meshes`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.meshes || [];
+  }
+
+  public async createMesh(name: string, memberIds: string[] = []): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/meshes`, {
+      method: 'POST',
+      body: JSON.stringify({ name, memberIds }),
+    });
+    if (!res.ok) throw new Error('Failed to create Subspace Mesh');
+    const data = await res.json();
+    return data.mesh;
+  }
+
+  public async getMeshTransmissions(meshId: string): Promise<ApiTransmission[]> {
+    const res = await this.fetchAuth(`${API_BASE}/meshes/${meshId}/transmissions`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.transmissions || [];
+  }
+
+  public async sendMeshTransmission(meshId: string, content: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/meshes/${meshId}/transmissions`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error('Failed to dispatch mesh transmission');
+    return res.json();
+  }
+
+  // Quick Scan Global Search
+  public async quickScanSearch(query: string): Promise<{
+    beacons: any[];
+    relays: any[];
+    transmitters: any[];
+  }> {
+    if (!query.trim()) return { beacons: [], relays: [], transmitters: [] };
+    const res = await this.fetchAuth(`${API_BASE}/search/quick-scan?q=${encodeURIComponent(query.trim())}`);
+    if (!res.ok) return { beacons: [], relays: [], transmitters: [] };
+    return res.json();
+  }
+
+  // Archival Forum Threads
+  public async getArchivalThreads(relayId: string, tag?: string): Promise<{ threads: any[] }> {
+    const url = `${API_BASE}/relays/${relayId}/archival/threads${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`;
+    const res = await this.fetchAuth(url);
+    if (!res.ok) throw new Error('Failed to load archival threads');
+    return res.json();
+  }
+
+  public async getArchivalThread(relayId: string, threadId: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/relays/${relayId}/archival/threads/${threadId}`);
+    if (!res.ok) throw new Error('Failed to load archival thread');
+    return res.json();
+  }
+
+  public async getArchivalThreadTransmissions(relayId: string, threadId: string): Promise<{ threadId: string; transmissions: any[] }> {
+    const res = await this.fetchAuth(`${API_BASE}/relays/${relayId}/archival/threads/${threadId}/transmissions`);
+    if (!res.ok) throw new Error('Failed to load thread transmissions');
+    return res.json();
+  }
+
+  public async createArchivalThread(relayId: string, title: string, content: string, tags: string[] = []): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/relays/${relayId}/archival/threads`, {
+      method: 'POST',
+      body: JSON.stringify({ title, content, tags }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to create thread' }));
+      throw new Error(err.error || 'Failed to create thread');
+    }
+    return res.json();
+  }
+
+  public async sendArchivalThreadReply(relayId: string, threadId: string, content: string): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/relays/${relayId}/archival/threads/${threadId}/transmissions`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to post reply' }));
+      throw new Error(err.error || 'Failed to post reply');
+    }
+    return res.json();
+  }
+
+  public async updateArchivalThread(
+    relayId: string,
+    threadId: string,
+    updates: { isLocked?: boolean; isPinned?: boolean; title?: string; tags?: string[] }
+  ): Promise<any> {
+    const res = await this.fetchAuth(`${API_BASE}/relays/${relayId}/archival/threads/${threadId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to update thread parameters' }));
+      throw new Error(err.error || 'Failed to update thread');
+    }
+    return res.json();
   }
 }
 

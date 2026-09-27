@@ -101,15 +101,27 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       .where(eq(transmitters.id, token.transmitterId))
       .limit(1);
 
+    const redis = (app as any).redis;
+    const formatted = {
+      ...newTransmission,
+      author: authorProfile || null,
+      authorName: authorProfile?.displayName || authorProfile?.username || 'Transmitter',
+      authorUsername: authorProfile?.username || 'transmitter',
+      authorAvatar: authorProfile?.avatarUrl || null,
+    };
+
+    if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+      redis.publish('gateway:transmission:events', JSON.stringify({
+        type: 'TRANSMISSION_CREATE',
+        relay_id: relayId,
+        beacon_id: targetRelay.beaconId,
+        transmission: formatted,
+      })).catch(() => {});
+    }
+
     return reply.status(201).send({
       message: 'Transmission dispatched',
-      transmission: {
-        ...newTransmission,
-        author: authorProfile || null,
-        authorName: authorProfile?.displayName || authorProfile?.username || 'Transmitter',
-        authorUsername: authorProfile?.username || 'transmitter',
-        authorAvatar: authorProfile?.avatarUrl || null,
-      },
+      transmission: formatted,
     });
   });
 
@@ -255,6 +267,15 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       .where(eq(transmissions.id, transmissionId))
       .returning();
 
+    const redis = (app as any).redis;
+    if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+      redis.publish('gateway:transmission:events', JSON.stringify({
+        type: 'TRANSMISSION_UPDATE',
+        relay_id: existing.relayId,
+        transmission: updated,
+      })).catch(() => {});
+    }
+
     return reply.send({
       message: 'Transmission updated',
       transmission: updated,
@@ -280,9 +301,18 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
 
     if (!existing) return reply.status(404).send({ error: 'Transmission not found' });
 
+    const redis = (app as any).redis;
+
     // Author can always delete their own transmission
     if (existing.transmitterId === token.transmitterId) {
       await db.delete(transmissions).where(eq(transmissions.id, transmissionId));
+      if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+        redis.publish('gateway:transmission:events', JSON.stringify({
+          type: 'TRANSMISSION_DELETE',
+          relay_id: existing.relayId,
+          transmissionId,
+        })).catch(() => {});
+      }
       return reply.send({ message: 'Transmission erased' });
     }
 
@@ -312,6 +342,13 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
     if (!canModerate) return;
 
     await db.delete(transmissions).where(eq(transmissions.id, transmissionId));
+    if (redis && (redis.status === 'ready' || redis.status === 'connect')) {
+      redis.publish('gateway:transmission:events', JSON.stringify({
+        type: 'TRANSMISSION_DELETE',
+        relay_id: existing.relayId,
+        transmissionId,
+      })).catch(() => {});
+    }
 
     return reply.send({ message: 'Transmission erased by clearance moderator' });
   });
