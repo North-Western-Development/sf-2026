@@ -109,7 +109,7 @@ describe('Text Relays, Transmissions & Direct Messaging E2E Suite', () => {
       method: 'POST',
       url: '/api/v1/beacons',
       headers: { authorization: `Bearer ${tokenA}` },
-      payload: { name: 'Comms Relay Station 9' },
+      payload: { name: 'Comms Relay Station 9', isDiscoverable: true },
     });
     expect(bRes.statusCode).toBe(201);
     beaconId = JSON.parse(bRes.payload).beacon.id;
