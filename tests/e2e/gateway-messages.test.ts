@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { buildApp } from '../../apps/api-service/src/index.js';
 import { signAccessToken } from '@subspace/crypto';
 import { transmitters, eq } from '@subspace/database';
+import { Redis } from 'ioredis';
 
 describe('Gateway Real-Time Transmission Events Fanout E2E Suite', () => {
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
@@ -43,6 +44,23 @@ describe('Gateway Real-Time Transmission Events Fanout E2E Suite', () => {
     await app.close();
   });
 
+  /** Collect gateway dispatch events published while `action` runs. */
+  async function captureBus(action: () => Promise<unknown>): Promise<any[]> {
+    const sub = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379', { lazyConnect: true, maxRetriesPerRequest: 1 });
+    const events: any[] = [];
+    try {
+      await sub.connect();
+    } catch {
+      return events; // Redis unavailable: nothing to assert
+    }
+    await sub.subscribe('gateway:transmission:events');
+    sub.on('message', (_c, m) => events.push(JSON.parse(m)));
+    await action();
+    await new Promise((r) => setTimeout(r, 150));
+    await sub.quit();
+    return events;
+  }
+
   it('provisions a beacon and text relay for transmission fanout testing', async () => {
     if (!(app as any).db) return;
     const bRes = await app.inject({
@@ -76,14 +94,23 @@ describe('Gateway Real-Time Transmission Events Fanout E2E Suite', () => {
 
   it('dispatches a new transmission and publishes TRANSMISSION_CREATE event to Redis bus', async () => {
     if (!(app as any).db) return;
-    const txRes = await app.inject({
-      method: 'POST',
-      url: `/api/v1/relays/${textRelayId}/transmissions`,
-      headers: { authorization: `Bearer ${user1Token}` },
-      payload: {
-        content: 'Engage sub-space comms array now. Verified.',
-      },
+    let txRes: any;
+    const events = await captureBus(async () => {
+      txRes = await app.inject({
+        method: 'POST',
+        url: `/api/v1/relays/${textRelayId}/transmissions`,
+        headers: { authorization: `Bearer ${user1Token}` },
+        payload: {
+          content: 'Engage sub-space comms array now. Verified.',
+        },
+      });
     });
+    if ((app as any).redis) {
+      const created = events.find((e) => e.type === 'TRANSMISSION_CREATE');
+      expect(created).toBeDefined();
+      // Audience = everyone in the beacon who can view the relay, and nobody else.
+      expect(new Set(created.audience)).toEqual(new Set([testUser1Id, testUser2Id]));
+    }
 
     expect(txRes.statusCode).toBe(201);
     const body = txRes.json();
@@ -104,12 +131,20 @@ describe('Gateway Real-Time Transmission Events Fanout E2E Suite', () => {
     const messageId = createRes.json().transmission.id;
 
     // 2. Update message
-    const updateRes = await app.inject({
+    let updateRes: any;
+    const events = await captureBus(async () => {
+      updateRes = await app.inject({
       method: 'PATCH',
-      url: `/api/v1/relays/${textRelayId}/transmissions/${messageId}`,
+      url: `/api/v1/transmissions/${messageId}`,
       headers: { authorization: `Bearer ${user1Token}` },
       payload: { content: 'Updated transmission payload (amended)' },
     });
+    });
+    if ((app as any).redis) {
+      const updated = events.find((e) => e.type === 'TRANSMISSION_UPDATE');
+      expect(updated?.transmission.id).toBe(messageId);
+      expect(new Set(updated.audience)).toEqual(new Set([testUser1Id, testUser2Id]));
+    }
 
     expect(updateRes.statusCode).toBe(200);
     expect(updateRes.json().transmission.content).toBe('Updated transmission payload (amended)');

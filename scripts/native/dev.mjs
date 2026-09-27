@@ -5,6 +5,22 @@
 import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { loadNativeEnv, ROOT } from './env.mjs';
+import { ensureInfra } from './infra.mjs';
+
+
+// drizzle-kit exits 0 even when a statement fails, so inspect its output.
+const pushSchema = (env, cwd) =>
+  new Promise((resolve) => {
+    const child = spawn('pnpm', ['--filter', '@subspace/database', 'exec', 'drizzle-kit', 'push', '--force'], {
+      cwd,
+      env,
+      shell: process.platform === 'win32',
+    });
+    let out = '';
+    child.stdout.on('data', (d) => ((out += d), process.stdout.write(d)));
+    child.stderr.on('data', (d) => ((out += d), process.stderr.write(d)));
+    child.on('exit', (code) => resolve(code === 0 && !/^error:/m.test(out) ? 0 : 1));
+  });
 
 const env = loadNativeEnv();
 
@@ -24,23 +40,26 @@ const run = (cmd, args, opts = {}) =>
   });
 
 const required = { Postgres: 5432, Redis: 6379 };
-const optional = { 'MinIO (vault uploads)': 9000, 'LiveKit (voice/video)': 7880 };
-
 for (const [name, port] of Object.entries(required)) {
   if (!(await probe(port))) {
-    console.error(`\n[native] ${name} is not reachable on 127.0.0.1:${port}. See scripts/native/README.md.\n`);
+    console.error(`
+[native] ${name} is not reachable on 127.0.0.1:${port}. See scripts/native/README.md.
+`);
     process.exit(1);
   }
 }
-for (const [name, port] of Object.entries(optional)) {
-  if (!(await probe(port))) console.warn(`[native] ${name} not running on :${port}; that feature will be unavailable.`);
-}
+const infra = await ensureInfra(env);
+if (!infra.minio) console.warn('[native] MinIO unavailable: Subspace Vault uploads will fail.');
+if (!infra.livekit) console.warn('[native] LiveKit unavailable: Comm-Link voice/video will fail.');
 
 console.log('[native] Building shared packages...');
 await run('pnpm', ['--filter', '@subspace/constants', '--filter', '@subspace/crypto', '--filter', '@subspace/database', 'build']);
 
 console.log('[native] Syncing database schema...');
-await run('pnpm', ['--filter', '@subspace/database', 'exec', 'drizzle-kit', 'push', '--force']);
+if ((await pushSchema(env, ROOT)) !== 0) {
+  console.error('[native] Schema push failed.');
+  process.exit(1);
+}
 
 console.log('[native] Starting services (web on http://localhost:5173)...');
 const services = ['@subspace/api-service', '@subspace/gateway-service', '@subspace/file-service', '@subspace/badge-worker', '@subspace/web'];

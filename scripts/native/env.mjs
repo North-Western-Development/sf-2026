@@ -41,6 +41,10 @@ export function loadNativeEnv({ test = false } = {}) {
   env.S3_ENDPOINT ||= '127.0.0.1:9000';
   env.S3_PUBLIC_ENDPOINT ||= 'http://localhost:5173';
   env.VITE_BACKEND_HOST ||= '127.0.0.1';
+  // Native services are only reached through the Vite proxy; keep them off the LAN.
+  env.API_HOST ||= '127.0.0.1';
+  env.FILE_HOST ||= '127.0.0.1';
+  env.GATEWAY_HOST ||= '127.0.0.1';
 
   if (test) {
     env.DATABASE_URL = env.TEST_DATABASE_URL;

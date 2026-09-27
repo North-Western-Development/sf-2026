@@ -57,3 +57,4 @@ minio_data/
 .agents/
 
 ui-examples/graphify-out/
+.native-data/

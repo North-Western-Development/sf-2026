@@ -15,6 +15,7 @@ import { Redis } from 'ioredis';
 dotenv.config({ path: ['.env', '../../.env'] });
 
 const port = Number(process.env.GATEWAY_PORT) || 3002;
+const host = process.env.GATEWAY_HOST || '0.0.0.0';
 const redisUrl = process.env.REDIS_URL || 'redis://redis:6379';
 const JWT_SECRET = getJwtSecret();
 
@@ -96,7 +97,7 @@ const maskPresence = (p: PresenceState): PresenceState =>
 export function createGatewayServer(customPort = port, options: GatewayOptions = {}) {
   const instanceId = randomUUID();
   const resolver = options.resolver ?? createDatabaseResolver();
-  const wss = new WebSocketServer({ port: customPort });
+  const wss = new WebSocketServer({ port: customPort, host });
   const sessions = new Map<WebSocket, Session>();
   const voiceStates = new Map<string, VoiceState>();
   /** Last known presence (already masked) for every transmitter seen on the cluster. */

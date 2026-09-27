@@ -2,11 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { WebSocket } from 'ws';
 import { createGatewayServer, GatewayResolver } from '../../apps/gateway-service/src/index.js';
 import { GATEWAY_OPCODES, PRESENCE_STATES } from '@subspace/constants';
-import { signAccessToken } from '@subspace/crypto';
+import { signAccessToken, getJwtSecret } from '@subspace/crypto';
 
 describe('Gateway & Ghost Mode Presence Suite', () => {
   const TEST_PORT = 3999;
-  const JWT_SECRET = 'subspace_jwt_super_secret_key_2026';
+  const JWT_SECRET = getJwtSecret();
   let serverInstance: ReturnType<typeof createGatewayServer>;
 
   // transmitter-a and transmitter-b share a beacon; outsider shares nothing with anyone.
