@@ -26,6 +26,9 @@ const CHANNELS = {
   session: 'gateway:session:events',
 } as const;
 
+/** Redis hash mirroring every session's masked presence, so the API can read it (e.g. member lists). */
+const PRESENCE_HASH_KEY = 'presence';
+
 export interface Session {
   transmitterId?: string;
   username?: string;
@@ -223,14 +226,19 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     }
   }
 
-  function broadcastPresenceUpdate(transmitterId: string, presence: PresenceState) {
+  function broadcastPresenceUpdate(transmitterId: string, presence: PresenceState, isDisconnect = false) {
+    const masked = maskPresence(presence); // Ghost Mode: peers never observe 'invisible'
     const event = {
       transmitter_id: transmitterId,
-      presence: maskPresence(presence), // Ghost Mode: peers never observe 'invisible'
+      presence: masked,
       timestamp: new Date().toISOString(),
     };
     deliverPresence(event);
     publish(CHANNELS.presence, event);
+    if (redisReady()) {
+      if (isDisconnect) redisPub!.hdel(PRESENCE_HASH_KEY, transmitterId).catch(() => {});
+      else redisPub!.hset(PRESENCE_HASH_KEY, transmitterId, masked).catch(() => {});
+    }
   }
 
   function broadcastVoiceStateUpdate(
@@ -420,7 +428,7 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       const stillConnected = [...sessions.values()].some(
         (s) => s.isAuthenticated && s.transmitterId === session.transmitterId
       );
-      if (!stillConnected) broadcastPresenceUpdate(session.transmitterId, PRESENCE_STATES.OFFLINE);
+      if (!stillConnected) broadcastPresenceUpdate(session.transmitterId, PRESENCE_STATES.OFFLINE, true);
     });
   });
 
