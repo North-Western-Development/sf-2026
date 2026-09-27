@@ -29,6 +29,7 @@ export const transmitters = pgTable('transmitters', {
   avatarUrl: text('avatar_url'),
   bio: text('bio'),
   presence: text('presence').default('offline').notNull(),
+  customStatus: jsonb('custom_status').$type<{ text: string; emoji?: string; expiresAt?: string } | null>(),
   staffRank: integer('staff_rank').default(0).notNull(),
   isBanned: boolean('is_banned').default(false).notNull(),
   banReason: text('ban_reason'),
@@ -134,6 +135,8 @@ export const relays = pgTable('relays', {
   topic: text('topic'),
   position: integer('position').default(0).notNull(),
   isUnhideable: boolean('is_unhideable').default(false).notNull(),
+  lastTransmissionId: uuid('last_transmission_id'),
+  lastTransmissionAt: timestamp('last_transmission_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -157,6 +160,8 @@ export const pointToPointLinks = pgTable('point_to_point_links', {
   id: uuid('id').defaultRandom().primaryKey(),
   transmitter1Id: uuid('transmitter1_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   transmitter2Id: uuid('transmitter2_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  lastTransmissionId: uuid('last_transmission_id'),
+  lastTransmissionAt: timestamp('last_transmission_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -169,6 +174,8 @@ export const subspaceMeshes = pgTable('subspace_meshes', {
   ownerId: uuid('owner_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   name: text('name').notNull(),
   iconUrl: text('icon_url'),
+  lastTransmissionId: uuid('last_transmission_id'),
+  lastTransmissionAt: timestamp('last_transmission_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -235,6 +242,7 @@ export const archivalThreads = pgTable('archival_threads', {
   isLocked: boolean('is_locked').default(false).notNull(),
   rootTransmissionId: uuid('root_transmission_id'),
   transmissionCount: integer('transmission_count').default(0).notNull(),
+  lastTransmissionId: uuid('last_transmission_id'),
   lastTransmissionAt: timestamp('last_transmission_at', { withTimezone: true }).defaultNow().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -263,9 +271,17 @@ export const transmissions = pgTable('transmissions', {
   meshId: uuid('mesh_id').references(() => subspaceMeshes.id, { onDelete: 'cascade' }),
   transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   content: text('content').notNull(), // Max 2000 chars default
-  attachments: jsonb('attachments').$type<Array<{ id: string; url: string; filename: string; size: number }>>().default([]).notNull(),
+  attachments: jsonb('attachments').$type<Array<{ id: string; url: string; filename: string; size: number; mimeType?: string; width?: number; height?: number }>>().default([]).notNull(),
   isEdited: boolean('is_edited').default(false).notNull(),
   encryptedPayload: text('encrypted_payload'),
+  replyToId: uuid('reply_to_id'),
+  replyPing: boolean('reply_ping').default(true).notNull(),
+  pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+  pinnedBy: uuid('pinned_by'),
+  mentions: jsonb('mentions').$type<string[]>().default([]).notNull(),
+  mentionRoles: jsonb('mention_roles').$type<string[]>().default([]).notNull(),
+  mentionEveryone: boolean('mention_everyone').default(false).notNull(),
+  type: text('type').default('default').notNull(), // 'default' | 'reply' | 'system_join' | 'system_pin'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -342,4 +358,5 @@ export const beaconEmojis = pgTable('beacon_emojis', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export * from './schema-messaging.js';
 

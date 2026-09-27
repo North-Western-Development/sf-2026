@@ -399,10 +399,25 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         displayFont: transmitters.displayFont,
         avatarUrl: transmitters.avatarUrl,
         presence: transmitters.presence,
+        customStatus: transmitters.customStatus,
       })
       .from(beaconMembers)
       .innerJoin(transmitters, eq(beaconMembers.transmitterId, transmitters.id))
       .where(eq(beaconMembers.beaconId, beaconId));
+
+    // Masked live presence mirrored by the gateway into Redis; offline (or absent) otherwise.
+    const redis = (app as any).redis;
+    let presenceMap = new Map<string, string>();
+    if (redis && members.length > 0) {
+      try {
+        const entries = await redis.hmget('presence', ...members.map((m: any) => m.transmitterId));
+        members.forEach((m: any, i: number) => {
+          if (entries[i]) presenceMap.set(m.transmitterId, entries[i]);
+        });
+      } catch {
+        // Redis unavailable: fall through to offline for everyone.
+      }
+    }
 
     const beaconClearances = await db
       .select()
@@ -435,7 +450,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         displayColor: effectiveColor,
         displayFont,
         avatarUrl: m.avatarUrl,
-        presence: m.presence,
+        presence: presenceMap.get(m.transmitterId) || 'offline',
+        customStatus: m.customStatus,
         hasCompletedOnboarding: m.hasCompletedOnboarding,
         clearanceIds: m.clearanceIds,
         isOwner: m.transmitterId === beacon.ownerId,

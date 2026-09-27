@@ -4,7 +4,9 @@ import {
   and,
   or,
   desc,
+  notInArray,
   pointToPointLinks,
+  pointToPointLinkHidden,
   transmissions,
   transmitters,
   affiliations,
@@ -14,33 +16,172 @@ import {
 } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
+import { loadChannel } from '../../lib/channels.js';
+import { touchChannelLastTransmission } from '../../lib/read-state.js';
+import { AUTHOR_FIELDS } from '../../lib/transmissions.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
+
+async function isBlocked(db: any, a: string, b: string): Promise<boolean> {
+  const [row] = await db
+    .select()
+    .from(signalBlacklist)
+    .where(
+      or(
+        and(eq(signalBlacklist.transmitterId, a), eq(signalBlacklist.targetId, b), eq(signalBlacklist.targetType, 'transmitter')),
+        and(eq(signalBlacklist.transmitterId, b), eq(signalBlacklist.targetId, a), eq(signalBlacklist.targetType, 'transmitter'))
+      )
+    )
+    .limit(1);
+  return !!row;
+}
 
 export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
 
   /**
    * GET /api/v1/links
-   * List all active Point-to-Point links for requesting transmitter
+   * List active Point-to-Point Links for the caller (excludes ones the caller hid), sorted by activity.
    */
   app.get('/', async (request, reply) => {
     const token = extractAuthToken(request);
     if (!token) return reply.status(401).send({ error: 'Authentication required' });
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
 
-    const links = await db
+    const hidden = await db.select().from(pointToPointLinkHidden).where(eq(pointToPointLinkHidden.transmitterId, token.transmitterId));
+    const hiddenIds = hidden.map((h: any) => h.linkId);
+
+    let links = await db
       .select()
       .from(pointToPointLinks)
-      .where(
-        or(
-          eq(pointToPointLinks.transmitter1Id, token.transmitterId),
-          eq(pointToPointLinks.transmitter2Id, token.transmitterId)
-        )
-      )
+      .where(or(eq(pointToPointLinks.transmitter1Id, token.transmitterId), eq(pointToPointLinks.transmitter2Id, token.transmitterId)))
       .orderBy(desc(pointToPointLinks.updatedAt));
 
-    return reply.send({ links });
+    if (hiddenIds.length > 0) links = links.filter((l: any) => !hiddenIds.includes(l.id));
+
+    const redis = (app as any).redis;
+    const out = [];
+    for (const link of links) {
+      const recipientId = link.transmitter1Id === token.transmitterId ? link.transmitter2Id : link.transmitter1Id;
+      const [recipient] = await db.select(AUTHOR_FIELDS).from(transmitters).where(eq(transmitters.id, recipientId)).limit(1);
+      let presence = 'offline';
+      if (redis && recipient) {
+        try {
+          presence = (await redis.hget('presence', recipientId)) || 'offline';
+        } catch {
+          // ignore
+        }
+      }
+      out.push({
+        id: link.id,
+        recipient: recipient ? { ...recipient, presence } : null,
+        lastTransmissionId: link.lastTransmissionId,
+        lastTransmissionAt: link.lastTransmissionAt,
+      });
+    }
+
+    return reply.send({ links: out });
+  });
+
+  /**
+   * POST /api/v1/links
+   * Open (or return) a Point-to-Point Link without sending a transmission.
+   * Allowed if affiliated, or sharing a beacon and not blocked.
+   */
+  app.post(
+    '/',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['targetId'],
+          properties: { targetId: { type: 'string', format: 'uuid' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const token = extractAuthToken(request);
+      if (!token) return reply.status(401).send({ error: 'Authentication required' });
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+      const { targetId } = request.body as { targetId: string };
+      if (targetId === token.transmitterId) return reply.status(400).send({ error: 'Cannot open a link with self' });
+
+      const [target] = await db.select().from(transmitters).where(eq(transmitters.id, targetId)).limit(1);
+      if (!target) return reply.status(404).send({ error: 'Transmitter not found' });
+
+      if (await isBlocked(db, token.transmitterId, targetId)) {
+        return reply.status(403).send({ error: 'Communication blocked by signal filter', code: 'SIGNAL_BLOCKED' });
+      }
+
+      const [friendship] = await db
+        .select()
+        .from(affiliations)
+        .where(
+          and(
+            eq(affiliations.status, 'accepted'),
+            or(
+              and(eq(affiliations.transmitterId, token.transmitterId), eq(affiliations.targetId, targetId)),
+              and(eq(affiliations.transmitterId, targetId), eq(affiliations.targetId, token.transmitterId))
+            )
+          )
+        )
+        .limit(1);
+
+      let allowed = !!friendship;
+      if (!allowed) {
+        const mine = await db.select({ beaconId: beaconMembers.beaconId }).from(beaconMembers).where(eq(beaconMembers.transmitterId, token.transmitterId));
+        const theirs = await db.select({ beaconId: beaconMembers.beaconId }).from(beaconMembers).where(eq(beaconMembers.transmitterId, targetId));
+        const mineSet = new Set(mine.map((m: any) => m.beaconId));
+        allowed = theirs.some((t: any) => mineSet.has(t.beaconId));
+      }
+
+      if (!allowed) return reply.status(403).send({ error: 'Cannot open a link with this transmitter', code: 'LINK_NOT_ALLOWED' });
+
+      let [link] = await db
+        .select()
+        .from(pointToPointLinks)
+        .where(
+          or(
+            and(eq(pointToPointLinks.transmitter1Id, token.transmitterId), eq(pointToPointLinks.transmitter2Id, targetId)),
+            and(eq(pointToPointLinks.transmitter1Id, targetId), eq(pointToPointLinks.transmitter2Id, token.transmitterId))
+          )
+        )
+        .limit(1);
+
+      if (!link) {
+        [link] = await db.insert(pointToPointLinks).values({ transmitter1Id: token.transmitterId, transmitter2Id: targetId }).returning();
+      }
+
+      await db.delete(pointToPointLinkHidden).where(and(eq(pointToPointLinkHidden.transmitterId, token.transmitterId), eq(pointToPointLinkHidden.linkId, link.id)));
+
+      return reply.status(201).send({ link });
+    }
+  );
+
+  /**
+   * DELETE /api/v1/links/:linkId
+   * Hides the DM from the caller's list. A new message un-hides it.
+   */
+  app.delete('/:linkId', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const { linkId } = request.params as { linkId: string };
+    const [link] = await db.select().from(pointToPointLinks).where(eq(pointToPointLinks.id, linkId)).limit(1);
+    if (!link) return reply.status(404).send({ error: 'Link not found' });
+    if (link.transmitter1Id !== token.transmitterId && link.transmitter2Id !== token.transmitterId) {
+      return reply.status(403).send({ error: 'Access denied to this Point-to-Point Link' });
+    }
+
+    await db
+      .insert(pointToPointLinkHidden)
+      .values({ transmitterId: token.transmitterId, linkId })
+      .onConflictDoNothing();
+
+    return reply.send({ message: 'Link hidden' });
   });
 
   /**
@@ -69,27 +210,7 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(400).send({ error: 'Cannot establish link with self' });
     }
 
-    // 1. Check blacklist
-    const isBlocked = await db
-      .select()
-      .from(signalBlacklist)
-      .where(
-        or(
-          and(
-            eq(signalBlacklist.transmitterId, targetId),
-            eq(signalBlacklist.targetId, senderId),
-            eq(signalBlacklist.targetType, 'transmitter')
-          ),
-          and(
-            eq(signalBlacklist.transmitterId, senderId),
-            eq(signalBlacklist.targetId, targetId),
-            eq(signalBlacklist.targetType, 'transmitter')
-          )
-        )
-      )
-      .limit(1);
-
-    if (isBlocked.length > 0) {
+    if (await isBlocked(db, senderId, targetId)) {
       return reply.status(403).send({
         error: 'Communication blocked by signal filter',
         code: 'SIGNAL_BLOCKED',
@@ -173,6 +294,9 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           content: content.trim(),
         })
         .returning();
+
+      const channel = await loadChannel(db, 'link', link.id);
+      if (channel) await touchChannelLastTransmission(db, channel, newTransmission.id, newTransmission.createdAt);
 
       await publishGatewayEvent(
         app,
