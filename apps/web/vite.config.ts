@@ -22,10 +22,12 @@ export default defineConfig({
     host: '127.0.0.1',
     proxy: {
       '/api/v1/vault': { target: `http://${BACKEND_HOST}:3003`, changeOrigin: true },
+      '/api/v1/media': { target: `http://${BACKEND_HOST}:3003`, changeOrigin: true },
       '/api': { target: `http://${BACKEND_HOST}:3001`, changeOrigin: true },
       '/gateway': { target: `ws://${BACKEND_HOST}:3002`, ws: true },
       '/rtc': { target: `ws://${BACKEND_HOST}:7880`, ws: true },
       '/subspace-vault': { target: `http://${BACKEND_HOST}:9000` },
+      '/subspace-media': { target: `http://${BACKEND_HOST}:9000` },
     },
   },
 });
