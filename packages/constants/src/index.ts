@@ -45,6 +45,17 @@ export const PERMISSIONS = {
   MANAGE_CLEARANCES: 1n << 10n,      // 0x400 - Create, edit, assign clearances below own
   KICK_MEMBERS: 1n << 11n,           // 0x800 - Kick members below own rank
   BAN_MEMBERS: 1n << 12n,            // 0x1000 - Ban members below own rank
+  ADD_REACTIONS: 1n << 13n,          // Add new reactions (existing ones need only VIEW_RELAY)
+  MENTION_EVERYONE: 1n << 14n,       // @everyone, @here, non-mentionable clearance pings
+  CREATE_INVITES: 1n << 15n,         // Create beacon invites
+  MANAGE_BEACON: 1n << 16n,          // Edit beacon settings, view/revoke all invites
+  CHANGE_NICKNAME: 1n << 17n,        // Change own nickname
+  MANAGE_NICKNAMES: 1n << 18n,       // Change others' nicknames (hierarchy applies)
+  READ_HISTORY: 1n << 19n,           // Read transmissions sent before the member could see the relay
+  MANAGE_GLYPHS: 1n << 20n,          // Create/rename/delete Signal Glyphs
+  MUTE_MEMBERS: 1n << 21n,           // Server-mute members in Comm-Links
+  MOVE_MEMBERS: 1n << 22n,           // Move/disconnect members in Comm-Links
+  PIN_TRANSMISSIONS: 1n << 23n,      // Pin/unpin transmissions
   ADMINISTRATOR: 1n << 29n,          // 0x20000000 - Bypass all relay permission checks
 } as const;
 
@@ -69,7 +80,11 @@ export const DEFAULT_EVERYONE_PERMISSIONS =
   PERMISSIONS.EMBED_LINKS |
   PERMISSIONS.ATTACH_FILES |
   PERMISSIONS.CONNECT_AUDIO |
-  PERMISSIONS.SPEAK_AUDIO;
+  PERMISSIONS.SPEAK_AUDIO |
+  PERMISSIONS.ADD_REACTIONS |
+  PERMISSIONS.CREATE_INVITES |
+  PERMISSIONS.CHANGE_NICKNAME |
+  PERMISSIONS.READ_HISTORY;
 
 /**
  * Calculate the effective permission bitfield for a member given their clearances and owner status
@@ -129,6 +144,7 @@ export function canModerate(
 export const PRESENCE_STATES = {
   ONLINE: 'online',
   IDLE: 'idle',
+  DND: 'dnd',
   AWAY: 'away',
   INVISIBLE: 'invisible',
   OFFLINE: 'offline',
