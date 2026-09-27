@@ -1,12 +1,22 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { fileURLToPath } from 'node:url';
+
+const pkg = (name: string) => fileURLToPath(new URL(`../../packages/${name}/src/index.ts`, import.meta.url));
 
 // Dev-server proxy mirrors docker/nginx/web.conf so the client always talks to its own origin.
 const BACKEND_HOST = process.env.VITE_BACKEND_HOST || '127.0.0.1';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    // Consume workspace packages from source: they build to CommonJS for Node services.
+    alias: {
+      '@subspace/constants': pkg('constants'),
+      '@subspace/ui': pkg('ui'),
+    },
+  },
   server: {
     port: 5173,
     host: '127.0.0.1',

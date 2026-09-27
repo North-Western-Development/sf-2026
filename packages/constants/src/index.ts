@@ -177,3 +177,19 @@ export const GATEWAY_OPCODES = {
 } as const;
 
 export type GatewayOpcode = typeof GATEWAY_OPCODES[keyof typeof GATEWAY_OPCODES];
+
+/**
+ * Subspace Directives: the instance rules every transmitter must accept.
+ * Bump `version` whenever the text changes so existing accounts are re-prompted.
+ */
+export const SUBSPACE_DIRECTIVES = {
+  version: 1,
+  rules: [
+    { title: 'Respect every transmitter', body: 'No harassment, hate speech, threats, or targeted abuse.' },
+    { title: 'Keep it legal', body: 'Do not share illegal content or coordinate illegal activity.' },
+    { title: 'No spam or impersonation', body: 'No unsolicited advertising, scams, or pretending to be someone else, including staff.' },
+    { title: 'Protect privacy', body: "Do not share other people's personal information without consent." },
+    { title: 'Uploads are not private', body: 'Anyone with a file link, and instance staff, can open uploaded files.' },
+    { title: 'Command Staff decisions apply', body: 'Staff may remove content or suspend accounts that break these directives.' },
+  ],
+} as const;

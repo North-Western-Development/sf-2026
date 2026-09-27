@@ -40,29 +40,22 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const token = localStorage.getItem('subspace_access_token') || '';
-
   const loadVisuals = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/relays/${relayId}/visual/transmissions`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.request(`/api/v1/relays/${relayId}/visual/gallery`);
       if (res.ok) {
         const data = await res.json();
-        const mapped: VisualItem[] = (data.transmissions || []).flatMap((tx: any) => {
-          const attachments = tx.attachments || [];
-          return attachments.map((att: any) => ({
-            id: `${tx.id}-${att.id || att.filename}`,
-            url: att.url,
-            filename: att.filename || 'Visual Artifact',
-            caption: tx.content || '',
-            authorName: tx.authorName || 'Transmitter',
-            authorUsername: tx.authorUsername || 'transmitter',
-            createdAt: tx.createdAt,
-            sizeFormatted: att.size ? `${(att.size / 1024).toFixed(1)} KB` : 'Media',
-          }));
-        });
+        const mapped: VisualItem[] = (data.gallery || []).map((g: any, i: number) => ({
+          id: `${g.transmissionId}-${g.attachment?.id || i}`,
+          url: g.attachment?.url,
+          filename: g.attachment?.filename || 'Visual Artifact',
+          caption: g.caption || '',
+          authorName: g.author?.displayName || g.author?.username || 'Transmitter',
+          authorUsername: g.author?.username || 'transmitter',
+          createdAt: g.createdAt,
+          sizeFormatted: g.attachment?.size ? `${(g.attachment.size / 1024).toFixed(1)} KB` : 'Media',
+        }));
         setItems(mapped);
       }
     } catch (err) {
@@ -89,12 +82,8 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
     setUploading(true);
     try {
       const vaultFile = await api.uploadVaultFile(selectedFile);
-      const res = await fetch(`/api/v1/relays/${relayId}/visual/transmissions`, {
+      const res = await api.request(`/api/v1/relays/${relayId}/visual/transmissions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           content: captionInput.trim(),
           attachments: [{

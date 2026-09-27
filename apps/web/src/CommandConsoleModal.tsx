@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '@subspace/ui';
 
+import { api } from './services/api';
 interface CommandConsoleModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -29,31 +30,26 @@ export const CommandConsoleModal: React.FC<CommandConsoleModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const token = localStorage.getItem('subspace_access_token') || '';
-
   const loadData = async () => {
     setLoading(true);
     setStatusMessage(null);
     try {
       if (activeTab === 'reports') {
-        const res = await fetch('/api/v1/console/reports', {
-          headers: { Authorization: `Bearer ${token}` },
+        const res = await api.request('/api/v1/console/reports', {
         });
         if (res.ok) {
           const data = await res.json();
           setReports(data.reports || []);
         }
       } else if (activeTab === 'transmitters') {
-        const res = await fetch('/api/v1/console/transmitters', {
-          headers: { Authorization: `Bearer ${token}` },
+        const res = await api.request('/api/v1/console/transmitters', {
         });
         if (res.ok) {
           const data = await res.json();
           setTransmittersList(data.transmitters || []);
         }
       } else if (activeTab === 'vault') {
-        const res = await fetch('/api/v1/console/vault/files', {
-          headers: { Authorization: `Bearer ${token}` },
+        const res = await api.request('/api/v1/console/vault/files', {
         });
         if (res.ok) {
           const data = await res.json();
@@ -77,12 +73,8 @@ export const CommandConsoleModal: React.FC<CommandConsoleModalProps> = ({
 
   const handleResolveReport = async (reportId: string, status: 'resolved' | 'dismissed') => {
     try {
-      const res = await fetch(`/api/v1/console/reports/${reportId}`, {
+      const res = await api.request(`/api/v1/console/reports/${reportId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ status, resolutionNotes: `Marked ${status} by staff.` }),
       });
       if (res.ok) {
@@ -96,12 +88,8 @@ export const CommandConsoleModal: React.FC<CommandConsoleModalProps> = ({
 
   const handleToggleQuarantine = async (fileId: string, currentQuarantined: boolean) => {
     try {
-      const res = await fetch(`/api/v1/console/vault/files/${fileId}/quarantine`, {
+      const res = await api.request(`/api/v1/console/vault/files/${fileId}/quarantine`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ isQuarantined: !currentQuarantined }),
       });
       if (res.ok) {
@@ -117,12 +105,8 @@ export const CommandConsoleModal: React.FC<CommandConsoleModalProps> = ({
     const action = isBanned ? 'unban' : 'ban';
     if (!confirm(`Are you sure you want to ${action} transmitter ${userId}?`)) return;
     try {
-      const res = await fetch(`/api/v1/console/transmitters/${userId}/${action}`, {
+      const res = await api.request(`/api/v1/console/transmitters/${userId}/${action}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({ reason: 'Command Console staff administrative action' }),
       });
       if (res.ok) {

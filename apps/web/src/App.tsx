@@ -684,8 +684,8 @@ export const AppContent: React.FC = () => {
           avatar: user.avatarUrl || '⚡',
           status: 'online',
           statusText: 'Subspace Frequency Terminal Online',
-          staffRank: user.staffRank ? user.staffRank : (user.username === 'command_officer' ? 3 : 0),
-          roles: user.roles || ((user.staffRank || user.username === 'command_officer') ? ['Command Staff', 'Sysop'] : ['Transmitter']),
+          staffRank: user.staffRank ?? 0,
+          roles: user.roles || (user.staffRank ? ['Command Staff'] : ['Transmitter']),
           bio: user.bio || 'Subspace Network Operator',
           memberSince: 'Sep 2026',
           quantumKeyFingerprint: `SF-QKD-${user.id.slice(0, 4).toUpperCase()}`,
@@ -5187,7 +5187,7 @@ export const AppContent: React.FC = () => {
                                   {m.author}
                                 </span>
 
-                                {(m.roleBadge || (authorMember.staffRank && authorMember.staffRank >= 2) || (authorMember.callsign === 'command_officer' || m.callsign === 'command_officer')) && (
+                                {(m.roleBadge || (authorMember.staffRank && authorMember.staffRank >= 2)) && (
                                   <span className="bg-[#5865f2] text-white text-[10px] font-bold px-1 rounded uppercase">
                                     {m.roleBadge || 'COMMAND STAFF'}
                                   </span>
@@ -5749,6 +5749,18 @@ export const AppContent: React.FC = () => {
             >
               Security & 2FA
             </button>
+            <div className="mt-auto pt-2 border-t border-line">
+              <button
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  gateway.disconnect?.();
+                  void api.logout();
+                }}
+                className="w-full text-left px-2 py-1.5 rounded-xs text-danger hover:bg-danger-soft transition-colors"
+              >
+                Log Out
+              </button>
+            </div>
           </div>
 
           {/* Settings Tab Content */}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ShieldAlert, CheckCircle2, Lock } from 'lucide-react';
 import { Modal } from '@subspace/ui';
 
+import { api } from './services/api';
 interface IncidentFlareModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -32,12 +33,8 @@ export const IncidentFlareModal: React.FC<IncidentFlareModalProps> = ({
     setIsSubmitting(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/reports', {
+      const res = await api.request('/api/v1/reports', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('subspace_access_token') || ''}`,
-        },
         body: JSON.stringify({
           targetType,
           targetId,

@@ -178,7 +178,18 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
   }
 
   function voiceSnapshot(sess: Session) {
-    return [...voiceStates.values()].filter((v) => sess.beaconIds.has(v.beaconId));
+    // Same snake_case shape as VOICE_STATE_UPDATE events.
+    return [...voiceStates.values()]
+      .filter((v) => sess.beaconIds.has(v.beaconId))
+      .map((v) => ({
+        transmitter_id: v.transmitterId,
+        username: v.username,
+        relay_id: v.relayId,
+        beacon_id: v.beaconId,
+        is_muted: v.isMuted,
+        is_deafened: v.isDeafened,
+        is_speaking: v.isSpeaking,
+      }));
   }
 
   async function loadRelationships(sess: Session) {

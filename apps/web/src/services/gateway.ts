@@ -44,7 +44,12 @@ class SubspaceGatewayClient {
   private readyListeners: Set<EventListener<{ transmitter: any; voice_states: any[] }>> = new Set();
   private cachedVoiceStates: Map<string, VoiceStateEvent> = new Map();
 
+  private shouldReconnect = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
   public connect() {
+    this.shouldReconnect = true;
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -72,14 +77,28 @@ class SubspaceGatewayClient {
     this.ws.onclose = () => {
       this.isConnecting = false;
       this.stopHeartbeat();
-      // Auto reconnect after 3 seconds
-      setTimeout(() => this.connect(), 3000);
+      this.ws = null;
+      if (!this.shouldReconnect) return;
+      // Exponential backoff with jitter, capped at 30s.
+      const delay = Math.min(30_000, 1000 * 2 ** this.reconnectAttempts) * (0.75 + Math.random() * 0.5);
+      this.reconnectAttempts += 1;
+      this.reconnectTimer = setTimeout(() => this.connect(), delay);
     };
 
-    this.ws.onerror = (err) => {
-      console.warn('[Gateway] WebSocket connection warning:', err);
+    this.ws.onerror = () => {
       this.ws?.close();
     };
+  }
+
+  /** Close the socket and stop reconnecting (sign-out). */
+  public disconnect() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.stopHeartbeat();
+    this.ws?.close();
+    this.ws = null;
+    this.cachedVoiceStates.clear();
   }
 
   private handlePayload(payload: any) {
@@ -88,18 +107,15 @@ class SubspaceGatewayClient {
       this.heartbeatInterval = payload.d?.heartbeat_interval || 30000;
       this.startHeartbeat();
 
-      const token = api.getToken();
-      if (token && this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(
-          JSON.stringify({
-            op: 2, // IDENTIFY
-            d: {
-              token,
-              presence: 'online',
-            },
-          })
-        );
-      }
+      void api.getValidToken().then((token) => {
+        if (!token) {
+          this.disconnect();
+          return;
+        }
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ op: 2 /* IDENTIFY */, d: { token, presence: 'online' } }));
+        }
+      });
       return;
     }
 
@@ -111,6 +127,7 @@ class SubspaceGatewayClient {
     // 0: DISPATCH
     if (payload.op === 0) {
       if (payload.t === 'READY') {
+        this.reconnectAttempts = 0;
         const voiceStates = payload.d?.voice_states || [];
         voiceStates.forEach((vs: any) => {
           if (vs.relay_id) {

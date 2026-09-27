@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, and, transmitters, transmitterPasskeys } from '@subspace/database';
+import { SUBSPACE_DIRECTIVES } from '@subspace/constants';
 import {
   hashPassword,
   verifyPassword,
@@ -22,7 +23,7 @@ const JWT_SECRET = getJwtSecret();
 const RP_NAME = process.env.RP_NAME || 'Subspace Frequency';
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:3000';
-const CURRENT_RULES_VERSION = 1;
+const CURRENT_RULES_VERSION = SUBSPACE_DIRECTIVES.version;
 
 const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
 
@@ -429,6 +430,12 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (payload?.jti && redis) await redis.del(`refresh:${payload.jti}`).catch(() => {});
     return reply.status(204).send();
   });
+
+  /**
+   * GET /api/v1/auth/directives
+   * Public: the instance rules shown at registration and whenever they change.
+   */
+  app.get('/directives', async () => SUBSPACE_DIRECTIVES);
 
   /**
    * POST /api/v1/auth/directives/accept

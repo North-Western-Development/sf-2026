@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Network, Check } from 'lucide-react';
 import { Modal } from '@subspace/ui';
 
+import { api } from './services/api';
 interface CreateMeshModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -41,13 +42,8 @@ export const CreateMeshModal: React.FC<CreateMeshModalProps> = ({
     setIsSubmitting(true);
     setError(null);
     try {
-      const token = localStorage.getItem('subspace_access_token') || '';
-      const res = await fetch('/api/v1/meshes', {
+      const res = await api.request('/api/v1/meshes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           name: meshName.trim(),
           memberIds: selectedFriendIds,

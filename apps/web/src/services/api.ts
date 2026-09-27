@@ -91,13 +91,53 @@ export interface ApiMember {
   roles?: string[];
 }
 
+export class AuthRequiredError extends Error {
+  constructor() {
+    super('Authentication required');
+    this.name = 'AuthRequiredError';
+  }
+}
+
+export type LoginResult =
+  | { kind: 'session'; transmitter: TransmitterProfile; requiresRulesAgreement: boolean }
+  | { kind: '2fa'; challengeToken: string };
+
+type SessionListener = (transmitter: TransmitterProfile | null) => void;
+
+const STORAGE = {
+  access: 'subspace_access_token',
+  refresh: 'subspace_refresh_token',
+  user: 'subspace_user',
+} as const;
+
+const decodeExp = (jwt: string): number => {
+  try {
+    const body = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(body)).exp ?? 0;
+  } catch {
+    return 0;
+  }
+};
+
+const readStorage = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
 class SubspaceApiClient {
   private token: string | null = null;
+  private refreshToken: string | null = null;
   private transmitter: TransmitterProfile | null = null;
+  private refreshInFlight: Promise<boolean> | null = null;
+  private listeners = new Set<SessionListener>();
 
   constructor() {
-    this.token = localStorage.getItem('subspace_access_token');
-    const storedUser = localStorage.getItem('subspace_user');
+    this.token = readStorage(STORAGE.access);
+    this.refreshToken = readStorage(STORAGE.refresh);
+    const storedUser = readStorage(STORAGE.user);
     if (storedUser) {
       try {
         this.transmitter = JSON.parse(storedUser);
@@ -115,47 +155,173 @@ class SubspaceApiClient {
     return this.transmitter;
   }
 
-  public async login(username = 'command_officer', password = 'subspace2026!'): Promise<TransmitterProfile> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+  public hasSession(): boolean {
+    return !!(this.token || this.refreshToken) && !!this.transmitter;
+  }
+
+  /** Subscribe to sign-in / sign-out. Returns an unsubscribe function. */
+  public onSessionChange(listener: SessionListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private setSession(data: { accessToken: string; refreshToken?: string; transmitter?: TransmitterProfile }) {
+    this.token = data.accessToken;
+    if (data.refreshToken) this.refreshToken = data.refreshToken;
+    if (data.transmitter) this.transmitter = data.transmitter;
+    try {
+      localStorage.setItem(STORAGE.access, this.token);
+      if (this.refreshToken) localStorage.setItem(STORAGE.refresh, this.refreshToken);
+      if (this.transmitter) localStorage.setItem(STORAGE.user, JSON.stringify(this.transmitter));
+    } catch {
+      /* storage unavailable: session lives in memory only */
+    }
+    this.listeners.forEach((l) => l(this.transmitter));
+  }
+
+  private clearSession() {
+    this.token = null;
+    this.refreshToken = null;
+    this.transmitter = null;
+    try {
+      Object.values(STORAGE).forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* ignore */
+    }
+    this.listeners.forEach((l) => l(null));
+  }
+
+  private async postJson(url: string, body: unknown) {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(body),
     });
-
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Login failed' }));
-      throw new Error(err.error || err.message || 'Authentication error');
+      const err = new Error(data.error || data.message || 'Request failed') as Error & {
+        code?: string;
+        status?: number;
+      };
+      err.code = data.code;
+      err.status = res.status;
+      throw err;
     }
+    return data;
+  }
 
-    const data = await res.json();
-    this.token = data.accessToken;
-    this.transmitter = data.transmitter;
-    localStorage.setItem('subspace_access_token', this.token!);
-    localStorage.setItem('subspace_user', JSON.stringify(this.transmitter));
-    return this.transmitter!;
+  /** identifier: username#0000, email, or a username that is unique on this instance. */
+  public async login(identifier: string, password: string): Promise<LoginResult> {
+    const data = await this.postJson(`${API_BASE}/auth/login`, { username: identifier, password });
+    if (data.requires2FA) return { kind: '2fa', challengeToken: data.tempToken };
+    this.setSession(data);
+    return { kind: 'session', transmitter: data.transmitter, requiresRulesAgreement: !!data.requiresRulesAgreement };
+  }
+
+  public async completeTwoFactor(challengeToken: string, code: string, isBackupCode = false): Promise<LoginResult> {
+    const data = await this.postJson(`${API_BASE}/auth/2fa/verify`, { token: challengeToken, code, isBackupCode });
+    this.setSession(data);
+    return { kind: 'session', transmitter: data.transmitter, requiresRulesAgreement: !!data.requiresRulesAgreement };
+  }
+
+  public async register(input: {
+    username: string;
+    email: string;
+    password: string;
+    displayName?: string;
+    acceptDirectives: boolean;
+  }): Promise<LoginResult> {
+    const data = await this.postJson(`${API_BASE}/auth/register`, input);
+    this.setSession(data);
+    return { kind: 'session', transmitter: data.transmitter, requiresRulesAgreement: !!data.requiresRulesAgreement };
+  }
+
+  public async acceptDirectives(): Promise<void> {
+    const res = await this.fetchAuth(`${API_BASE}/auth/directives/accept`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to record directive acceptance');
+  }
+
+  /** Re-reads the signed-in transmitter; resolves null when there is no valid session. */
+  public async restoreSession(): Promise<{ transmitter: TransmitterProfile; requiresRulesAgreement: boolean } | null> {
+    if (!this.token && !this.refreshToken) return null;
+    try {
+      const res = await this.fetchAuth(`${API_BASE}/auth/me`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      this.setSession({ accessToken: this.token!, transmitter: data.transmitter });
+      return { transmitter: data.transmitter, requiresRulesAgreement: !!data.requiresRulesAgreement };
+    } catch {
+      return null;
+    }
+  }
+
+  public async logout(): Promise<void> {
+    const refreshToken = this.refreshToken;
+    this.clearSession();
+    if (refreshToken) {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      }).catch(() => {});
+    }
+  }
+
+  /** Exchange the refresh token once, sharing the attempt between concurrent callers. */
+  private refreshSession(): Promise<boolean> {
+    if (!this.refreshToken) return Promise.resolve(false);
+    if (!this.refreshInFlight) {
+      const refreshToken = this.refreshToken;
+      this.refreshInFlight = this.postJson(`${API_BASE}/auth/refresh`, { refreshToken })
+        .then((data) => {
+          this.setSession(data);
+          return true;
+        })
+        .catch(() => false)
+        .finally(() => {
+          this.refreshInFlight = null;
+        });
+    }
+    return this.refreshInFlight;
+  }
+
+  /** Access token that is valid for at least another 30 seconds, refreshing if needed. */
+  public async getValidToken(): Promise<string | null> {
+    const exp = this.token ? decodeExp(this.token) : 0;
+    if (this.token && exp * 1000 - Date.now() > 30_000) return this.token;
+    return (await this.refreshSession()) ? this.token : null;
   }
 
   public async ensureAuthenticated(): Promise<TransmitterProfile> {
-    if (this.token && this.transmitter) {
-      return this.transmitter;
-    }
-    return this.login();
+    if (this.transmitter && (this.token || (await this.refreshSession()))) return this.transmitter;
+    throw new AuthRequiredError();
+  }
+
+  /** Authenticated fetch. Refreshes once on 401; signs out if that fails. */
+  public async request(url: string, options: RequestInit = {}): Promise<Response> {
+    return this.fetchAuth(url, options);
   }
 
   private async fetchAuth(url: string, options: RequestInit = {}): Promise<Response> {
     await this.ensureAuthenticated();
-    const headers = {
-      'Content-Type': 'application/json',
+    const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    const build = () => ({
+      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+      ...((options.headers as Record<string, string>) || {}),
       Authorization: `Bearer ${this.token}`,
-      ...(options.headers || {}),
-    };
+    });
 
-    let res = await fetch(url, { ...options, headers });
+    let res = await fetch(url, { ...options, headers: build() });
     if (res.status === 401) {
-      // Re-login on expired token
-      await this.login();
-      (headers as any).Authorization = `Bearer ${this.token}`;
-      res = await fetch(url, { ...options, headers });
+      if (await this.refreshSession()) {
+        res = await fetch(url, { ...options, headers: build() });
+      }
+      if (res.status === 401) {
+        this.clearSession();
+        throw new AuthRequiredError();
+      }
     }
     return res;
   }
@@ -430,13 +596,9 @@ class SubspaceApiClient {
         if (data.integrations) return data.integrations;
       }
     } catch {
-      // Fallback to configured defaults
+      /* integrations unavailable */
     }
-    return {
-      google: { provider: 'google', name: 'Google Drive', isEnabled: true, clientId: '448110191150-r7racvvpsod6avnjfh6ubi123pco5omq.apps.googleusercontent.com' },
-      onedrive: { provider: 'onedrive', name: 'Microsoft OneDrive', isEnabled: true, clientId: 'deefc586-cdcb-427e-b6a5-60d139deaf4b' },
-      dropbox: { provider: 'dropbox', name: 'Dropbox', isEnabled: true, clientId: '1xxu145p7r3u75m' },
-    };
+    return {};
   }
 
   public async requestUploadTicket(filename: string, mimeType: string, sizeBytes: number): Promise<{
@@ -478,13 +640,14 @@ class SubspaceApiClient {
 
   public async uploadVaultFile(file: File): Promise<VaultFile> {
     const ticket = await this.requestUploadTicket(file.name, file.type || 'application/octet-stream', file.size);
-    await fetch(ticket.presignedUploadUrl, {
+    const put = await fetch(ticket.presignedUploadUrl, {
       method: 'PUT',
       body: file,
       headers: {
         'Content-Type': file.type || 'application/octet-stream',
       },
     });
+    if (!put.ok) throw new Error(`Upload to storage failed (${put.status})`);
     return this.recordVaultFile(ticket.storageKey, file.name, file.type || 'application/octet-stream', file.size);
   }
 
@@ -504,7 +667,10 @@ class SubspaceApiClient {
       const err = await res.json().catch(() => ({ error: 'Comm-Link connection rejected' }));
       throw new Error(err.error || 'Failed to get Comm-Link token');
     }
-    return res.json();
+    const data = await res.json();
+    // A null livekitUrl means LiveKit signaling is proxied on this origin at /rtc.
+    const sameOrigin = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+    return { ...data, livekitUrl: data.livekitUrl || sameOrigin };
   }
 
   // Point-to-Point Links (DMs)

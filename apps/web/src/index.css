@@ -1,39 +1,157 @@
 @import "tailwindcss";
 @source "../../../packages/ui";
 
-:root {
-  --bg-void: #07090E;
-  --bg-obsidian: #0B0E14;
-  --bg-surface: #151922;
-  --bg-surface-hover: #1C222E;
-  --border-subdued: #232936;
-  --accent-cyan: #00F0FF;
-  --accent-violet: #7928CA;
-  --accent-flare: #FF3366;
+/*
+ * Subspace design tokens.
+ * Deep black base; accents drawn from the NWD mark: sky-to-cobalt blue lettering,
+ * star yellow with a white core, and the slate-violet outline.
+ * Use these utilities (bg-void, text-fg-muted, border-line, bg-brand, ...) instead of hex literals.
+ */
+@theme {
+  /* Surfaces, darkest to lightest */
+  --color-void: #030305;         /* app frame / server rail */
+  --color-base: #07080C;         /* main content background */
+  --color-raised: #0D0F16;       /* sidebars, cards */
+  --color-overlay: #131622;      /* popovers, menus, modals */
+  --color-hover: #1A1E2E;        /* hover fill */
+  --color-active: #22273B;       /* selected / pressed fill */
+  --color-line: #1F2336;         /* hairline dividers */
+  --color-line-strong: #2E3350;  /* input borders, emphasized dividers */
+
+  /* Brand (NWD lettering gradient) */
+  --color-brand-sky: #3DCBFF;
+  --color-brand: #3B8EF2;
+  --color-brand-strong: #3353D6;
+  --color-brand-soft: rgb(59 142 242 / 0.16);
+
+  /* Star accent (NWD sparkles) */
+  --color-star: #FFF36B;
+  --color-star-core: #FFFDE8;
+  --color-star-soft: rgb(255 243 107 / 0.12);
+
+  /* Outline slate-violet (NWD stroke) */
+  --color-halo: #5A5C8E;
+  --color-halo-soft: rgb(90 92 142 / 0.25);
+
+  /* Text */
+  --color-fg: #EEF1FA;
+  --color-fg-muted: #A4A9C4;
+  --color-fg-subtle: #6D7294;
+  --color-fg-disabled: #474B66;
+  --color-on-brand: #FFFFFF;
+  --color-on-star: #1A1600;
+
+  /* Status */
+  --color-online: #3DDC84;
+  --color-idle: #FFD34D;
+  --color-away: #FF9F43;
+  --color-offline: #6D7294;
+  --color-danger: #FF4D6A;
+  --color-danger-soft: rgb(255 77 106 / 0.14);
+  --color-success: #3DDC84;
+  --color-warning: #FFB547;
+
+  /* Mentions / ping markers use the star accent */
+  --color-mention: var(--color-star);
+  --color-mention-bg: rgb(255 243 107 / 0.08);
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  /* Elevation */
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.55), 0 0 0 1px var(--color-line);
+  --shadow-modal: 0 24px 64px rgb(0 0 0 / 0.7), 0 0 0 1px var(--color-line-strong);
+  --shadow-glow: 0 0 0 1px rgb(61 203 255 / 0.35), 0 0 24px rgb(61 203 255 / 0.15);
+
+  /* Type */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+
+  /* Motion */
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background-color: var(--bg-void);
-  color: #F0F4F8;
-  margin: 0;
-  padding: 0;
-  height: 100vh;
-  width: 100vw;
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background-color: var(--color-void);
+    color: var(--color-fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--color-brand-soft);
+    color: var(--color-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-sky);
+    outline-offset: 2px;
+  }
 }
 
-/* Custom scrollbars */
+@utility bg-brand-gradient {
+  background-image: linear-gradient(180deg, var(--color-brand-sky), var(--color-brand-strong));
+}
+
+@utility text-brand-gradient {
+  background-image: linear-gradient(180deg, var(--color-brand-sky), var(--color-brand-strong));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #232936;
-  border-radius: 3px;
+  background: var(--color-line-strong);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #333C4D;
+  background: var(--color-halo);
+  background-clip: padding-box;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }
