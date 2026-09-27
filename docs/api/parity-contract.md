@@ -246,14 +246,57 @@ by the web edge and the Vite proxy. Object keys are `<purpose>/<uuid>.<ext>` (un
 
 ## 9. Profiles
 
-Finalized after the Discord profile research (section kept in sync with `docs/api/profile-spec.md`).
-Provisional fields on `transmitters`: `pronouns (<=40)`, `bio (<=190, markdown)`, `accent_color`,
-`theme_primary`, `theme_accent`, `display_name_style jsonb { font, effect, colors[] }`, `avatar_decoration (null)`.
-Per-beacon profile on `beacon_members`: `nickname`, `avatar_url`, `banner_url`, `bio`, `pronouns`.
-Private notes: `transmitter_notes(owner_id, target_id, note <=256)`; `GET/PUT /users/:id/note`.
-`GET /users/:id/profile?beaconId=` → merged global + beacon profile, mutual beacons, mutual friends, commendations, roles (when `beaconId`), note.
+Discord parity with no paid tiers: every Nitro-gated customization is available to everyone.
+Shop cosmetics (avatar decorations, nameplates, profile effects, profile frames), connections,
+server tags and profile widgets are **UI placeholders** ("Coming soon") with no backend yet.
 
----
+### Global profile (`transmitters`)
+| Field | Rule |
+| --- | --- |
+| `username` | 2-32 chars, `[a-z0-9_.]`, no `..`, must not start or end with `.`; unique together with `discriminator` (4 digits). Changing it re-rolls the discriminator (existing behavior). Enforced on register and profile update. |
+| `display_name` | 1-32 chars, any Unicode, trimmed; empty → falls back to username |
+| `pronouns` | text <= 40, nullable |
+| `avatar_url` | completed media URL (png/jpeg/gif/webp, animated allowed, <= 8 MB) or null |
+| `banner_url` | completed media URL (min 680x240 recommended, <= 10 MB, animated allowed) or null |
+| `banner_color` | `#RRGGBB` (used when no banner image) |
+| `theme_primary`, `theme_accent` | `#RRGGBB` or null (profile card gradient) |
+| `bio` | markdown, <= 190 chars |
+| `display_name_style` | jsonb `{ font: 'default' | 'orbitron' | 'rajdhani' | 'space_grotesk' | 'jetbrains' | ..., effect: 'solid' | 'gradient' | 'neon' | 'toon' | 'pop', colors: string[1-2] }` (replaces `display_font` / `display_color`, which stay as read-only mirrors for old clients) |
+| `custom_status` | jsonb `{ text <= 128, emoji?: EmojiKey, expiresAt?: ISO }` — clear-after presets: 30m, 1h, 4h, today, never |
+| `profile_visibility` | `everyone | beacons | friends` (who can open the full profile; never affects DMs or requests) |
+
+- `PATCH /users/@me/profile` accepts any subset of the above (replaces `PATCH /auth/me/profile`, which stays as an alias). Every field is validated server-side (hex colors by regex, media URLs by ownership, enums by list).
+- Event `USER_UPDATE` (public profile fields only) → presence peers; the full self profile → the user.
+
+### Per-beacon profile (`beacon_members`)
+Columns: `nickname (1-32)`, `avatar_url`, `banner_url`, `bio (<=190)`, `pronouns (<=40)`, `theme_primary`, `theme_accent`, `display_name_style`.
+Each field independently overrides the global one; `null` means "use global".
+- `PATCH /beacons/:id/members/@me` `{ nickname?, avatarUrl?, bannerUrl?, bio?, pronouns?, themePrimary?, themeAccent?, displayNameStyle? }` (`CHANGE_NICKNAME` for nickname; others always allowed).
+- Name resolution everywhere: beacon nickname → display name → username. Name color: highest colored hoisted-or-not clearance, else the style colors. If the beacon has `suppressCustomFonts`, the font is forced to default inside it.
+
+### Private notes
+Table `transmitter_notes(owner_id, target_id, note <= 256, updated_at)` PK `(owner_id, target_id)`.
+`GET /users/:id/note`, `PUT /users/:id/note { note }` (empty string deletes).
+
+### Profile read
+`GET /users/:id/profile?beaconId=` → honours `profile_visibility` (404 when not allowed) and blocks, returns:
+```ts
+{ user: { id, username, discriminator, displayName, pronouns, avatarUrl, bannerUrl, bannerColor,
+          themePrimary, themeAccent, bio, displayNameStyle, customStatus, presence, createdAt, staffRank },
+  member?: { nickname, avatarUrl, bannerUrl, bio, pronouns, themePrimary, themeAccent, displayNameStyle,
+             joinedAt, clearances: [{ id, name, color }] },       // when beaconId given and both are members
+  commendations: [{ code, name, iconUrl, description }],           // visible ones, in display order
+  mutualBeacons: [{ id, name, iconUrl, nickname? }],
+  mutualFriends: [author shape],
+  relationship: 'self' | 'friend' | 'incoming' | 'outgoing' | 'blocked' | 'none',
+  note: string | null }
+```
+
+### Surfaces (client)
+- Author line: resolved avatar + name (font only; effect on hover), clearance color, staff badge, timestamp.
+- Member list row: avatar + presence dot, resolved name, custom status text; grouped by hoisted clearances, then Online, then Offline.
+- Popout: banner/theme, avatar + presence, names + pronouns, badges, custom status, bio, member-since (+ beacon member-since), clearances (in a beacon), note, "Message @name" box, "View full profile".
+- Full profile modal: everything above plus tabs: About, Mutual Beacons, Mutual Friends; actions: message, add/remove friend, block, report, copy ID.
 
 ## 10. Tests required for every item
 
