@@ -9,6 +9,7 @@ import {
   clearances,
   transmitters,
   beaconEmojis,
+  beaconBans,
   resolveBeaconAudience,
 } from '@subspace/database';
 import {
@@ -19,9 +20,11 @@ import {
 import {
   extractAuthToken,
   resolveBeaconActorContext,
+  resolveBeaconTargetContext,
   assertCanModerateTarget,
 } from '../../middleware/hierarchy.js';
-import { publishSessionRefresh } from '../../lib/events.js';
+import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
+import { validateMediaUrl } from '../../lib/media.js';
 
 export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -228,11 +231,20 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (body.suppressCustomFonts !== undefined) updates.suppressCustomFonts = Boolean(body.suppressCustomFonts);
     if (body.rulesText !== undefined) updates.rulesText = body.rulesText;
 
+    if (updates.iconUrl !== undefined && !(await validateMediaUrl(db, token.transmitterId, updates.iconUrl, ['beacon_icon']))) {
+      return reply.status(400).send({ error: 'Invalid media URL for iconUrl', code: 'INVALID_MEDIA_URL' });
+    }
+    if (updates.bannerUrl !== undefined && !(await validateMediaUrl(db, token.transmitterId, updates.bannerUrl, ['beacon_banner']))) {
+      return reply.status(400).send({ error: 'Invalid media URL for bannerUrl', code: 'INVALID_MEDIA_URL' });
+    }
+
     const [updatedBeacon] = await db
       .update(beacons)
       .set(updates)
       .where(eq(beacons.id, beaconId))
       .returning();
+
+    await publishGatewayEvent(app, 'BEACON_UPDATE', { beacon: updatedBeacon }, { beaconId });
 
     return reply.send({
       message: 'Beacon parameters updated',
@@ -265,7 +277,11 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(403).send({ error: 'Only the Beacon owner can decommission this Beacon' });
     }
 
+    const audience = await resolveBeaconAudience(db, beaconId);
+
     await db.delete(beacons).where(eq(beacons.id, beaconId));
+
+    await publishGatewayEvent(app, 'BEACON_DELETE', { id: beaconId, unavailable: false }, { transmitterIds: audience });
 
     return reply.send({ message: 'Beacon decommissioned successfully' });
   });
@@ -289,6 +305,22 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
     if (!beacon) {
       return reply.status(404).send({ error: 'Beacon not found' });
+    }
+
+    if (!beacon.isDiscoverable) {
+      return reply.status(403).send({
+        error: 'This Beacon is not discoverable; join via an invite instead',
+        code: 'BEACON_NOT_DISCOVERABLE',
+      });
+    }
+
+    const [ban] = await db
+      .select()
+      .from(beaconBans)
+      .where(and(eq(beaconBans.beaconId, beaconId), eq(beaconBans.transmitterId, token.transmitterId)))
+      .limit(1);
+    if (ban) {
+      return reply.status(403).send({ error: 'Transmitter is banned from this Beacon', code: 'BANNED' });
     }
 
     const [existingMember] = await db
@@ -316,6 +348,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       })
       .returning();
 
+    await publishGatewayEvent(app, 'MEMBER_ADD', { beaconId, member: newMember }, { beaconId });
     await publishSessionRefresh(app, await resolveBeaconAudience(db, beaconId));
 
     return reply.status(201).send({
@@ -480,7 +513,9 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         )
       );
 
-    await publishSessionRefresh(app, [targetId, ...(await resolveBeaconAudience(db, beaconId))]);
+    const audience = await resolveBeaconAudience(db, beaconId);
+    await publishGatewayEvent(app, 'MEMBER_REMOVE', { beaconId, transmitterId: targetId }, { transmitterIds: [targetId, ...audience] });
+    await publishSessionRefresh(app, [targetId, ...audience]);
 
     return reply.send({ message: 'Target transmitter expelled from Beacon' });
   });
@@ -517,8 +552,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
 
-    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.ADMINISTRATOR)) {
-      return reply.status(403).send({ error: 'Administrator permission required' });
+    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_GLYPHS)) {
+      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_GLYPHS clearance' });
     }
 
     const { name, url } = request.body as { name: string; url: string };
@@ -531,6 +566,10 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(400).send({ error: 'Emoji name must be alphanumeric or underscores' });
     }
 
+    if (!(await validateMediaUrl(db, token.transmitterId, url.trim(), ['glyph']))) {
+      return reply.status(400).send({ error: 'Glyph url must be a completed media upload you own', code: 'INVALID_MEDIA_URL' });
+    }
+
     const [emoji] = await db
       .insert(beaconEmojis)
       .values({
@@ -540,6 +579,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         uploaderId: token.transmitterId,
       })
       .returning();
+
+    await publishGatewayEvent(app, 'GLYPHS_UPDATE', { beaconId }, { beaconId });
 
     return reply.status(201).send({ emoji });
   });
@@ -560,8 +601,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
 
-    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.ADMINISTRATOR)) {
-      return reply.status(403).send({ error: 'Administrator permission required' });
+    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_GLYPHS)) {
+      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_GLYPHS clearance' });
     }
 
     const { name } = request.body as { name: string };
@@ -573,6 +614,10 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       .set({ name: cleanName })
       .where(and(eq(beaconEmojis.id, emojiId), eq(beaconEmojis.beaconId, beaconId)))
       .returning();
+
+    if (!updatedEmoji) return reply.status(404).send({ error: 'Glyph not found' });
+
+    await publishGatewayEvent(app, 'GLYPHS_UPDATE', { beaconId }, { beaconId });
 
     return reply.send({ emoji: updatedEmoji });
   });
@@ -593,14 +638,285 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
 
-    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.ADMINISTRATOR)) {
-      return reply.status(403).send({ error: 'Administrator permission required' });
+    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_GLYPHS)) {
+      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_GLYPHS clearance' });
     }
 
     await db
       .delete(beaconEmojis)
       .where(and(eq(beaconEmojis.id, emojiId), eq(beaconEmojis.beaconId, beaconId)));
 
+    await publishGatewayEvent(app, 'GLYPHS_UPDATE', { beaconId }, { beaconId });
+
     return reply.send({ message: 'Emoji removed' });
   });
+
+  //
+  // Bans (section 6)
+  //
+
+  /**
+   * GET /api/v1/beacons/:id/bans
+   */
+  app.get('/:id/bans', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const { id: beaconId } = request.params as { id: string };
+    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+    if (!actorContext) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.BAN_MEMBERS)) {
+      return reply.status(403).send({ error: 'Transmitter lacks BAN_MEMBERS clearance' });
+    }
+
+    const rows = await db.select().from(beaconBans).where(eq(beaconBans.beaconId, beaconId));
+    return reply.send({ bans: rows });
+  });
+
+  /**
+   * PUT /api/v1/beacons/:id/bans/:userId
+   */
+  app.put(
+    '/:id/bans/:userId',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            reason: { type: 'string' },
+            deleteMessageSeconds: { type: 'number', minimum: 0, maximum: 604800 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const token = extractAuthToken(request);
+      if (!token) return reply.status(401).send({ error: 'Authentication required' });
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+      const { id: beaconId, userId: targetId } = request.params as { id: string; userId: string };
+      const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+      if (!actorContext) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+      if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.BAN_MEMBERS)) {
+        return reply.status(403).send({ error: 'Transmitter lacks BAN_MEMBERS clearance' });
+      }
+
+      const canModerate = await assertCanModerateTarget(db, actorContext, targetId, reply);
+      if (!canModerate) return;
+
+      const { reason } = (request.body as any) || {};
+
+      const audience = await resolveBeaconAudience(db, beaconId);
+
+      await db
+        .delete(beaconMembers)
+        .where(and(eq(beaconMembers.beaconId, beaconId), eq(beaconMembers.transmitterId, targetId)));
+
+      await db
+        .insert(beaconBans)
+        .values({ beaconId, transmitterId: targetId, reason: reason || null, bannedBy: token.transmitterId })
+        .onConflictDoUpdate({
+          target: [beaconBans.beaconId, beaconBans.transmitterId],
+          set: { reason: reason || null, bannedBy: token.transmitterId, createdAt: new Date() },
+        });
+
+      await publishGatewayEvent(app, 'MEMBER_REMOVE', { beaconId, transmitterId: targetId }, { transmitterIds: [targetId, ...audience] });
+      await publishSessionRefresh(app, [targetId, ...audience]);
+
+      return reply.send({ message: 'Transmitter banned from Beacon' });
+    }
+  );
+
+  /**
+   * DELETE /api/v1/beacons/:id/bans/:userId
+   */
+  app.delete('/:id/bans/:userId', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const { id: beaconId, userId: targetId } = request.params as { id: string; userId: string };
+    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+    if (!actorContext) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.BAN_MEMBERS)) {
+      return reply.status(403).send({ error: 'Transmitter lacks BAN_MEMBERS clearance' });
+    }
+
+    await db
+      .delete(beaconBans)
+      .where(and(eq(beaconBans.beaconId, beaconId), eq(beaconBans.transmitterId, targetId)));
+
+    return reply.send({ message: 'Ban lifted' });
+  });
+
+  //
+  // Members (section 6 & 9: nickname, per-beacon profile, clearances)
+  //
+
+  /**
+   * PATCH /api/v1/beacons/:id/members/@me
+   */
+  app.patch(
+    '/:id/members/@me',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            nickname: { type: ['string', 'null'], maxLength: 32 },
+            avatarUrl: { type: ['string', 'null'] },
+            bannerUrl: { type: ['string', 'null'] },
+            bio: { type: ['string', 'null'], maxLength: 190 },
+            pronouns: { type: ['string', 'null'], maxLength: 40 },
+            themePrimary: { type: ['string', 'null'] },
+            themeAccent: { type: ['string', 'null'] },
+            displayNameStyle: { type: ['object', 'null'] },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const token = extractAuthToken(request);
+      if (!token) return reply.status(401).send({ error: 'Authentication required' });
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+      const { id: beaconId } = request.params as { id: string };
+      const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+      if (!actorContext) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+
+      const body = (request.body as any) || {};
+      const updates: Record<string, any> = {};
+
+      if (body.nickname !== undefined) {
+        if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.CHANGE_NICKNAME)) {
+          return reply.status(403).send({ error: 'Transmitter lacks CHANGE_NICKNAME clearance' });
+        }
+        updates.nickname = body.nickname === null ? null : body.nickname.trim();
+      }
+      if (body.avatarUrl !== undefined) {
+        if (!(await validateMediaUrl(db, token.transmitterId, body.avatarUrl, ['avatar']))) {
+          return reply.status(400).send({ error: 'Invalid media URL for avatarUrl', code: 'INVALID_MEDIA_URL' });
+        }
+        updates.avatarUrl = body.avatarUrl;
+      }
+      if (body.bannerUrl !== undefined) {
+        if (!(await validateMediaUrl(db, token.transmitterId, body.bannerUrl, ['banner']))) {
+          return reply.status(400).send({ error: 'Invalid media URL for bannerUrl', code: 'INVALID_MEDIA_URL' });
+        }
+        updates.bannerUrl = body.bannerUrl;
+      }
+      if (body.bio !== undefined) updates.bio = body.bio;
+      if (body.pronouns !== undefined) updates.pronouns = body.pronouns;
+      if (body.themePrimary !== undefined) updates.themePrimary = body.themePrimary;
+      if (body.themeAccent !== undefined) updates.themeAccent = body.themeAccent;
+      if (body.displayNameStyle !== undefined) updates.displayNameStyle = body.displayNameStyle;
+
+      if (Object.keys(updates).length === 0) {
+        return reply.send({ member: actorContext.member });
+      }
+
+      const [updated] = await db
+        .update(beaconMembers)
+        .set(updates)
+        .where(and(eq(beaconMembers.beaconId, beaconId), eq(beaconMembers.transmitterId, token.transmitterId)))
+        .returning();
+
+      await publishGatewayEvent(app, 'MEMBER_UPDATE', { beaconId, member: updated }, { beaconId });
+
+      return reply.send({ member: updated });
+    }
+  );
+
+  /**
+   * PATCH /api/v1/beacons/:id/members/:userId
+   */
+  app.patch(
+    '/:id/members/:userId',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            nickname: { type: ['string', 'null'], maxLength: 32 },
+            clearanceIds: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const token = extractAuthToken(request);
+      if (!token) return reply.status(401).send({ error: 'Authentication required' });
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+      const { id: beaconId, userId: targetId } = request.params as { id: string; userId: string };
+      const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+      if (!actorContext) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+
+      const body = (request.body as any) || {};
+      const updates: Record<string, any> = {};
+
+      if (body.nickname !== undefined) {
+        if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_NICKNAMES)) {
+          return reply.status(403).send({ error: 'Transmitter lacks MANAGE_NICKNAMES clearance' });
+        }
+        const canModerate = await assertCanModerateTarget(db, actorContext, targetId, reply);
+        if (!canModerate) return;
+        updates.nickname = body.nickname === null ? null : body.nickname.trim();
+      }
+
+      if (body.clearanceIds !== undefined) {
+        if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_CLEARANCES)) {
+          return reply.status(403).send({ error: 'Transmitter lacks MANAGE_CLEARANCES clearance' });
+        }
+        const targetContext = await resolveBeaconTargetContext(db, targetId, beaconId);
+        if (!targetContext) return reply.status(404).send({ error: 'Target member not found in Beacon' });
+        if (targetContext.isOwner) {
+          return reply.status(403).send({ error: 'Cannot modify clearances for the Beacon owner', code: 'FORBIDDEN_HIERARCHY' });
+        }
+        if (!actorContext.isOwner && targetContext.highestRank >= actorContext.highestRank) {
+          return reply.status(403).send({
+            error: 'Cannot modify clearances for a member with equal or higher rank',
+            code: 'FORBIDDEN_HIERARCHY',
+          });
+        }
+
+        const requestedIds: string[] = body.clearanceIds;
+        if (!actorContext.isOwner) {
+          const allClearances = await db.select().from(clearances).where(eq(clearances.beaconId, beaconId));
+          const clearanceMap = new Map(allClearances.map((c: any) => [c.id, c]));
+          for (const cid of requestedIds) {
+            const c: any = clearanceMap.get(cid);
+            if (!c) return reply.status(400).send({ error: `Unknown clearance id ${cid}` });
+            if (c.position >= actorContext.highestRank) {
+              return reply.status(403).send({
+                error: 'Cannot assign a clearance at or above your own highest clearance',
+                code: 'FORBIDDEN_HIERARCHY',
+              });
+            }
+          }
+        }
+        updates.clearanceIds = requestedIds;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return reply.status(400).send({ error: 'No recognized fields to update' });
+      }
+
+      const [updated] = await db
+        .update(beaconMembers)
+        .set(updates)
+        .where(and(eq(beaconMembers.beaconId, beaconId), eq(beaconMembers.transmitterId, targetId)))
+        .returning();
+
+      if (!updated) return reply.status(404).send({ error: 'Target member not found in Beacon' });
+
+      await publishGatewayEvent(app, 'MEMBER_UPDATE', { beaconId, member: updated }, { beaconId });
+
+      return reply.send({ member: updated });
+    }
+  );
 };
