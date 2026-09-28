@@ -54,13 +54,23 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       userPrefs.filter((p: any) => p.isHidden).map((p: any) => p.relayId)
     );
 
-    const mappedRelays = await Promise.all(
-      beaconRelays.map(async (relay: any) => ({
-        ...relay,
-        isHidden: hiddenRelayIds.has(relay.id),
-        myPermissions: (await computeRelayPermissions(db, token.transmitterId, relay.id)).toString(),
-      }))
+    const withPerms = await Promise.all(
+      beaconRelays.map(async (relay: any) => {
+        const perms = await computeRelayPermissions(db, token.transmitterId, relay.id);
+        return {
+          ...relay,
+          isHidden: hiddenRelayIds.has(relay.id),
+          myPermissions: perms.toString(),
+          canView: hasPermission(perms, PERMISSIONS.VIEW_RELAY),
+        };
+      })
     );
+    // Relays the viewer cannot see are omitted entirely; a frequency band stays visible when
+    // the viewer can see it or any relay inside it.
+    const visibleChildParents = new Set(withPerms.filter((r: any) => r.canView && r.parentId).map((r: any) => r.parentId));
+    const mappedRelays = withPerms
+      .filter((r: any) => r.canView || (r.type === 'category' && visibleChildParents.has(r.id)))
+      .map(({ canView: _canView, ...r }: any) => r);
 
     if (filterMode === 'all') {
       return reply.send({ relays: mappedRelays, filter: 'all' });

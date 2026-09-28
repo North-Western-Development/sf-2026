@@ -10,7 +10,7 @@ import {
   transmitters,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
-import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
+import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 
 export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -42,12 +42,8 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       return null;
     }
 
-    if (targetRelay.type !== 'archival') {
-      reply.status(400).send({ error: 'Target relay is not an Archival Relay' });
-      return null;
-    }
 
-    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, targetRelay.beaconId);
+    const actorContext = await resolveRelayActorContext(db, token.transmitterId, targetRelay);
     if (!actorContext) {
       reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
       return null;
@@ -55,6 +51,10 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
 
     if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
       reply.status(403).send({ error: 'Transmitter lacks VIEW_RELAY clearance' });
+      return null;
+    }
+    if (targetRelay.type !== 'archival') {
+      reply.status(400).send({ error: 'Target relay is not an Archival Relay' });
       return null;
     }
 

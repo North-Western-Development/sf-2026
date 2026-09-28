@@ -26,6 +26,7 @@ import {
 } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 import { validateMediaUrl } from '../../lib/media.js';
+import { buildMember, buildMembers } from '../../lib/members.js';
 
 export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -372,7 +373,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       })
       .returning();
 
-    await publishGatewayEvent(app, 'MEMBER_ADD', { beaconId, member: newMember }, { beaconId });
+    await publishGatewayEvent(app, 'MEMBER_ADD', { beaconId, member: await buildMember(db, (app as any).redis, beaconId, newMember.transmitterId) }, { beaconId });
     await publishSessionRefresh(app, await resolveBeaconAudience(db, beaconId));
 
     return reply.status(201).send({
@@ -427,95 +428,16 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
    * List Beacon members with their display color (overridden by highest clearance color)
    */
   app.get('/:id/members', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
     const { id: beaconId } = request.params as { id: string };
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
 
-    const [beacon] = await db
-      .select()
-      .from(beacons)
-      .where(eq(beacons.id, beaconId))
-      .limit(1);
+    // Only members (or the owner) may list members; outsiders get 404 so existence isn't leaked.
+    const actor = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+    if (!actor) return reply.status(404).send({ error: 'Beacon not found' });
 
-    if (!beacon) return reply.status(404).send({ error: 'Beacon not found' });
-
-    // Fetch members and all clearances in beacon
-    const members = await db
-      .select({
-        transmitterId: beaconMembers.transmitterId,
-        nickname: beaconMembers.nickname,
-        hasCompletedOnboarding: beaconMembers.hasCompletedOnboarding,
-        clearanceIds: beaconMembers.clearanceIds,
-        joinedAt: beaconMembers.joinedAt,
-        username: transmitters.username,
-        discriminator: transmitters.discriminator,
-        bio: transmitters.bio,
-        bannerUrl: transmitters.bannerUrl,
-        bannerColor: transmitters.bannerColor,
-        displayName: transmitters.displayName,
-        displayColor: transmitters.displayColor,
-        displayFont: transmitters.displayFont,
-        avatarUrl: transmitters.avatarUrl,
-        presence: transmitters.presence,
-        customStatus: transmitters.customStatus,
-      })
-      .from(beaconMembers)
-      .innerJoin(transmitters, eq(beaconMembers.transmitterId, transmitters.id))
-      .where(eq(beaconMembers.beaconId, beaconId));
-
-    // Masked live presence mirrored by the gateway into Redis; offline (or absent) otherwise.
-    const redis = (app as any).redis;
-    let presenceMap = new Map<string, string>();
-    if (redis && members.length > 0) {
-      try {
-        const entries = await redis.hmget('presence', ...members.map((m: any) => m.transmitterId));
-        members.forEach((m: any, i: number) => {
-          if (entries[i]) presenceMap.set(m.transmitterId, entries[i]);
-        });
-      } catch {
-        // Redis unavailable: fall through to offline for everyone.
-      }
-    }
-
-    const beaconClearances = await db
-      .select()
-      .from(clearances)
-      .where(eq(clearances.beaconId, beaconId));
-
-    const clearanceMap = new Map(beaconClearances.map((c: any) => [c.id, c]));
-
-    const memberList = members.map((m: any) => {
-      // Find highest clearance with a custom color
-      const userClearances = (m.clearanceIds as string[])
-        .map((id) => clearanceMap.get(id))
-        .filter(Boolean) as Array<typeof clearances.$inferSelect>;
-
-      userClearances.sort((a, b) => b.position - a.position);
-      const highestColoredRole = userClearances.find((c) => c.color && c.color !== '#99AAB5');
-
-      // If beacon suppresses custom fonts, enforce default
-      const displayFont = beacon.suppressCustomFonts ? 'default' : m.displayFont;
-      const effectiveColor = highestColoredRole ? highestColoredRole.color : m.displayColor;
-
-      return {
-        transmitterId: m.transmitterId,
-        username: m.username,
-        discriminator: m.discriminator,
-        bio: m.bio,
-        bannerUrl: m.bannerUrl,
-        bannerColor: m.bannerColor,
-        displayName: m.nickname || m.displayName,
-        displayColor: effectiveColor,
-        displayFont,
-        avatarUrl: m.avatarUrl,
-        presence: presenceMap.get(m.transmitterId) || 'offline',
-        customStatus: m.customStatus,
-        hasCompletedOnboarding: m.hasCompletedOnboarding,
-        clearanceIds: m.clearanceIds,
-        isOwner: m.transmitterId === beacon.ownerId,
-      };
-    });
-
-    return reply.send({ members: memberList });
+    return reply.send({ members: await buildMembers(db, (app as any).redis, beaconId) });
   });
 
   /**
@@ -565,8 +487,13 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
    * List custom emojis for a beacon
    */
   app.get('/:id/emojis', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
     const { id: beaconId } = request.params as { id: string };
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    if (!(await resolveBeaconActorContext(db, token.transmitterId, beaconId))) {
+      return reply.status(404).send({ error: 'Beacon not found' });
+    }
 
     const emojis = await db
       .select()
@@ -864,7 +791,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         .where(and(eq(beaconMembers.beaconId, beaconId), eq(beaconMembers.transmitterId, token.transmitterId)))
         .returning();
 
-      await publishGatewayEvent(app, 'MEMBER_UPDATE', { beaconId, member: updated }, { beaconId });
+      await publishGatewayEvent(app, 'MEMBER_UPDATE', { beaconId, member: await buildMember(db, (app as any).redis, beaconId, updated.transmitterId) }, { beaconId });
 
       return reply.send({ member: updated });
     }
@@ -954,7 +881,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
       if (!updated) return reply.status(404).send({ error: 'Target member not found in Beacon' });
 
-      await publishGatewayEvent(app, 'MEMBER_UPDATE', { beaconId, member: updated }, { beaconId });
+      await publishGatewayEvent(app, 'MEMBER_UPDATE', { beaconId, member: await buildMember(db, (app as any).redis, beaconId, updated.transmitterId) }, { beaconId });
 
       return reply.send({ member: updated });
     }

@@ -16,6 +16,7 @@ import {
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
+import { buildMember } from '../../lib/members.js';
 
 const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const ALLOWED_MAX_AGE = [0, 1800, 3600, 21600, 43200, 86400, 604800];
@@ -261,7 +262,7 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       await publishGatewayEvent(
         app,
         'MEMBER_ADD',
-        { beaconId: invite.beaconId, member: { transmitterId: token.transmitterId } },
+        { beaconId: invite.beaconId, member: await buildMember(db, (app as any).redis, invite.beaconId, token.transmitterId) },
         { beaconId: invite.beaconId }
       );
       await publishGatewayEvent(app, 'BEACON_CREATE', { beacon }, { transmitterIds: [token.transmitterId] });

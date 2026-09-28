@@ -183,8 +183,9 @@ describe('Parity Section 1: Relay Permission Overwrites E2E Suite', () => {
       url: `/api/v1/beacons/${beaconId}/relays`,
       headers: { authorization: `Bearer ${memberToken}` },
     });
+    // Relays the member cannot view are omitted from the list entirely.
     const relay = listRes.json().relays.find((r: any) => r.id === textRelayId);
-    expect(BigInt(relay.myPermissions) & PERMISSIONS.VIEW_RELAY).toBe(0n);
+    expect(relay).toBeUndefined();
 
     // Cleanup: restore visibility for later assertions
     await app.inject({
@@ -259,7 +260,7 @@ describe('Parity Section 1: Relay Permission Overwrites E2E Suite', () => {
       headers: { authorization: `Bearer ${memberToken}` },
     });
     const synced = res.json().relays.find((r: any) => r.id === syncedRelayId);
-    expect(BigInt(synced.myPermissions) & PERMISSIONS.VIEW_RELAY).toBe(0n);
+    expect(synced).toBeUndefined();
   });
 
   it('enforces hierarchy: cannot grant/deny a permission bit you do not hold yourself', async () => {

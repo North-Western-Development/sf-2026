@@ -7,6 +7,7 @@ import {
   resolveBeaconTargetContext,
 } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
+import { buildMember } from '../../lib/members.js';
 
 export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -16,8 +17,13 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
    * List all clearances in a Beacon ordered by position descending
    */
   app.get('/', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
     const { id: beaconId } = request.params as { id: string };
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    if (!(await resolveBeaconActorContext(db, token.transmitterId, beaconId))) {
+      return reply.status(404).send({ error: 'Beacon not found' });
+    }
 
     const allClearances = await db
       .select()
@@ -376,7 +382,7 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     await publishGatewayEvent(
       app,
       'MEMBER_UPDATE',
-      { beaconId, member: { beaconId, transmitterId: targetId, clearanceIds: updatedIds } },
+      { beaconId, member: await buildMember(db, (app as any).redis, beaconId, targetId) },
       { beaconId }
     );
 

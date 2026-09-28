@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, relays } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
-import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
+import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 import { requireSecret } from '@subspace/crypto';
 import { createLiveKitAccessToken } from './livekit.js';
 
@@ -39,7 +39,7 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       });
     }
 
-    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, targetRelay.beaconId);
+    const actorContext = await resolveRelayActorContext(db, token.transmitterId, targetRelay);
     if (!actorContext) {
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
@@ -105,6 +105,10 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       .limit(1);
 
     if (!targetRelay) return reply.status(404).send({ error: 'Relay not found' });
+    const actor = await resolveRelayActorContext(db, token.transmitterId, targetRelay);
+    if (!actor || !hasPermission(actor.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
+      return reply.status(404).send({ error: 'Relay not found' });
+    }
 
     return reply.send({
       relayId: targetRelay.id,

@@ -15,7 +15,7 @@ import {
   signalBlacklist,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
-import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
+import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 
 export const searchRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -92,7 +92,7 @@ export const searchRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
       // Filter by VIEW_RELAY permission
       for (const r of allCandidateRelays) {
-        const actorCtx = await resolveBeaconActorContext(db, token.transmitterId, r.beaconId);
+        const actorCtx = await resolveRelayActorContext(db, token.transmitterId, r);
         if (actorCtx && hasPermission(actorCtx.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
           matchedRelays.push(r);
           if (matchedRelays.length >= 10) break;
@@ -176,7 +176,7 @@ export const searchRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     const allowedRelayIds: string[] = [];
 
     for (const r of candidateRelays) {
-      const actorCtx = await resolveBeaconActorContext(db, token.transmitterId, r.beaconId);
+      const actorCtx = await resolveRelayActorContext(db, token.transmitterId, r);
       if (actorCtx && hasPermission(actorCtx.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
         allowedRelayIds.push(r.id);
       }

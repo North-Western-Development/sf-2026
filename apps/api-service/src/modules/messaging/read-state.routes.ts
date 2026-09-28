@@ -14,10 +14,10 @@ import {
   notificationSettings,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
-import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
+import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { CHANNEL_TYPES, loadChannel, checkChannelAccess } from '../../lib/channels.js';
-import { resolveTransmitterBeaconIds } from '@subspace/database';
+import { resolveTransmitterBeaconIds, computeRelayPermissions } from '@subspace/database';
 
 const SCOPE_TYPES = ['global', 'beacon', 'category', 'relay', 'link', 'mesh'];
 const LEVELS = ['all', 'mentions', 'nothing', 'inherit'];
@@ -40,7 +40,7 @@ export const readStateRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     if (beaconIds.length > 0) {
       const allRelays = await db.select().from(relays).where(or(...beaconIds.map((id: string) => eq(relays.beaconId, id))));
       for (const relay of allRelays) {
-        const actorContext = await resolveBeaconActorContext(db, token.transmitterId, relay.beaconId);
+        const actorContext = await resolveRelayActorContext(db, token.transmitterId, relay);
         if (actorContext && hasPermission(actorContext.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
           channels.push({
             channelType: 'relay',
@@ -57,7 +57,7 @@ export const readStateRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         for (const thread of threads) {
           const parentRelay = allRelays.find((r: any) => r.id === thread.relayId);
           if (!parentRelay) continue;
-          const actorContext = await resolveBeaconActorContext(db, token.transmitterId, parentRelay.beaconId);
+          const actorContext = await resolveRelayActorContext(db, token.transmitterId, parentRelay);
           if (actorContext && hasPermission(actorContext.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
             channels.push({
               channelType: 'thread',
@@ -178,7 +178,7 @@ export const readStateRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     const acked: string[] = [];
 
     for (const relay of allRelays) {
-      if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.VIEW_RELAY)) continue;
+      if (!hasPermission(await computeRelayPermissions(db, token.transmitterId, relay.id), PERMISSIONS.VIEW_RELAY)) continue;
       const lastId = relay.lastTransmissionId;
       await db
         .insert(readStates)

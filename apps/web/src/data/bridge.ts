@@ -261,8 +261,18 @@ const handlers: Record<string, (d: Raw) => void> = {
   MEMBER_UPDATE(d) {
     const beaconId = d.beaconId;
     if (!beaconId || !getState().members[beaconId]) return;
-    const m = toMember(d.member ?? d, beaconId);
+    const raw = d.member ?? d;
+    const id = raw.transmitterId ?? raw.user?.id;
+    const prev = getState().members[beaconId]?.[id];
+    // Older payloads may be partial (no profile): merge instead of replacing.
+    const hasProfile = !!(raw.user?.username ?? raw.username);
+    const m = hasProfile ? toMember(raw, beaconId) : prev ? { ...prev, ...raw, user: prev.user } : null;
+    if (!m) {
+      void loadBeacon(beaconId).catch(() => {});
+      return;
+    }
     rememberUsers([m.user]);
+    if (raw.presence) setPresence(m.transmitterId, { status: raw.presence, customStatus: raw.customStatus ?? null });
     setState((s) => ({ members: { ...s.members, [beaconId]: { ...s.members[beaconId], [m.transmitterId]: m } } }));
   },
   MEMBER_REMOVE(d) {

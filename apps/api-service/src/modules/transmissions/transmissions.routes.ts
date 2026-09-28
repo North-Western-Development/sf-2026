@@ -12,6 +12,7 @@ import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import {
   extractAuthToken,
   resolveBeaconActorContext,
+  resolveRelayActorContext,
   assertCanModerateTarget,
 } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, audienceForTransmission } from '../../lib/events.js';
@@ -49,7 +50,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       return reply.status(404).send({ error: 'Relay not found' });
     }
 
-    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, targetRelay.beaconId);
+    const actorContext = await resolveRelayActorContext(db, token.transmitterId, targetRelay);
     if (!actorContext) {
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
@@ -145,7 +146,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
 
     if (!targetRelay) return reply.status(404).send({ error: 'Relay not found' });
 
-    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, targetRelay.beaconId);
+    const actorContext = await resolveRelayActorContext(db, token.transmitterId, targetRelay);
     if (!actorContext) {
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
@@ -277,7 +278,9 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
 
     let mentionEveryoneAllowed = false;
     if (channel?.beaconId) {
-      const actorCtx = await resolveBeaconActorContext(db, existing.transmitterId, channel.beaconId);
+      const actorCtx = channel.relayId
+        ? await resolveRelayActorContext(db, existing.transmitterId, { id: channel.relayId, beaconId: channel.beaconId })
+        : await resolveBeaconActorContext(db, existing.transmitterId, channel.beaconId);
       mentionEveryoneAllowed = !!actorCtx && hasPermission(actorCtx.effectivePermissions, PERMISSIONS.MENTION_EVERYONE);
     }
 
@@ -358,7 +361,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
 
     if (!targetRelay) return reply.status(404).send({ error: 'Relay not found' });
 
-    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, targetRelay.beaconId);
+    const actorContext = await resolveRelayActorContext(db, token.transmitterId, targetRelay);
     if (!actorContext) {
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }

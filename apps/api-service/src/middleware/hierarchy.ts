@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and, beacons, clearances, beaconMembers, transmitters } from '@subspace/database';
+import { eq, and, beacons, clearances, beaconMembers, transmitters, computeRelayPermissions } from '@subspace/database';
 import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import {
   computeMemberPermissions,
@@ -101,6 +101,21 @@ export async function resolveBeaconActorContext(
     effectivePermissions,
     highestRank,
   };
+}
+
+/**
+ * Actor context for a relay-scoped action: membership as for the beacon, but
+ * `effectivePermissions` include the relay's permission overwrites (private relays,
+ * per-clearance denies). Use this for every check that concerns a specific relay.
+ */
+export async function resolveRelayActorContext(
+  db: any,
+  transmitterId: string,
+  relay: { id: string; beaconId: string }
+): Promise<ClearanceContext | null> {
+  const ctx = await resolveBeaconActorContext(db, transmitterId, relay.beaconId);
+  if (!ctx) return null;
+  return { ...ctx, effectivePermissions: await computeRelayPermissions(db, transmitterId, relay.id) };
 }
 
 /**

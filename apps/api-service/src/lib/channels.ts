@@ -10,7 +10,7 @@ import {
   signalBlacklist,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
-import { resolveBeaconActorContext, ClearanceContext } from '../middleware/hierarchy.js';
+import { resolveBeaconActorContext, resolveRelayActorContext, ClearanceContext } from '../middleware/hierarchy.js';
 import { Audience } from './events.js';
 
 export type ChannelType = 'relay' | 'link' | 'mesh' | 'thread';
@@ -85,8 +85,10 @@ export async function checkChannelAccess(
   action: ChannelAction
 ): Promise<ChannelAccess> {
   if (channel.channelType === 'relay' || channel.channelType === 'thread') {
-    const actorContext = await resolveBeaconActorContext(db, transmitterId, channel.beaconId!);
-    if (!actorContext) {
+    const actorContext = channel.relayId
+      ? await resolveRelayActorContext(db, transmitterId, { id: channel.relayId, beaconId: channel.beaconId! })
+      : await resolveBeaconActorContext(db, transmitterId, channel.beaconId!);
+    if (!actorContext || !hasPermission(actorContext.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
       return { allowed: false, status: 404, error: 'Channel not found or not visible' };
     }
     if (channel.channelType === 'thread' && channel.threadLocked && action === 'send') {
