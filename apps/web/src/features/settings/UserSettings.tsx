@@ -13,7 +13,27 @@ import { userTag } from '../../lib/normalize';
 import { term } from '../../lib/strings';
 import type { DisplayNameStyle, SelfUser, CustomStatus } from '../../lib/types';
 import { closeModal, confirmAction, toast } from '../../app/ui';
-import { SettingsLayout, SettingsTitle, Field, Switch, SaveBar } from './SettingsLayout';
+import { SettingsLayout, SettingsHeader, SettingsTitle, Field, Switch, SaveBar } from './SettingsLayout';
+import {
+  Accessibility,
+  Bell,
+  CreditCard,
+  Gift,
+  Keyboard,
+  Languages,
+  Laptop,
+  Link2,
+  LogOut,
+  Mic,
+  Palette,
+  Pencil,
+  Shield,
+  Smile,
+  Sparkles,
+  User,
+  UserPen,
+  Users,
+} from 'lucide-react';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { Markdown } from '../chat/markdown';
@@ -746,6 +766,17 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
   return (
     <SettingsLayout
       title="User Settings"
+      header={
+        <SettingsHeader
+          media={<Avatar user={me} size={40} />}
+          name={me.displayName || me.username}
+          action={
+            <button type="button" onClick={() => setTab('profile')} className="flex items-center gap-1 text-xs text-fg-muted hover:text-fg hover:underline">
+              Edit Profiles <Pencil className="h-3 w-3" />
+            </button>
+          }
+        />
+      }
       active={tab}
       onSelect={setTab}
       onClose={closeModal}
@@ -753,38 +784,39 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
         {
           heading: 'User Settings',
           items: [
-            { id: 'account', label: 'My Account' },
-            { id: 'profile', label: 'Profiles' },
-            { id: 'beacon-profile', label: `${term('beacon')} Profiles` },
-            { id: 'status', label: 'Custom Status' },
-            { id: 'privacy', label: 'Privacy & Safety' },
-            { id: 'devices', label: 'Devices', comingSoon: true },
-            { id: 'connections', label: 'Connections', comingSoon: true },
+            { id: 'account', icon: <User />, label: 'My Account' },
+            { id: 'profile', icon: <UserPen />, label: 'Profiles' },
+            { id: 'beacon-profile', icon: <Users />, label: `${term('beacon')} Profiles` },
+            { id: 'status', icon: <Smile />, label: 'Custom Status' },
+            { id: 'privacy', icon: <Shield />, label: 'Privacy & Safety' },
+            { id: 'devices', icon: <Laptop />, label: 'Devices', comingSoon: true },
+            { id: 'connections', icon: <Link2 />, label: 'Connections', comingSoon: true },
           ],
         },
         {
           heading: 'Billing Settings',
           items: [
-            { id: 'nitro', label: 'Subscriptions', comingSoon: true },
-            { id: 'gifts', label: 'Gift Inventory', comingSoon: true },
-            { id: 'billing', label: 'Billing', comingSoon: true },
+            { id: 'nitro', icon: <Sparkles />, label: 'Subscriptions', comingSoon: true },
+            { id: 'gifts', icon: <Gift />, label: 'Gift Inventory', comingSoon: true },
+            { id: 'billing', icon: <CreditCard />, label: 'Billing', comingSoon: true },
           ],
         },
         {
           heading: 'App Settings',
           items: [
-            { id: 'appearance', label: 'Appearance' },
-            { id: 'voice', label: 'Voice & Video' },
-            { id: 'notifications', label: 'Notifications' },
-            { id: 'keybinds', label: 'Keybinds' },
-            { id: 'accessibility', label: 'Accessibility', comingSoon: true },
-            { id: 'language', label: 'Language', comingSoon: true },
+            { id: 'appearance', icon: <Palette />, label: 'Appearance' },
+            { id: 'voice', icon: <Mic />, label: 'Voice & Video' },
+            { id: 'notifications', icon: <Bell />, label: 'Notifications' },
+            { id: 'keybinds', icon: <Keyboard />, label: 'Keybinds' },
+            { id: 'accessibility', icon: <Accessibility />, label: 'Accessibility', comingSoon: true },
+            { id: 'language', icon: <Languages />, label: 'Language', comingSoon: true },
           ],
         },
         {
           items: [
             {
               id: 'logout',
+              icon: <LogOut />,
               label: 'Log Out',
               danger: true,
               onClick: () =>

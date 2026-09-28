@@ -1,15 +1,27 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { ComingSoon } from '@subspace/ui';
+
+export interface SettingsItem {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+  danger?: boolean;
+  comingSoon?: boolean;
+  onClick?: () => void;
+}
 
 export interface SettingsSection {
   heading?: string;
-  items: Array<{ id: string; label: string; danger?: boolean; comingSoon?: boolean; onClick?: () => void }>;
+  items: SettingsItem[];
 }
 
-/** Discord-style full-screen settings surface (sidebar + content + ESC close). */
+/**
+ * Discord-style windowed settings: a large modal over the dimmed app with a
+ * searchable, iconed nav on the left and a titled, scrolling content pane.
+ */
 export function SettingsLayout({
   sections,
   active,
@@ -17,6 +29,7 @@ export function SettingsLayout({
   onClose,
   children,
   title,
+  header,
 }: {
   sections: SettingsSection[];
   active: string;
@@ -24,7 +37,11 @@ export function SettingsLayout({
   onClose: () => void;
   children: React.ReactNode;
   title: string;
+  /** Identity card at the top of the nav (user or beacon). */
+  header?: React.ReactNode;
 }) {
+  const [query, setQuery] = useState('');
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !(e.target as HTMLElement).closest?.('[role="dialog"][aria-modal="true"]:not([data-settings])')) onClose();
@@ -38,50 +55,112 @@ export function SettingsLayout({
     };
   }, [onClose]);
 
+  const q = query.trim().toLowerCase();
+  const visible = sections
+    .map((sec) => ({ ...sec, items: q ? sec.items.filter((it) => it.label.toLowerCase().includes(q)) : sec.items }))
+    .filter((sec) => sec.items.length);
+  const activeLabel = sections.flatMap((sec) => sec.items).find((it) => it.id === active)?.label ?? title;
+
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={title} data-settings className="fixed inset-0 z-[900] flex bg-base animate-[fade-in_120ms_ease-out]">
-      <nav aria-label={`${title} sections`} className="flex w-[35%] min-w-[218px] justify-end overflow-y-auto bg-raised">
-        <div className="w-[218px] px-2 py-14">
-          {sections.map((sec, i) => (
-            <div key={i} className={clsx(i > 0 && 'mt-2 border-t border-line pt-2')}>
-              {sec.heading && <p className="px-2.5 pb-1.5 pt-1 text-xs font-bold uppercase text-fg-subtle">{sec.heading}</p>}
-              {sec.items.map((it) =>
-                it.comingSoon ? (
-                  <ComingSoon key={it.id} className="w-full" placement="right">
-                    <span className="block w-full rounded-md px-2.5 py-1.5 text-[15px] text-fg-muted">{it.label}</span>
-                  </ComingSoon>
-                ) : (
-                  <button
-                    key={it.id}
-                    type="button"
-                    aria-current={active === it.id ? 'page' : undefined}
-                    onClick={() => (it.onClick ? it.onClick() : onSelect(it.id))}
-                    className={clsx(
-                      'mb-0.5 block w-full rounded-md px-2.5 py-1.5 text-left text-[15px] font-medium',
-                      it.danger ? 'text-danger hover:bg-danger-soft' : active === it.id ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg'
-                    )}
-                  >
-                    {it.label}
-                  </button>
-                )
-              )}
-            </div>
-          ))}
-        </div>
-      </nav>
-      <main className="flex min-w-0 flex-1 overflow-y-auto">
-        <div className="w-full max-w-[740px] px-10 pb-20 pt-14">{children}</div>
-        <div className="shrink-0 pr-5 pt-14">
-          <button type="button" onClick={onClose} aria-label="Close settings" className="flex flex-col items-center gap-1 text-fg-muted hover:text-fg">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-current">
+    <div
+      className="fixed inset-0 z-[900] flex items-center justify-center bg-black/70 p-0 animate-[fade-in_120ms_ease-out] sm:p-8"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        data-settings
+        className="flex h-full w-full max-w-[1200px] overflow-hidden bg-base shadow-modal animate-[rise-in_160ms_var(--ease-out-soft)] sm:max-h-[960px] sm:rounded-xl"
+      >
+        <nav aria-label={`${title} sections`} className="flex w-[232px] shrink-0 flex-col border-r border-line bg-raised">
+          <div className="shrink-0 px-3 pt-4">
+            {header}
+            <label className="mt-3 flex h-9 items-center gap-2 rounded-md border border-line bg-void px-2.5 text-fg-subtle focus-within:border-brand">
+              <Search className="h-4 w-4 shrink-0" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search"
+                aria-label="Search settings"
+                className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-subtle"
+              />
+            </label>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-6 pt-3">
+            {visible.map((sec, i) => (
+              <div key={sec.heading ?? i} className={clsx(i > 0 && 'mt-2 border-t border-line pt-2')}>
+                {sec.heading && <p className="truncate px-2 pb-1 pt-1.5 text-xs font-semibold text-fg-subtle">{sec.heading}</p>}
+                {sec.items.map((it) => (
+                  <NavItem key={it.id} item={it} active={active === it.id} onSelect={onSelect} />
+                ))}
+              </div>
+            ))}
+            {!visible.length && <p className="px-2 py-4 text-sm text-fg-subtle">No settings match "{query}".</p>}
+          </div>
+        </nav>
+        <section className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
+            <h1 className="truncate text-[15px] font-semibold text-fg">{activeLabel}</h1>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close settings"
+              title="Close (Esc)"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
+            >
               <X className="h-5 w-5" />
-            </span>
-            <span className="text-xs font-semibold">ESC</span>
-          </button>
-        </div>
-      </main>
+            </button>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[640px] px-8 pb-20 pt-10">{children}</div>
+          </div>
+        </section>
+      </div>
     </div>,
     document.body
+  );
+}
+
+function NavItem({ item, active, onSelect }: { item: SettingsItem; active: boolean; onSelect: (id: string) => void }) {
+  const body = (
+    <>
+      {item.icon && <span className="flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-[18px] [&>svg]:w-[18px]">{item.icon}</span>}
+      <span className="truncate">{item.label}</span>
+    </>
+  );
+  if (item.comingSoon) {
+    return (
+      <ComingSoon className="w-full" placement="right">
+        <span className="mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-[15px] text-fg-muted">{body}</span>
+      </ComingSoon>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-current={active ? 'page' : undefined}
+      onClick={() => (item.onClick ? item.onClick() : onSelect(item.id))}
+      className={clsx(
+        'mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[15px] font-medium',
+        item.danger ? 'text-danger hover:bg-danger-soft' : active ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg'
+      )}
+    >
+      {body}
+    </button>
+  );
+}
+
+/** Identity card for the top of the settings nav. */
+export function SettingsHeader({ media, name, action }: { media: React.ReactNode; name: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5 px-1">
+      <span className="shrink-0">{media}</span>
+      <span className="min-w-0">
+        <span className="block truncate text-[15px] font-semibold leading-tight text-fg">{name}</span>
+        {action}
+      </span>
+    </div>
   );
 }
 

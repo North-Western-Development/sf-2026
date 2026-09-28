@@ -1,7 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
-import { ArrowDown, ArrowUp, Plus, Search, Trash2, X, Shield } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  AudioLines,
+  BarChart3,
+  Bot,
+  Copy,
+  Flag,
+  Gavel,
+  Info,
+  LayoutGrid,
+  Link2,
+  Plus,
+  Rocket,
+  ScrollText,
+  Search,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Smile,
+  Sticker,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-react';
 import { Button, Input } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { hasPermission } from '@subspace/constants';
@@ -15,10 +39,10 @@ import { PERMISSION_GROUPS } from '../../lib/permissionMeta';
 import { term } from '../../lib/strings';
 import type { Clearance, Member, Relay } from '../../lib/types';
 import { closeModal, confirmAction, toast } from '../../app/ui';
-import { SettingsLayout, SettingsTitle, Field, Switch, SaveBar } from './SettingsLayout';
+import { SettingsLayout, SettingsHeader, SettingsTitle, Field, Switch, SaveBar } from './SettingsLayout';
+import { RelayIcon } from '../sidebar/BeaconSidebar';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
-import { RelayIcon } from '../sidebar/BeaconSidebar';
 import { loadGlyphs, type Glyph } from '../chat/EmojiPicker';
 
 // Stable fallbacks: a fresh {} / [] inside a selector would re-render forever.
@@ -723,11 +747,22 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
   if (!beacon) return null;
 
   const manageBeacon = can(perms, PERMISSIONS.MANAGE_BEACON);
-  const relayTabs = can(perms, PERMISSIONS.MANAGE_RELAYS) ? relays.map((r) => ({ id: `relay:${r.id}`, label: `# ${r.name}` })) : [];
+  const relayTabs = can(perms, PERMISSIONS.MANAGE_RELAYS) ? relays.map((r) => ({ id: `relay:${r.id}`, icon: <RelayIcon type={r.type} />, label: r.name })) : [];
 
   return (
     <SettingsLayout
       title={`${beacon.name} Settings`}
+      header={
+        <SettingsHeader
+          media={
+            <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-overlay text-sm font-semibold text-fg">
+              {beacon.iconUrl ? <img src={beacon.iconUrl} alt="" className="h-full w-full object-cover" /> : beacon.name.split(/\s+/).filter(Boolean).slice(0, 3).map((w) => w[0]).join('').toUpperCase()}
+            </span>
+          }
+          name={beacon.name}
+          action={<span className="block text-xs text-fg-subtle">{term('beacon')} Settings</span>}
+        />
+      }
       active={tab}
       onSelect={setTab}
       onClose={closeModal}
@@ -735,38 +770,38 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
         {
           heading: beacon.name,
           items: [
-            ...(manageBeacon ? [{ id: 'overview', label: 'Overview' }] : []),
-            ...(can(perms, PERMISSIONS.MANAGE_CLEARANCES) ? [{ id: 'clearances', label: term('clearance', true) }] : []),
-            ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ id: 'glyphs', label: term('glyph', true) }] : []),
-            { id: 'stickers', label: 'Stickers', comingSoon: true },
-            { id: 'soundboard', label: 'Soundboard', comingSoon: true },
-            { id: 'widget', label: 'Widget', comingSoon: true },
+            ...(manageBeacon ? [{ id: 'overview', icon: <Info />, label: 'Overview' }] : []),
+            ...(can(perms, PERMISSIONS.MANAGE_CLEARANCES) ? [{ id: 'clearances', icon: <ShieldCheck />, label: term('clearance', true) }] : []),
+            ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ id: 'glyphs', icon: <Smile />, label: term('glyph', true) }] : []),
+            { id: 'stickers', icon: <Sticker />, label: 'Stickers', comingSoon: true },
+            { id: 'soundboard', icon: <AudioLines />, label: 'Soundboard', comingSoon: true },
+            { id: 'widget', icon: <LayoutGrid />, label: 'Widget', comingSoon: true },
           ],
         },
         ...(relayTabs.length ? [{ heading: term('relay', true), items: relayTabs }] : []),
         {
           heading: 'People',
           items: [
-            { id: 'members', label: 'Members' },
-            ...(can(perms, PERMISSIONS.CREATE_INVITES) ? [{ id: 'invites', label: 'Invites' }] : []),
-            ...(can(perms, PERMISSIONS.BAN_MEMBERS) ? [{ id: 'bans', label: 'Bans' }] : []),
+            { id: 'members', icon: <Users />, label: 'Members' },
+            ...(can(perms, PERMISSIONS.CREATE_INVITES) ? [{ id: 'invites', icon: <Link2 />, label: 'Invites' }] : []),
+            ...(can(perms, PERMISSIONS.BAN_MEMBERS) ? [{ id: 'bans', icon: <Gavel />, label: 'Bans' }] : []),
           ],
         },
         {
           heading: 'Moderation',
           items: [
-            { id: 'automod', label: 'AutoMod', comingSoon: true },
-            { id: 'audit', label: 'Audit Log', comingSoon: true },
-            { id: 'safety', label: 'Safety Setup', comingSoon: true },
+            { id: 'automod', icon: <Bot />, label: 'AutoMod', comingSoon: true },
+            { id: 'audit', icon: <ScrollText />, label: 'Audit Log', comingSoon: true },
+            { id: 'safety', icon: <ShieldAlert />, label: 'Safety Setup', comingSoon: true },
           ],
         },
         {
           heading: 'Community',
           items: [
-            ...(manageBeacon ? [{ id: 'onboarding', label: 'Onboarding' }] : []),
-            { id: 'insights', label: 'Beacon Insights', comingSoon: true },
-            { id: 'boost', label: 'Beacon Boost Status', comingSoon: true },
-            { id: 'template', label: 'Beacon Template', comingSoon: true },
+            ...(manageBeacon ? [{ id: 'onboarding', icon: <Flag />, label: 'Onboarding' }] : []),
+            { id: 'insights', icon: <BarChart3 />, label: 'Beacon Insights', comingSoon: true },
+            { id: 'boost', icon: <Rocket />, label: 'Beacon Boost Status', comingSoon: true },
+            { id: 'template', icon: <Copy />, label: 'Beacon Template', comingSoon: true },
           ],
         },
         ...(isOwner
@@ -775,6 +810,7 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
                 items: [
                   {
                     id: 'delete',
+                    icon: <Trash2 />,
                     label: `Delete ${term('beacon')}`,
                     danger: true,
                     onClick: () =>
