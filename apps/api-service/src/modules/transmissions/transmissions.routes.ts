@@ -20,6 +20,7 @@ import { loadChannel } from '../../lib/channels.js';
 import { parseMentions } from '../../lib/mentions.js';
 import { beaconMembers as beaconMembersTable, subspaceMeshMembers as subspaceMeshMembersTable } from '@subspace/database';
 
+import { resolveVaultAttachments } from '../../lib/attachments.js';
 const MAX_TRANSMISSION_LENGTH = 2000;
 
 export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -67,7 +68,11 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
     }
 
     const body = request.body as any;
-    const { content, attachments } = body || {};
+    const { content, attachmentIds } = body || {};
+    const attachments = await resolveVaultAttachments(db, token.transmitterId, attachmentIds);
+    if (!attachments) {
+      return reply.status(400).send({ error: 'Invalid attachmentIds', code: 'INVALID_ATTACHMENT' });
+    }
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
       return reply.status(400).send({ error: 'Transmission content cannot be empty' });
@@ -88,7 +93,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
         relayId,
         transmitterId: token.transmitterId,
         content: content.trim(),
-        attachments: Array.isArray(attachments) ? attachments : [],
+        attachments,
       })
       .returning();
 

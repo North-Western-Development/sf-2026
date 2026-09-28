@@ -7,6 +7,7 @@ import {
   transmitters,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
+import { resolveVaultAttachments } from '../../lib/attachments.js';
 import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 
 export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -81,9 +82,10 @@ export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     }
 
     const body = request.body as any;
-    const { content, attachments } = body || {};
+    const { content, attachmentIds } = body || {};
+    const attachments = await resolveVaultAttachments(db, token.transmitterId, attachmentIds);
+    if (!attachments) return reply.status(400).send({ error: 'Invalid attachmentIds', code: 'INVALID_ATTACHMENT' });
 
-    // INVARIANT: Visual relays require media attachments
     if (!Array.isArray(attachments) || attachments.length === 0) {
       return reply.status(400).send({
         error: 'Visual Relays require at least one visual transmission artifact (media attachment)',

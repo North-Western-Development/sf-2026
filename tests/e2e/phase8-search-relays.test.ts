@@ -12,6 +12,7 @@ import {
   archivalThreads,
   transmitterRelayPreferences,
   transmissions,
+  vaultFiles,
   eq,
 } from '@subspace/database';
 
@@ -21,6 +22,15 @@ describe('Phase 8: Archival, Visual Relays & Subspace Search E2E Suite', () => {
 
   const commanderId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   const explorerId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+  /** Insert a vault file record owned by `ownerId` and return its id. */
+  async function seedVaultFile(ownerId: string, filename: string, mimeType: string): Promise<string> {
+    const [file] = await (app as any).db
+      .insert(vaultFiles)
+      .values({ transmitterId: ownerId, storageKey: `test/${Date.now()}-${filename}`, filename, mimeType, sizeBytes: 1048576n })
+      .returning();
+    return file.id;
+  }
 
   let commanderToken: string;
   let explorerToken: string;
@@ -252,7 +262,7 @@ describe('Phase 8: Archival, Visual Relays & Subspace Search E2E Suite', () => {
         headers: { authorization: `Bearer ${explorerToken}` },
         payload: {
           content: 'Just a text message without any image or video',
-          attachments: [],
+          attachmentIds: [],
         },
       });
 
@@ -267,14 +277,8 @@ describe('Phase 8: Archival, Visual Relays & Subspace Search E2E Suite', () => {
         headers: { authorization: `Bearer ${explorerToken}` },
         payload: {
           content: 'High-resolution capture of Horsehead Nebula',
-          attachments: [
-            {
-              id: 'att-1',
-              url: 'https://subspace.vault/nebula1.png',
-              filename: 'horsehead.png',
-              size: 1048576,
-            },
-          ],
+          // Attachments must reference vault files the sender owns (raw URLs are rejected).
+          attachmentIds: [await seedVaultFile(explorerId, 'horsehead.png', 'image/png')],
         },
       });
 

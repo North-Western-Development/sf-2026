@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import {
   eq,
+  inArray,
   and,
   desc,
   asc,
@@ -10,6 +11,8 @@ import {
   transmitters,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
+import { resolveVaultAttachments } from '../../lib/attachments.js';
+import { publishGatewayEvent } from '../../lib/events.js';
 import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 
 export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -83,7 +86,9 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     }
 
     const body = request.body as any;
-    const { title, content, tags, attachments } = body || {};
+    const { title, content, tags, attachmentIds } = body || {};
+    const attachments = await resolveVaultAttachments(db, token.transmitterId, attachmentIds);
+    if (!attachments) return reply.status(400).send({ error: 'Invalid attachmentIds', code: 'INVALID_ATTACHMENT' });
 
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
       return reply.status(400).send({ error: 'Thread title is required' });
@@ -125,7 +130,7 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         threadId: thread.id,
         transmitterId: token.transmitterId,
         content: content.trim(),
-        attachments: Array.isArray(attachments) ? attachments : [],
+        attachments,
       })
       .returning();
 
@@ -135,6 +140,8 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       .set({ rootTransmissionId: rootTransmission.id })
       .where(eq(archivalThreads.id, thread.id))
       .returning();
+
+    await publishGatewayEvent(app, 'THREAD_CREATE', { relayId: targetRelay.id, thread: updatedThread }, { relayId: targetRelay.id });
 
     return reply.status(201).send({
       message: 'Archival thread created',
@@ -177,9 +184,20 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       );
     }
 
+    // Opening-post preview (first 240 chars) for forum cards.
+    const rootIds = filtered.map((i: any) => i.thread.rootTransmissionId).filter(Boolean);
+    const roots = rootIds.length
+      ? await db.select({ id: transmissions.id, content: transmissions.content, attachments: transmissions.attachments }).from(transmissions).where(inArray(transmissions.id, rootIds))
+      : [];
+    const rootById = new Map(roots.map((r: any) => [r.id, r]));
+    const withPreview = filtered.map((i: any) => {
+      const root: any = rootById.get(i.thread.rootTransmissionId);
+      return { ...i, preview: root ? String(root.content).slice(0, 240) : '', previewImage: root?.attachments?.find((a: any) => String(a.mimeType || '').startsWith('image/'))?.url ?? null };
+    });
+
     return reply.send({
       relayId: targetRelay.id,
-      threads: filtered,
+      threads: withPreview,
     });
   });
 
@@ -266,7 +284,9 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     }
 
     const body = request.body as any;
-    const { content, attachments } = body || {};
+    const { content, attachmentIds } = body || {};
+    const attachments = await resolveVaultAttachments(db, token.transmitterId, attachmentIds);
+    if (!attachments) return reply.status(400).send({ error: 'Invalid attachmentIds', code: 'INVALID_ATTACHMENT' });
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
       return reply.status(400).send({ error: 'Transmission content cannot be empty' });
@@ -288,7 +308,7 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         threadId: thread.id,
         transmitterId: token.transmitterId,
         content: content.trim(),
-        attachments: Array.isArray(attachments) ? attachments : [],
+        attachments,
       })
       .returning();
 
@@ -381,6 +401,8 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       .set(updates)
       .where(eq(archivalThreads.id, threadId))
       .returning();
+
+    await publishGatewayEvent(app, 'THREAD_UPDATE', { relayId: updated.relayId, thread: updated }, { relayId: updated.relayId });
 
     return reply.send({
       message: 'Thread parameters updated',

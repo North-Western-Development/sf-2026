@@ -20,6 +20,7 @@ import {
   resolveMeshAudience,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
+import { resolveVaultAttachments } from '../../lib/attachments.js';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { CHANNEL_TYPES, ChannelType, loadChannel, checkChannelAccess, audienceForChannel } from '../../lib/channels.js';
@@ -235,20 +236,11 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           const attachAccess = await checkChannelAccess(db, channel, token.transmitterId, 'attach');
           if (!attachAccess.allowed) return reply.status(attachAccess.status).send({ error: attachAccess.error });
         }
-        const files = await db
-          .select()
-          .from(vaultFiles)
-          .where(and(inArray(vaultFiles.id, attachmentIds), eq(vaultFiles.transmitterId, token.transmitterId)));
-        if (files.length !== attachmentIds.length) {
+        const resolved = await resolveVaultAttachments(db, token.transmitterId, attachmentIds);
+        if (!resolved) {
           return reply.status(400).send({ error: 'One or more attachmentIds are invalid or not owned by the sender', code: 'INVALID_ATTACHMENT' });
         }
-        attachments = files.map((f: any) => ({
-          id: f.id,
-          url: process.env.VAULT_PUBLIC_URL_BASE ? `${process.env.VAULT_PUBLIC_URL_BASE}/${f.storageKey}` : `/api/v1/vault/files/${f.id}`,
-          filename: f.filename,
-          size: Number(f.sizeBytes),
-          mimeType: f.mimeType,
-        }));
+        attachments = resolved;
       }
 
       let replyToId: string | null = null;

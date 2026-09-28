@@ -118,11 +118,14 @@ export class SubspaceS3Storage {
   async getPresignedDownloadUrl(
     storageKey: string,
     expiresInSeconds = 3600, // 1 hour
-    bucket: string = this.bucket
+    bucket: string = this.bucket,
+    response?: { contentDisposition?: string; contentType?: string }
   ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: storageKey,
+      ResponseContentDisposition: response?.contentDisposition,
+      ResponseContentType: response?.contentType,
     });
     return getSignedUrl(this.signer, command, { expiresIn: expiresInSeconds });
   }

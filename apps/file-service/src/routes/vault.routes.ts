@@ -18,6 +18,12 @@ export function extractAuthToken(request: FastifyRequest): TokenPayload | null {
   return verifyAccessToken(token, JWT_SECRET);
 }
 
+/** Types safe to render inline from our origin (no scriptable formats such as SVG/HTML). */
+const INLINE_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif',
+  'video/mp4', 'video/webm', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm',
+]);
+
 export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
   const s3: SubspaceS3Storage = (app as any).s3;
@@ -182,7 +188,10 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       files.map(async (f: any) => ({
         ...f,
         sizeBytes: f.sizeBytes.toString(),
-        downloadUrl: await s3.getPresignedDownloadUrl(f.storageKey, 3600),
+        downloadUrl: await s3.getPresignedDownloadUrl(f.storageKey, 3600, undefined, {
+          contentDisposition: `${INLINE_TYPES.has(String(f.mimeType).toLowerCase()) ? 'inline' : 'attachment'}; filename="${String(f.filename).replace(/[^\w.\- ]+/g, '_').slice(0, 180) || 'file'}"`,
+          contentType: INLINE_TYPES.has(String(f.mimeType).toLowerCase()) ? f.mimeType : 'application/octet-stream',
+        }),
       }))
     );
 
@@ -224,6 +233,29 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    * GET /api/v1/vault/quota
    * Get quota and storage utilization for transmitter
    */
+  /**
+   * GET /api/v1/vault/files/:id
+   * Public attachment link (unguessable id; the upload disclaimer states links are public).
+   * Redirects to a short-lived presigned URL. Only well-known media types render inline;
+   * everything else is forced to download so uploaded HTML/SVG can never run in our origin.
+   */
+  app.get('/files/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.status(404).send({ error: 'File not found' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const [file] = await db.select().from(vaultFiles).where(eq(vaultFiles.id, id)).limit(1);
+    if (!file || file.isQuarantined) return reply.status(404).send({ error: 'File not found' });
+
+    const inline = INLINE_TYPES.has(String(file.mimeType).toLowerCase());
+    const safeName = String(file.filename).replace(/[^\w.\- ]+/g, '_').slice(0, 180) || 'file';
+    const url = await s3.getPresignedDownloadUrl(file.storageKey, 300, undefined, {
+      contentDisposition: `${inline ? 'inline' : 'attachment'}; filename="${safeName}"`,
+      contentType: inline ? file.mimeType : 'application/octet-stream',
+    });
+    reply.header('Cache-Control', 'private, max-age=240');
+    return reply.redirect(url, 302);
+  });
+
   app.get('/quota', async (request, reply) => {
     const token = extractAuthToken(request);
     if (!token) return reply.status(401).send({ error: 'Authentication required' });

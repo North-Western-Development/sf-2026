@@ -8,6 +8,15 @@ const pkg = (name: string) => fileURLToPath(new URL(`../../packages/${name}/src/
 // Dev-server proxy mirrors docker/nginx/web.conf so the client always talks to its own origin.
 const BACKEND_HOST = process.env.VITE_BACKEND_HOST || '127.0.0.1';
 
+// User-uploaded content must never execute in the app origin (mirrors docker/nginx/web.conf).
+const sandboxUserContent = (proxy: any) => {
+  proxy.on('proxyRes', (res: any) => {
+    res.headers['content-security-policy'] =
+      "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'";
+    res.headers['x-content-type-options'] = 'nosniff';
+  });
+};
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -26,8 +35,8 @@ export default defineConfig({
       '/api': { target: `http://${BACKEND_HOST}:3001`, changeOrigin: true },
       '/gateway': { target: `ws://${BACKEND_HOST}:3002`, ws: true },
       '/rtc': { target: `ws://${BACKEND_HOST}:7880`, ws: true },
-      '/subspace-vault': { target: `http://${BACKEND_HOST}:9000` },
-      '/subspace-media': { target: `http://${BACKEND_HOST}:9000` },
+      '/subspace-vault': { target: `http://${BACKEND_HOST}:9000`, configure: sandboxUserContent },
+      '/subspace-media': { target: `http://${BACKEND_HOST}:9000`, configure: sandboxUserContent },
     },
   },
 });
