@@ -208,6 +208,53 @@ describe('Security: access control sweep', () => {
     expect((await inject('GET', `/api/v1/channels/relay/${privateId}/transmissions`, tok(owner))).statusCode).toBe(200);
   });
 
+  it('stops clearance managers from granting permissions they do not hold', async () => {
+    const MANAGE_CLEARANCES = 1n << 10n;
+    const ADMIN = 1n << 29n;
+    const mgr = await inject('POST', `/api/v1/beacons/${beaconId}/clearances`, tok(owner), { name: 'role-manager', position: 5, permissions: String(MANAGE_CLEARANCES | 1n) });
+    const mgrId = mgr.json().clearance.id;
+    const assign = await inject('PATCH', `/api/v1/beacons/${beaconId}/members/${member.id}`, tok(owner), { clearanceIds: [mgrId] });
+    expect(assign.statusCode).toBeLessThan(300);
+
+    const escalate = await inject('POST', `/api/v1/beacons/${beaconId}/clearances`, tok(member), { name: 'backdoor', position: 1, permissions: String(ADMIN) });
+    expect(escalate.statusCode).toBe(403);
+
+    const clearances = (await inject('GET', `/api/v1/beacons/${beaconId}/clearances`, tok(owner))).json().clearances;
+    const everyone = clearances.find((c: any) => c.position === 0);
+    const widen = await inject('PATCH', `/api/v1/beacons/${beaconId}/clearances/${everyone.id}`, tok(member), { permissions: String(BigInt(everyone.permissions) | ADMIN) });
+    expect(widen.statusCode).toBe(403);
+
+    const malformed = await inject('POST', `/api/v1/beacons/${beaconId}/clearances`, tok(owner), { name: 'x', permissions: 'not-a-number' });
+    expect(malformed.statusCode).toBe(400);
+
+    // Toggling bits they do hold is still allowed.
+    const ok = await inject('POST', `/api/v1/beacons/${beaconId}/clearances`, tok(member), { name: 'reader', position: 1, permissions: '1' });
+    expect(ok.statusCode).toBe(201);
+    await inject('PATCH', `/api/v1/beacons/${beaconId}/members/${member.id}`, tok(owner), { clearanceIds: [] });
+  });
+
+  it('never lets onboarding self-assign an elevated clearance', async () => {
+    const mod = await inject('POST', `/api/v1/beacons/${beaconId}/clearances`, tok(owner), {
+      name: 'moderator',
+      position: 2,
+      permissions: String((1n << 11n) | (1n << 8n)),
+      allowDelegation: true,
+    });
+    const modId = mod.json().clearance.id;
+    const cosmetic = await inject('POST', `/api/v1/beacons/${beaconId}/clearances`, tok(owner), { name: 'pilots', permissions: '0', allowDelegation: true });
+    const cosmeticId = cosmetic.json().clearance.id;
+
+    const listing = (await inject('GET', `/api/v1/beacons/${beaconId}/onboarding`, tok(member))).json();
+    const offered = listing.optInClearances.map((c: any) => c.id);
+    expect(offered).toContain(cosmeticId);
+    expect(offered).not.toContain(modId);
+
+    const res = await inject('POST', `/api/v1/beacons/${beaconId}/onboarding/complete`, tok(member), { agreedToRules: true, selectedClearanceIds: [modId, cosmeticId] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().member.clearanceIds).toContain(cosmeticId);
+    expect(res.json().member.clearanceIds).not.toContain(modId);
+  });
+
   it('keeps SQL metacharacters inert in search and names', async () => {
     const res = await inject('GET', `/api/v1/search/quick-scan?q=${encodeURIComponent("' OR 1=1 --")}`, tok(outsider));
     expect(res.statusCode).toBeLessThan(500);

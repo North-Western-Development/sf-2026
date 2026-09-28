@@ -1,6 +1,24 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, and, beacons, beaconMembers, clearances } from '@subspace/database';
+import { publishGatewayEvent } from '../../lib/events.js';
+import { buildMember } from '../../lib/members.js';
+import { PERMISSIONS } from '@subspace/constants';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+
+/** Permission bits that onboarding self-selection may never grant. */
+const ELEVATED_PERMISSIONS =
+  PERMISSIONS.ADMINISTRATOR |
+  PERMISSIONS.MANAGE_BEACON |
+  PERMISSIONS.MANAGE_RELAYS |
+  PERMISSIONS.MANAGE_CLEARANCES |
+  PERMISSIONS.MANAGE_TRANSMISSIONS |
+  PERMISSIONS.MANAGE_NICKNAMES |
+  PERMISSIONS.MANAGE_GLYPHS |
+  PERMISSIONS.KICK_MEMBERS |
+  PERMISSIONS.BAN_MEMBERS |
+  PERMISSIONS.MUTE_MEMBERS |
+  PERMISSIONS.MOVE_MEMBERS |
+  PERMISSIONS.MENTION_EVERYONE;
 
 export const onboardingRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -46,16 +64,22 @@ export const onboardingRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         name: clearances.name,
         color: clearances.color,
         description: clearances.name,
+        permissions: clearances.permissions,
+        position: clearances.position,
       })
       .from(clearances)
       .where(and(eq(clearances.beaconId, beaconId), eq(clearances.allowDelegation, true)));
+
+    const selectable = optInClearances
+      .filter((c: any) => (BigInt(c.permissions) & ELEVATED_PERMISSIONS) === 0n && c.position > 0)
+      .map(({ permissions: _p, position: _pos, ...c }: any) => c);
 
     return reply.send({
       beaconId: beacon.id,
       beaconName: beacon.name,
       rulesText: beacon.rulesText,
       hasCompletedOnboarding: member.hasCompletedOnboarding,
-      optInClearances,
+      optInClearances: selectable,
     });
   });
 
@@ -106,7 +130,13 @@ export const onboardingRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           )
         );
 
-      const delegatableSet = new Set(validDelegatable.map((c: any) => c.id));
+      // Self-service never grants moderation or administrative power, even if an
+      // administrator marked such a clearance as delegatable.
+      const delegatableSet = new Set(
+        validDelegatable
+          .filter((c: any) => (BigInt(c.permissions) & ELEVATED_PERMISSIONS) === 0n && c.position > 0)
+          .map((c: any) => c.id)
+      );
       const allowedSelections = selectedClearanceIds.filter((id: string) => delegatableSet.has(id));
 
       finalClearanceIds = Array.from(new Set([...finalClearanceIds, ...allowedSelections]));
@@ -125,6 +155,13 @@ export const onboardingRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         )
       )
       .returning();
+
+    await publishGatewayEvent(
+      app,
+      'MEMBER_UPDATE',
+      { beaconId, member: await buildMember(db, (app as any).redis, beaconId, token.transmitterId) },
+      { beaconId }
+    );
 
     return reply.send({
       message: 'Onboarding completed. Full Beacon transmission access granted.',

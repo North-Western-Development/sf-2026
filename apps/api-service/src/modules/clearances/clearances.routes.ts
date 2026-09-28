@@ -9,6 +9,27 @@ import {
 import { publishGatewayEvent } from '../../lib/events.js';
 import { buildMember } from '../../lib/members.js';
 
+
+const MAX_BITS = (1n << 64n) - 1n;
+
+/** Parse a permission bitfield from a decimal string/number; null when malformed. */
+function parseBits(value: unknown): bigint | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  if (typeof value === 'string' && !/^\d{1,20}$/.test(value)) return null;
+  try {
+    const bits = BigInt(value);
+    return bits >= 0n && bits <= MAX_BITS ? bits : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Non-owners may only toggle bits they hold themselves (ADMINISTRATOR holds all). */
+function canChangeBits(actor: { isOwner: boolean; effectivePermissions: bigint }, before: bigint, after: bigint): boolean {
+  if (actor.isOwner || hasPermission(actor.effectivePermissions, PERMISSIONS.ADMINISTRATOR)) return true;
+  return ((before ^ after) & ~actor.effectivePermissions) === 0n;
+}
+
 export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
 
@@ -70,7 +91,14 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       return reply.status(400).send({ error: 'Clearance name is required' });
     }
 
-    const targetPosition = Number(position);
+    const targetPosition = position === undefined ? 1 : Number(position);
+    const requestedBits = permBits === undefined ? 0n : parseBits(permBits);
+    if (requestedBits === null) {
+      return reply.status(400).send({ error: 'permissions must be a non-negative 64-bit integer', code: 'INVALID_PERMISSIONS' });
+    }
+    if (!canChangeBits(actorContext, 0n, requestedBits)) {
+      return reply.status(403).send({ error: 'Cannot grant permissions you do not hold', code: 'FORBIDDEN_PERMISSION_GRANT' });
+    }
     if (isNaN(targetPosition) || targetPosition <= 0) {
       return reply.status(400).send({
         error: 'Clearance position must be a positive integer greater than 0 (cannot place below or at @everyone)',
@@ -95,7 +123,7 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         name: name.trim(),
         color: color || '#99AAB5',
         position: targetPosition,
-        permissions: permBits !== undefined ? BigInt(permBits) : 0n,
+        permissions: requestedBits,
         allowDelegation: Boolean(allowDelegation),
       })
       .returning();
@@ -168,7 +196,16 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
     if (body.name !== undefined) updates.name = body.name.trim();
     if (body.color !== undefined) updates.color = body.color;
-    if (body.permissions !== undefined) updates.permissions = BigInt(body.permissions);
+    if (body.permissions !== undefined) {
+      const next = parseBits(body.permissions);
+      if (next === null) {
+        return reply.status(400).send({ error: 'permissions must be a non-negative 64-bit integer', code: 'INVALID_PERMISSIONS' });
+      }
+      if (!canChangeBits(actorContext, BigInt(targetClearance.permissions), next)) {
+        return reply.status(403).send({ error: 'Cannot grant or revoke permissions you do not hold', code: 'FORBIDDEN_PERMISSION_GRANT' });
+      }
+      updates.permissions = next;
+    }
     if (body.allowDelegation !== undefined) updates.allowDelegation = Boolean(body.allowDelegation);
     if (body.hoist !== undefined) updates.hoist = Boolean(body.hoist);
 
