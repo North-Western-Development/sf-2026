@@ -61,11 +61,16 @@ function Layout({ sidebar }: { sidebar: React.ReactNode }) {
   useGlobalShortcuts();
   return (
     <div className="flex h-full w-full overflow-hidden bg-void text-fg">
-      <BeaconRail />
-      <aside className="flex w-60 shrink-0 flex-col bg-raised rounded-tl-xl overflow-hidden">
-        <div className="min-h-0 flex-1">{sidebar}</div>
+      {/* Rail + sidebar share one column so the user island can span both (Discord layout). */}
+      <div className="relative flex w-[312px] shrink-0 flex-col">
+        <div className="flex min-h-0 flex-1">
+          <BeaconRail />
+          <aside className="flex w-60 shrink-0 flex-col overflow-hidden rounded-tl-xl bg-raised">
+            <div className="min-h-0 flex-1">{sidebar}</div>
+          </aside>
+        </div>
         <UserPanel />
-      </aside>
+      </div>
       <main className="flex min-w-0 flex-1 flex-col bg-base">
         <Outlet />
       </main>
