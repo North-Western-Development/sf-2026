@@ -10,6 +10,7 @@ import {
   transmitters,
   beaconEmojis,
   beaconBans,
+  relays,
   resolveBeaconAudience,
 } from '@subspace/database';
 import {
@@ -50,6 +51,15 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return reply.status(400).send({ error: 'Beacon name is required' });
     }
+    if (name.trim().length > 100) {
+      return reply.status(400).send({ error: 'Beacon name cannot exceed 100 characters' });
+    }
+    if (iconUrl && !(await validateMediaUrl(db, token.transmitterId, iconUrl, ['beacon_icon']))) {
+      return reply.status(400).send({ error: 'Invalid media URL for iconUrl', code: 'INVALID_MEDIA_URL' });
+    }
+    if (bannerUrl && !(await validateMediaUrl(db, token.transmitterId, bannerUrl, ['beacon_banner']))) {
+      return reply.status(400).send({ error: 'Invalid media URL for bannerUrl', code: 'INVALID_MEDIA_URL' });
+    }
 
     // Insert Beacon
     const [newBeacon] = await db
@@ -89,6 +99,20 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         clearanceIds: [],
       })
       .returning();
+
+    // Discord-style starter layout: a text band with #general and a Comm-Link band with General.
+    const [textBand] = await db
+      .insert(relays)
+      .values({ beaconId: newBeacon.id, name: 'Text Relays', type: 'category', position: 0 })
+      .returning();
+    const [voiceBand] = await db
+      .insert(relays)
+      .values({ beaconId: newBeacon.id, name: 'Comm-Links', type: 'category', position: 1 })
+      .returning();
+    await db.insert(relays).values([
+      { beaconId: newBeacon.id, parentId: textBand.id, name: 'general', type: 'text', position: 0 },
+      { beaconId: newBeacon.id, parentId: voiceBand.id, name: 'General', type: 'comm_link', position: 0 },
+    ]);
 
     return reply.status(201).send({
       message: 'Beacon established successfully',

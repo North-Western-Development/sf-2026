@@ -66,8 +66,15 @@ export const Modal: React.FC<ModalProps> = ({
     document.body.style.overflow = 'hidden';
 
     const panel = panelRef.current;
-    const first = panel?.querySelector<HTMLElement>('[data-autofocus]') ?? panel?.querySelector<HTMLElement>(FOCUSABLE);
-    (first ?? panel)?.focus();
+    // Respect a child that already took focus (autoFocus); otherwise pick a sensible target,
+    // preferring text fields over the close button.
+    if (!panel?.contains(document.activeElement)) {
+      const first =
+        panel?.querySelector<HTMLElement>('[data-autofocus]') ??
+        panel?.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]):not([type="radio"]):not([type="checkbox"]), textarea:not([disabled])') ??
+        panel?.querySelector<HTMLElement>(`${FOCUSABLE.split(', ').map((sel) => `${sel}:not([aria-label="Close"])`).join(', ')}`);
+      (first ?? panel)?.focus();
+    }
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (openStack[openStack.length - 1] !== id) return;

@@ -84,7 +84,7 @@ function NotificationButton({ channelKey: key }: { channelKey: ChannelKey }) {
   const scope = type === 'relay' ? 'relay' : type === 'link' ? 'link' : 'mesh';
   const setting = useStore((s) => settingFor(s, scope, id));
   const muted = isMuted(setting);
-  const eff = useStore((s) => effectiveNotification(s, key));
+  const effLevel = useStore((s) => effectiveNotification(s, key).level);
   const { openContextMenu } = useContextMenu();
   const menu = (): ContextMenuItem[] => [
     muted
@@ -94,7 +94,7 @@ function NotificationButton({ channelKey: key }: { channelKey: ChannelKey }) {
     ...(type === 'relay'
       ? LEVEL_LABELS.map<ContextMenuItem>((l) => ({
           label: l.label,
-          sublabel: l.level === 'inherit' ? `Currently: ${eff.level === 'all' ? 'All' : eff.level === 'mentions' ? '@mentions' : 'Nothing'}` : undefined,
+          sublabel: l.level === 'inherit' ? `Currently: ${effLevel === 'all' ? 'All' : effLevel === 'mentions' ? '@mentions' : 'Nothing'}` : undefined,
           checked: (setting?.level ?? 'inherit') === l.level,
           onClick: () => void setNotificationSetting(scope, id, { level: l.level }),
         }))

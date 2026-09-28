@@ -99,7 +99,18 @@ export async function bootstrap(): Promise<void> {
   });
 }
 
-export async function loadBeacon(beaconId: string): Promise<void> {
+const beaconLoads = new Map<string, Promise<void>>();
+
+/** Load relays, clearances and members for a beacon; concurrent callers share one request. */
+export function loadBeacon(beaconId: string): Promise<void> {
+  const inflight = beaconLoads.get(beaconId);
+  if (inflight) return inflight;
+  const p = fetchBeacon(beaconId).finally(() => beaconLoads.delete(beaconId));
+  beaconLoads.set(beaconId, p);
+  return p;
+}
+
+async function fetchBeacon(beaconId: string): Promise<void> {
   const [relaysRes, clearRes, membersRes] = await Promise.all([
     http.get<{ relays: Raw[] }>(`/beacons/${beaconId}/relays?filter=all`),
     optional(http.get<{ clearances: Raw[] }>(`/beacons/${beaconId}/clearances`), { clearances: [] }),

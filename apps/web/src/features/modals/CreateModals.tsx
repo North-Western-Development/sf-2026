@@ -132,7 +132,7 @@ async function createRelay(beaconId: string, body: Record<string, unknown>) {
   const relay = toRelay(res.relay);
   setState((s) => ({
     relays: { ...s.relays, [relay.id]: relay },
-    relayIdsByBeacon: { ...s.relayIdsByBeacon, [beaconId]: [...(s.relayIdsByBeacon[beaconId] ?? []), relay.id] },
+    relayIdsByBeacon: { ...s.relayIdsByBeacon, [beaconId]: [...(s.relayIdsByBeacon[beaconId] ?? []).filter((x) => x !== relay.id), relay.id] },
   }));
   return relay;
 }

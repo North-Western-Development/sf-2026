@@ -13,13 +13,17 @@ import { pickImage, uploadMedia } from '../../lib/media';
 import { toBeacon, toClearance, toRelay, userTag } from '../../lib/normalize';
 import { PERMISSION_GROUPS } from '../../lib/permissionMeta';
 import { term } from '../../lib/strings';
-import type { Clearance, Relay } from '../../lib/types';
+import type { Clearance, Member, Relay } from '../../lib/types';
 import { closeModal, confirmAction, toast } from '../../app/ui';
 import { SettingsLayout, SettingsTitle, Field, Switch, SaveBar } from './SettingsLayout';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { RelayIcon } from '../sidebar/BeaconSidebar';
 import { loadGlyphs, type Glyph } from '../chat/EmojiPicker';
+
+// Stable fallbacks: a fresh {} / [] inside a selector would re-render forever.
+const EMPTY_MEMBERS: Record<string, Member> = {};
+const EMPTY_CLEARANCES: Clearance[] = [];
 
 // ---------------------------------------------------------------------------
 // Overview
@@ -127,7 +131,7 @@ function ClearancesTab({ beaconId }: { beaconId: string }) {
     const me = s.me && s.members[beaconId]?.[s.me.id];
     return Math.max(0, ...(s.clearances[beaconId] ?? []).filter((c) => me?.clearanceIds.includes(c.id)).map((c) => c.position));
   });
-  const members = useStore((s) => s.members[beaconId] ?? {});
+  const members = useStore((s) => s.members[beaconId] ?? EMPTY_MEMBERS);
   const [selected, setSelected] = useState<string | null>(clearances[0]?.id ?? null);
   const [sub, setSub] = useState<'display' | 'permissions' | 'members'>('display');
   const current = clearances.find((c) => c.id === selected) ?? null;
@@ -320,7 +324,7 @@ function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) 
   const navigate = useNavigate();
   const relay = useStore((s) => s.relays[relayId]);
   const clearances = useStore(useShallow((s) => [...(s.clearances[beaconId] ?? [])].sort((a, b) => b.position - a.position)));
-  const members = useStore((s) => s.members[beaconId] ?? {});
+  const members = useStore((s) => s.members[beaconId] ?? EMPTY_MEMBERS);
   const [d, setD] = useState({ name: relay?.name ?? '', topic: relay?.topic ?? '', isUnhideable: !!relay?.isUnhideable });
   const [overwrites, setOverwrites] = useState<Overwrite[] | null>(null);
   const [target, setTarget] = useState<string | null>(null);
@@ -555,7 +559,7 @@ function GlyphsTab({ beaconId }: { beaconId: string }) {
 
 function MembersTab({ beaconId }: { beaconId: string }) {
   const members = useStore(useShallow((s) => Object.values(s.members[beaconId] ?? {})));
-  const clearances = useStore((s) => s.clearances[beaconId] ?? []);
+  const clearances = useStore((s) => s.clearances[beaconId] ?? EMPTY_CLEARANCES);
   const [q, setQ] = useState('');
   const shown = members.filter((m) => !q || m.user.username.includes(q.toLowerCase()) || (m.nickname ?? '').toLowerCase().includes(q.toLowerCase()) || (m.user.displayName ?? '').toLowerCase().includes(q.toLowerCase()));
   return (

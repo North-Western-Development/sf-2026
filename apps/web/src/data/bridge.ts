@@ -106,6 +106,8 @@ function onTransmissionCreate(d: Raw) {
 
 const handlers: Record<string, (d: Raw) => void> = {
   READY(d) {
+    const me = getState().me;
+    if (me && d.presence) setPresence(me.id, { status: d.presence, customStatus: me.customStatus ?? null });
     for (const p of d.presences ?? []) setPresence(p.transmitter_id, { status: p.presence, customStatus: p.custom_status });
     handlers.VOICE_STATES_REPLACE(d);
   },
