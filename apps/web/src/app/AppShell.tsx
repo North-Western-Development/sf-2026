@@ -8,6 +8,7 @@ import { HomeSidebar } from '../features/sidebar/HomeSidebar';
 import { BeaconSidebar } from '../features/sidebar/BeaconSidebar';
 import { UserPanel } from '../features/user/UserPanel';
 import { FriendsView } from '../features/home/FriendsView';
+import { RequestsView } from '../features/home/RequestsView';
 import { RelayRoute } from '../features/chat/RelayRoute';
 import { DirectRoute } from '../features/chat/DirectRoute';
 import { DiscoverView } from '../features/discover/DiscoverView';
@@ -118,6 +119,7 @@ export function AppShell() {
           <Route path="/invite/:code" element={<InviteRoute />} />
           <Route path="/channels/@me" element={<Layout sidebar={<HomeSidebar />} />}>
             <Route index element={<FriendsView />} />
+            <Route path="requests" element={<RequestsView />} />
             <Route path=":dmId" element={<DirectRoute />} />
           </Route>
           <Route path="/discover" element={<Layout sidebar={<HomeSidebar />} />}>

@@ -54,12 +54,17 @@ export function effectiveNotification(s: SubspaceState, key: ChannelKey): Effect
   };
 }
 
-/** Does this message ping the current user (after suppression settings)? */
+/** Does this message ping the current user (after suppression settings)? DMs always count. */
 export function mentionsMe(s: SubspaceState, key: ChannelKey, t: Transmission): boolean {
+  const { type } = parseChannelKey(key);
+  if ((type === 'link' || type === 'mesh') && s.me && t.author.id !== s.me.id) return true;
+  return explicitlyMentionsMe(s, key, t);
+}
+
+/** Explicit @user / @clearance / @everyone pings: these get the highlighted background. */
+export function explicitlyMentionsMe(s: SubspaceState, key: ChannelKey, t: Transmission): boolean {
   const me = s.me;
   if (!me || t.author.id === me.id) return false;
-  const { type } = parseChannelKey(key);
-  if (type === 'link' || type === 'mesh') return true;
   if (t.mentions.includes(me.id)) return true;
   const eff = effectiveNotification(s, key);
   if (t.mentionEveryone && !eff.suppressEveryone) return true;

@@ -21,8 +21,8 @@ import {
   upsertMessages,
   patchMessage,
 } from './store';
-import { ackChannel, applyReaction, loadBeacon, refreshRelationships } from './actions';
-import { maybeNotify, mentionsMe } from './notifications';
+import { ackChannel, applyReaction, loadBeacon, loadTransmissionRequests, refreshRelationships } from './actions';
+import { maybeNotify, mentionsMe, playPing } from './notifications';
 
 type Raw = Record<string, any>;
 
@@ -300,8 +300,11 @@ const handlers: Record<string, (d: Raw) => void> = {
   RELATIONSHIP_REMOVE() {
     void refreshRelationships().catch(() => {});
   },
-  TRANSMISSION_REQUEST_CREATE() {
-    void refreshRelationships().catch(() => {});
+  TRANSMISSION_REQUEST_CREATE(d) {
+    if (d.recipient_id === getState().me?.id) {
+      void loadTransmissionRequests().catch(() => {});
+      playPing();
+    }
   },
   MESH_CREATE(d) {
     const m = toMesh(d.mesh ?? d);

@@ -184,6 +184,15 @@ export interface Relationship {
   since?: string;
 }
 
+export interface TransmissionRequest {
+  id: string;
+  sender: UserRef;
+  content: string;
+  createdAt: string;
+  expiresAt: string;
+  mutualBeaconId: string;
+}
+
 export interface DirectLink {
   id: string;
   recipient: UserRef;

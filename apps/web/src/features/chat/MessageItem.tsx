@@ -3,7 +3,7 @@ import { clsx } from 'clsx';
 import { CornerUpLeft, Pencil, SmilePlus, MoreHorizontal, Pin, AlertCircle, FileText, Download, Forward, MessageSquarePlus } from 'lucide-react';
 import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { useStore } from '../../data/store';
-import { mentionsMe } from '../../data/notifications';
+import { explicitlyMentionsMe } from '../../data/notifications';
 import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
 import { deleteMessage, editMessage, retryMessage, setPinned, toggleReaction } from '../../data/actions';
 import { removeMessage } from '../../data/store';
@@ -115,7 +115,7 @@ export interface MessageItemProps {
 
 export const MessageItem = memo(function MessageItem({ message: m, channelKey: key, beaconId, grouped, onReply, onJumpTo }: MessageItemProps) {
   const me = useStore((s) => s.me);
-  const pingsMe = useStore((s) => mentionsMe(s, key, m));
+  const pingsMe = useStore((s) => explicitlyMentionsMe(s, key, m));
   const { type: chType, id: chId } = parseChannelKey(key);
   const perms = useStore((s) => (chType === 'relay' ? relayPermissions(s, chId) : null));
   const editing = useUi((s) => s.editing?.key === key && s.editing.messageId === m.id);

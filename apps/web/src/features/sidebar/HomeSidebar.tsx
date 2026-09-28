@@ -194,7 +194,7 @@ export function HomeSidebar() {
       links: s.links,
       meshes: s.meshes,
       incoming: Object.values(s.relationships).filter((r) => r.type === 'incoming').length,
-      requests: 0,
+      requests: Object.keys(s.transmissionRequests).length,
     }))
   );
   const activity = useStore((s) => s.activity);
@@ -220,7 +220,7 @@ export function HomeSidebar() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         <NavItem to="/channels/@me" icon={<Users className="h-5 w-5" />} label={term('affiliate', true)} badge={incoming} />
-        {requests > 0 && <NavItem to="/channels/@me?tab=requests" icon={<Inbox className="h-5 w-5" />} label={term('transmissionRequest', true)} badge={requests} />}
+        <NavItem to="/channels/@me/requests" icon={<Inbox className="h-5 w-5" />} label={term('transmissionRequest', true)} badge={requests} />
         <button
           type="button"
           onClick={() => openModal({ kind: 'vault' })}

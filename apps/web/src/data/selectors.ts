@@ -52,6 +52,7 @@ export function homeMentions(s: SubspaceState): number {
   for (const id of Object.keys(s.links)) n += mentionCount(s, channelKey('link', id));
   for (const id of Object.keys(s.meshes)) n += mentionCount(s, channelKey('mesh', id));
   n += Object.values(s.relationships).filter((r) => r.type === 'incoming').length;
+  n += Object.keys(s.transmissionRequests).length;
   return n;
 }
 

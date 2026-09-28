@@ -53,6 +53,7 @@ export async function bootstrap(): Promise<void> {
     optional(http.get<Raw>('/read-states'), { readStates: [], channels: [] }),
     optional(http.get<{ settings: NotificationSetting[] }>('/notification-settings'), { settings: [] }),
   ]);
+  void loadTransmissionRequests().catch(() => {});
 
   const me = { ...toUserRef(meRes.transmitter), ...meRes.transmitter } as SelfUser;
   const beacons = beaconsRes.beacons.map(toBeacon);
@@ -442,6 +443,41 @@ export async function acceptInvite(code: string): Promise<string> {
     beaconOrder: s.beaconOrder.includes(beacon.id) ? s.beaconOrder : [...s.beaconOrder, beacon.id],
   }));
   return beacon.id;
+}
+
+export async function loadTransmissionRequests() {
+  const res = await optional(http.get<{ requests: Raw[] }>('/requests'), { requests: [] });
+  const list = res.requests.map((r) => ({
+    id: r.id,
+    sender: toUserRef({ id: r.senderId, username: r.senderUsername, discriminator: r.senderDiscriminator, displayName: r.senderName, avatarUrl: r.senderAvatar }),
+    content: r.initialTransmission,
+    createdAt: r.createdAt,
+    expiresAt: r.expiresAt,
+    mutualBeaconId: r.mutualBeaconId,
+  }));
+  rememberUsers(list.map((r) => r.sender));
+  setState({ transmissionRequests: Object.fromEntries(list.map((r) => [r.id, r])) });
+}
+
+/** Accept opens the Direct Link (with the introductory transmission); returns its id. */
+export async function respondTransmissionRequest(id: string, accept: boolean): Promise<string | null> {
+  const res = await http.post<{ linkId?: string }>(`/requests/${id}/${accept ? 'accept' : 'decline'}`);
+  setState((s) => {
+    const transmissionRequests = { ...s.transmissionRequests };
+    delete transmissionRequests[id];
+    return { transmissionRequests };
+  });
+  if (accept) await bootstrapLinks();
+  return res.linkId ?? null;
+}
+
+async function bootstrapLinks() {
+  const me = getState().me;
+  if (!me) return;
+  const res = await optional(http.get<{ links: Raw[] }>('/links'), { links: [] });
+  const links = res.links.map((l) => toLink(l, me.id));
+  rememberUsers(links.map((l) => l.recipient));
+  setState((s) => ({ links: { ...s.links, ...Object.fromEntries(links.map((l) => [l.id, l])) } }));
 }
 
 export async function signOut() {

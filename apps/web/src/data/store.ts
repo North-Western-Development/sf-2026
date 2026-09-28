@@ -16,6 +16,7 @@ import type {
   Relay,
   SelfUser,
   Transmission,
+  TransmissionRequest,
   UserRef,
   VoiceState,
 } from '../lib/types';
@@ -51,6 +52,7 @@ export interface SubspaceState {
   links: Record<string, DirectLink>;
   meshes: Record<string, Mesh>;
   relationships: Record<string, Relationship>;
+  transmissionRequests: Record<string, TransmissionRequest>;
 
   messages: Record<ChannelKey, ChannelMessages>;
   readStates: Record<ChannelKey, ReadState>;
@@ -79,6 +81,7 @@ const initial: SubspaceState = {
   links: {},
   meshes: {},
   relationships: {},
+  transmissionRequests: {},
   messages: {},
   readStates: {},
   activity: {},

@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { eq, and, desc, transmissionRequests, transmitters } from '@subspace/database';
+import { eq, and, or, gt, desc, transmissionRequests, transmitters, pointToPointLinks, transmissions } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 
 export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -26,6 +27,7 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         expiresAt: transmissionRequests.expiresAt,
         senderName: transmitters.displayName,
         senderUsername: transmitters.username,
+        senderDiscriminator: transmitters.discriminator,
         senderAvatar: transmitters.avatarUrl,
       })
       .from(transmissionRequests)
@@ -33,7 +35,8 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       .where(
         and(
           eq(transmissionRequests.recipientId, token.transmitterId),
-          eq(transmissionRequests.status, 'pending')
+          eq(transmissionRequests.status, 'pending'),
+          gt(transmissionRequests.expiresAt, new Date())
         )
       )
       .orderBy(desc(transmissionRequests.createdAt));
@@ -61,7 +64,14 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
     if (!req) return reply.status(404).send({ error: 'Transmission request not found' });
 
     if (req.recipientId !== token.transmitterId) {
-      return reply.status(403).send({ error: 'Only recipient can accept this transmission request' });
+      return reply.status(404).send({ error: 'Transmission request not found' });
+    }
+    if (req.status !== 'pending') {
+      return reply.status(409).send({ error: 'Transmission request already handled', code: 'REQUEST_HANDLED' });
+    }
+    if (new Date(req.expiresAt).getTime() <= Date.now()) {
+      await db.update(transmissionRequests).set({ status: 'timed_out' }).where(eq(transmissionRequests.id, reqId));
+      return reply.status(410).send({ error: 'Transmission request expired', code: 'REQUEST_EXPIRED' });
     }
 
     const [updated] = await db
@@ -70,9 +80,37 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       .where(eq(transmissionRequests.id, reqId))
       .returning();
 
+    // Open (or reuse) the link and carry the introductory transmission into its history.
+    let [link] = await db
+      .select()
+      .from(pointToPointLinks)
+      .where(
+        or(
+          and(eq(pointToPointLinks.transmitter1Id, req.senderId), eq(pointToPointLinks.transmitter2Id, req.recipientId)),
+          and(eq(pointToPointLinks.transmitter1Id, req.recipientId), eq(pointToPointLinks.transmitter2Id, req.senderId))
+        )
+      )
+      .limit(1);
+    if (!link) {
+      [link] = await db.insert(pointToPointLinks).values({ transmitter1Id: req.senderId, transmitter2Id: req.recipientId }).returning();
+    }
+    const [intro] = await db
+      .insert(transmissions)
+      .values({ p2pLinkId: link.id, transmitterId: req.senderId, content: req.initialTransmission, createdAt: req.createdAt })
+      .returning();
+
+    await publishSessionRefresh(app, [req.senderId, req.recipientId]);
+    await publishGatewayEvent(
+      app,
+      'DIRECT_TRANSMISSION_CREATE',
+      { link_id: link.id, channelType: 'link', channelId: link.id, sender_id: req.senderId, recipient_id: req.recipientId, transmission: intro },
+      { transmitterIds: [req.senderId, req.recipientId] }
+    );
+
     return reply.send({
       message: 'Transmission request accepted. Two-way link unlocked.',
       request: updated,
+      linkId: link.id,
     });
   });
 
@@ -96,7 +134,7 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
     if (!req) return reply.status(404).send({ error: 'Transmission request not found' });
 
     if (req.recipientId !== token.transmitterId) {
-      return reply.status(403).send({ error: 'Only recipient can decline this transmission request' });
+      return reply.status(404).send({ error: 'Transmission request not found' });
     }
 
     const [updated] = await db
