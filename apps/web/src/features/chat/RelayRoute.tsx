@@ -5,7 +5,7 @@ import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
 import { ChannelView } from './ChannelView';
 import { RelayIcon } from '../sidebar/BeaconSidebar';
 import { CommLinkView } from '../voice/CommLinkView';
-import { ArchivalForumView } from '../../ArchivalForumView';
+import { ForumView } from '../forum/ForumView';
 import { VisualGalleryView } from '../../VisualGalleryView';
 
 export function RelayRoute() {
@@ -21,7 +21,7 @@ export function RelayRoute() {
   }
 
   if (relay.type === 'comm_link') return <CommLinkView relay={relay} />;
-  if (relay.type === 'archival') return <ArchivalForumView relayId={relay.id} relayName={relay.name} key={relay.id} />;
+  if (relay.type === 'archival') return <ForumView relay={relay} key={relay.id} />;
   if (relay.type === 'visual') return <VisualGalleryView relayId={relay.id} relayName={relay.name} key={relay.id} />;
 
   return (

@@ -99,6 +99,7 @@ export interface Member {
   joinedAt?: string;
   isOwner?: boolean;
   avatarUrl?: string | null;
+  hasCompletedOnboarding?: boolean;
 }
 
 export interface Attachment {

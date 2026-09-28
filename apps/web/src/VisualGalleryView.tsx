@@ -9,6 +9,8 @@ import {
   Send
 } from 'lucide-react';
 import { api } from './services/api';
+import { uploadToVault } from './lib/uploads';
+import { toast } from './app/ui';
 
 export interface VisualItem {
   id: string;
@@ -25,13 +27,11 @@ interface VisualGalleryViewProps {
   relayId: string;
   relayName: string;
   currentUser?: any;
-  onRequestDisclaimer?: (file: File) => void;
 }
 
 export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
   relayId,
   relayName,
-  onRequestDisclaimer,
 }) => {
   const [items, setItems] = useState<VisualItem[]>([]);
   const [activeLightbox, setActiveLightbox] = useState<VisualItem | null>(null);
@@ -81,49 +81,40 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
 
     setUploading(true);
     try {
-      const vaultFile = await api.uploadVaultFile(selectedFile);
+      const vaultFile = await uploadToVault(selectedFile);
+      if (!vaultFile) return;
       const res = await api.request(`/api/v1/relays/${relayId}/visual/transmissions`, {
         method: 'POST',
-        body: JSON.stringify({
-          content: captionInput.trim(),
-          attachments: [{
-            id: vaultFile.id,
-            url: vaultFile.downloadUrl || `/api/v1/vault/files/${vaultFile.id}/download`,
-            filename: selectedFile.name,
-            size: selectedFile.size,
-          }],
-        }),
+        body: JSON.stringify({ content: captionInput.trim(), attachmentIds: [vaultFile.id] }),
       });
-
       if (res.ok) {
         setSelectedFile(null);
         setCaptionInput('');
         loadVisuals();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toast(body.error || 'Failed to post to the gallery', 'error');
       }
     } catch (err: any) {
-      if (err.code === 'DISCLAIMER_REQUIRED' && onRequestDisclaimer && selectedFile) {
-        onRequestDisclaimer(selectedFile);
-      } else {
-        alert(`Failed to broadcast visual artifact: ${err.message}`);
-      }
+      toast(`Failed to post to the gallery: ${err.message}`, 'error');
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#000000] text-[#dbdee1] min-w-0 select-none">
+    <div className="flex-1 flex flex-col h-full bg-base text-fg min-w-0 select-none">
       {/* Gallery Header */}
-      <div className="h-12 border-b border-[#1f2024] bg-[#080809] px-4 flex items-center justify-between shrink-0">
+      <div className="h-12 border-b border-line bg-base px-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <Camera className="w-5 h-5 text-[#eb459e]" />
-          <h2 className="text-sm font-bold text-white tracking-wide">#{relayName}</h2>
-          <span className="text-[11px] text-[#80848e] font-mono">Visual Media Grid</span>
+          <Camera className="w-5 h-5 text-brand-sky" />
+          <h2 className="text-sm font-bold text-fg tracking-wide">#{relayName}</h2>
+          <span className="text-[11px] text-fg-subtle font-mono">Visual Media Grid</span>
         </div>
 
         <div className="flex items-center gap-2">
-          <label className="bg-[#1f2024] hover:bg-[#2b2d31] text-white text-xs font-semibold px-3 py-1.5 rounded-[4px] cursor-pointer flex items-center gap-1.5 transition-colors">
-            <Upload className="w-3.5 h-3.5 text-[#00f0ff]" />
+          <label className="bg-overlay hover:bg-hover text-fg text-xs font-semibold px-3 py-1.5 rounded-[4px] cursor-pointer flex items-center gap-1.5 transition-colors">
+            <Upload className="w-3.5 h-3.5 text-brand-sky" />
             <span>Select Media</span>
             <input type="file" accept="image/*,video/*" onChange={handleFileSelected} className="hidden" />
           </label>
@@ -132,8 +123,8 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
 
       {/* Broadcast Media Banner (if file selected) */}
       {selectedFile && (
-        <form onSubmit={handleBroadcastVisual} className="p-4 bg-[#0b0c0e] border-b border-[#00f0ff]/30 flex items-center gap-3 shrink-0">
-          <div className="text-xs text-[#00f0ff] font-semibold truncate max-w-xs">
+        <form onSubmit={handleBroadcastVisual} className="p-4 bg-base border-b border-brand/30 flex items-center gap-3 shrink-0">
+          <div className="text-xs text-brand-sky font-semibold truncate max-w-xs">
             📎 {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
           </div>
           <input
@@ -141,12 +132,12 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
             value={captionInput}
             onChange={e => setCaptionInput(e.target.value)}
             placeholder="Add descriptive caption or observation notes..."
-            className="flex-1 bg-[#111214] border border-[#1f2024] rounded-[6px] px-3 py-1.5 text-xs text-white placeholder-[#80848e] focus:outline-none focus:border-[#00f0ff]"
+            className="flex-1 bg-raised border border-line rounded-[6px] px-3 py-1.5 text-xs text-fg placeholder-fg-subtle focus:outline-none focus:border-brand"
           />
           <button
             type="submit"
             disabled={uploading}
-            className="bg-[#eb459e] hover:bg-[#eb459e]/80 text-white text-xs font-semibold px-4 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            className="bg-brand hover:bg-brand/80 text-fg text-xs font-semibold px-4 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors disabled:opacity-50"
           >
             <Send className="w-3.5 h-3.5" />
             <span>{uploading ? 'Broadcasting...' : 'Broadcast to Gallery'}</span>
@@ -154,7 +145,7 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
           <button
             type="button"
             onClick={() => setSelectedFile(null)}
-            className="text-xs text-[#949ba4] hover:text-white"
+            className="text-xs text-fg-muted hover:text-fg"
           >
             Cancel
           </button>
@@ -164,12 +155,12 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
       {/* Media Grid */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (
-          <div className="text-center py-20 text-[#949ba4]">Loading visual artifacts...</div>
+          <div className="text-center py-20 text-fg-muted">Loading visual artifacts...</div>
         ) : items.length === 0 ? (
-          <div className="text-center py-20 text-[#949ba4] bg-[#080809] border border-[#1f2024] rounded-[12px] max-w-lg mx-auto">
-            <Camera className="w-10 h-10 text-[#3f4147] mx-auto mb-2" />
-            <h3 className="text-white font-bold text-sm">This relay is currently empty</h3>
-            <p className="text-xs mt-1 text-[#80848e]">
+          <div className="text-center py-20 text-fg-muted bg-base border border-line rounded-[12px] max-w-lg mx-auto">
+            <Camera className="w-10 h-10 text-fg-disabled mx-auto mb-2" />
+            <h3 className="text-fg font-bold text-sm">This relay is currently empty</h3>
+            <p className="text-xs mt-1 text-fg-subtle">
               Be the first to send something over the air!
             </p>
           </div>
@@ -179,7 +170,7 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
               <div
                 key={item.id}
                 onClick={() => setActiveLightbox(item)}
-                className="group relative aspect-video bg-[#0b0c0e] border border-[#1f2024] hover:border-[#00f0ff]/50 rounded-[10px] overflow-hidden cursor-pointer transition-all shadow-lg"
+                className="group relative aspect-video bg-base border border-line hover:border-brand/50 rounded-[10px] overflow-hidden cursor-pointer transition-all shadow-lg"
               >
                 <img
                   src={item.url}
@@ -192,8 +183,8 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
 
                 {/* Overlay Metadata */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                  <div className="font-semibold text-white text-xs truncate">{item.caption || item.filename}</div>
-                  <div className="text-[10px] text-[#00f0ff] flex items-center justify-between mt-1">
+                  <div className="font-semibold text-fg text-xs truncate">{item.caption || item.filename}</div>
+                  <div className="text-[10px] text-brand-sky flex items-center justify-between mt-1">
                     <span>@{item.authorUsername}</span>
                     <Maximize2 className="w-3.5 h-3.5" />
                   </div>
@@ -211,27 +202,27 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
           onClick={() => setActiveLightbox(null)}
         >
           <div 
-            className="max-w-4xl w-full max-h-[90vh] bg-[#0b0c0e] border border-[#1f2024] rounded-[16px] overflow-hidden flex flex-col shadow-2xl"
+            className="max-w-4xl w-full max-h-[90vh] bg-base border border-line rounded-[16px] overflow-hidden flex flex-col shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <div className="h-12 border-b border-[#1f2024] px-4 flex items-center justify-between shrink-0 bg-[#080809]">
+            <div className="h-12 border-b border-line px-4 flex items-center justify-between shrink-0 bg-base">
               <div className="flex items-center gap-2">
-                <Camera className="w-4 h-4 text-[#00f0ff]" />
-                <span className="font-bold text-white text-xs">{activeLightbox.filename}</span>
+                <Camera className="w-4 h-4 text-brand-sky" />
+                <span className="font-bold text-fg text-xs">{activeLightbox.filename}</span>
               </div>
               <div className="flex items-center gap-2">
                 <a
                   href={activeLightbox.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="p-1.5 rounded hover:bg-[#1f2024] text-[#949ba4] hover:text-white"
+                  className="p-1.5 rounded hover:bg-overlay text-fg-muted hover:text-fg"
                   title="Open Original"
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>
                 <button
                   onClick={() => setActiveLightbox(null)}
-                  className="p-1.5 rounded hover:bg-[#1f2024] text-[#949ba4] hover:text-white"
+                  className="p-1.5 rounded hover:bg-overlay text-fg-muted hover:text-fg"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -246,17 +237,17 @@ export const VisualGalleryView: React.FC<VisualGalleryViewProps> = ({
               />
             </div>
 
-            <div className="p-4 bg-[#0b0c0e] border-t border-[#1f2024] flex items-center justify-between text-xs">
+            <div className="p-4 bg-base border-t border-line flex items-center justify-between text-xs">
               <div>
-                <p className="text-white font-medium">{activeLightbox.caption || 'No caption provided.'}</p>
-                <div className="text-[11px] text-[#80848e] mt-1">
-                  Captured by <strong className="text-white">@{activeLightbox.authorUsername}</strong> • {new Date(activeLightbox.createdAt).toLocaleString()}
+                <p className="text-fg font-medium">{activeLightbox.caption || 'No caption provided.'}</p>
+                <div className="text-[11px] text-fg-subtle mt-1">
+                  Captured by <strong className="text-fg">@{activeLightbox.authorUsername}</strong> • {new Date(activeLightbox.createdAt).toLocaleString()}
                 </div>
               </div>
               <a
                 href={activeLightbox.url}
                 download={activeLightbox.filename}
-                className="bg-[#1f2024] hover:bg-[#2b2d31] text-white px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
+                className="bg-overlay hover:bg-hover text-fg px-3 py-1.5 rounded-[4px] flex items-center gap-1.5 transition-colors"
               >
                 <Download className="w-3.5 h-3.5" /> Download
               </a>

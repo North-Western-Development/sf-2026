@@ -8,10 +8,11 @@ import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
 import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types';
 import { resolveName } from '../../lib/normalize';
 import { useUi, toast } from '../../app/ui';
-import { api } from '../../services/api';
+import { uploadToVault } from '../../lib/uploads';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { EmojiPicker, EMOJI_INDEX, loadGlyphs, type Glyph } from './EmojiPicker';
+import { OnboardingGate, useNeedsOnboarding } from '../onboarding/OnboardingGate';
 
 const MAX_LENGTH = 2000;
 
@@ -44,7 +45,18 @@ export function encodeMentions(text: string, tokens: Map<string, string>): strin
   return out;
 }
 
-export function Composer({ channelKey: key, beaconId, placeholder }: { channelKey: ChannelKey; beaconId?: string; placeholder: string }) {
+export function Composer({
+  channelKey: key,
+  beaconId,
+  placeholder,
+  disabledReason,
+}: {
+  channelKey: ChannelKey;
+  beaconId?: string;
+  placeholder: string;
+  /** Replaces the composer with a notice (e.g. a locked thread). */
+  disabledReason?: string | null;
+}) {
   const { type, id } = parseChannelKey(key);
   const [text, setText] = useState(() => sessionStorage.getItem(`draft:${key}`) ?? '');
   const [trigger, setTrigger] = useState<Trigger | null>(null);
@@ -64,6 +76,7 @@ export function Composer({ channelKey: key, beaconId, placeholder }: { channelKe
   const canSend = perms === null || can(perms, PERMISSIONS.SEND_TRANSMISSIONS);
   const canAttach = perms === null || can(perms, PERMISSIONS.ATTACH_FILES);
   const canEveryone = perms === null ? false : can(perms, PERMISSIONS.MENTION_EVERYONE);
+  const needsOnboarding = useNeedsOnboarding(type === 'relay' ? beaconId : undefined);
 
   // Reset per channel.
   useEffect(() => {
@@ -245,8 +258,8 @@ export function Composer({ channelKey: key, beaconId, placeholder }: { channelKe
     for (const file of Array.from(files).slice(0, 10)) {
       setUploading(file.name);
       try {
-        const saved = await api.uploadVaultFile(file);
-        setAttachmentIds((a) => [...a, { id: saved.id, name: file.name }]);
+        const saved = await uploadToVault(file);
+        if (saved) setAttachmentIds((a) => [...a, { id: saved.id, name: file.name }]);
       } catch (err) {
         toast(`Upload failed: ${(err as Error).message}`, 'error');
       } finally {
@@ -255,10 +268,12 @@ export function Composer({ channelKey: key, beaconId, placeholder }: { channelKe
     }
   };
 
-  if (!canSend) {
+  if (needsOnboarding && beaconId) return <OnboardingGate beaconId={beaconId} />;
+
+  if (!canSend || disabledReason) {
     return (
       <div className="px-4 pb-6">
-        <div className="flex h-11 items-center rounded-lg bg-raised px-4 text-sm text-fg-subtle">You do not have permission to transmit in this relay.</div>
+        <div className="flex h-11 items-center rounded-lg bg-raised px-4 text-sm text-fg-subtle">{disabledReason || 'You do not have permission to transmit in this relay.'}</div>
       </div>
     );
   }

@@ -99,6 +99,7 @@ export function toMember(m: Raw, beaconId: string): Member {
     joinedAt: m.joinedAt,
     isOwner: !!m.isOwner,
     avatarUrl: m.member?.avatarUrl ?? null,
+    hasCompletedOnboarding: m.hasCompletedOnboarding ?? true,
   };
 }
 
