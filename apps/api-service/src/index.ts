@@ -3,8 +3,9 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import dotenv from 'dotenv';
-import { TERMINOLOGY, DEFAULT_EVERYONE_PERMISSIONS } from '@subspace/constants';
-import { createDatabaseClient, eq, clearances, sql } from '@subspace/database';
+import { runDataMigrations } from './lib/data-migrations.js';
+import { TERMINOLOGY } from '@subspace/constants';
+import { createDatabaseClient } from '@subspace/database';
 import { Redis } from 'ioredis';
 
 // Package-local .env first, then the repo-root .env (native runs); existing env always wins.
@@ -75,16 +76,12 @@ export async function buildApp() {
     nameSpace: 'subspace-rl:',
   });
 
-  // Data migration: existing beacons created before the Discord-parity permission bits
-  // were added need those bits ORed into their @everyone clearance. Idempotent (bitwise OR).
+  // One-time data migrations (recorded, never re-applied).
   if ((app as any).db) {
     try {
-      await (app as any).db
-        .update(clearances)
-        .set({ permissions: sql`${clearances.permissions} | ${DEFAULT_EVERYONE_PERMISSIONS.toString()}::bigint` })
-        .where(eq(clearances.position, 0));
+      await runDataMigrations((app as any).db, app.log);
     } catch (err) {
-      app.log.warn({ err }, 'Failed to backfill @everyone permission bits');
+      app.log.warn({ err }, 'Data migrations skipped');
     }
   }
 

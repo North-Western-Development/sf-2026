@@ -1,33 +1,28 @@
 /**
- * Subspace Frequency Space-Dark Design Tokens
+ * Subspace design tokens (JS mirror of the CSS @theme tokens)
  */
 
 export const THEME = {
+  // Mirrors the @theme tokens in apps/web/src/index.css (NWD palette on deep black).
   colors: {
-    void: '#07090E',            // Deepest cosmic black
-    obsidian: '#0B0E14',        // Main app background
-    surface: '#151922',         // Card and channel surface
-    surfaceHover: '#1C222E',    // Elevated hover
-    border: '#232936',          // Subdued dividers
-    borderGlow: 'rgba(0, 240, 255, 0.25)', // Subtle cyan outline
-    
-    cyan: '#00F0FF',            // Primary quantum accent
-    cyanHover: '#33F3FF',
-    cyanMuted: 'rgba(0, 240, 255, 0.15)',
-    
-    violet: '#7928CA',          // Secondary deep space accent
-    violetHover: '#9B45E8',
-    violetMuted: 'rgba(121, 40, 202, 0.2)',
-    
-    flare: '#FF3366',           // Incident report / destructive action
-    amber: '#FFB800',           // Away / Warning
-    emerald: '#00FF88',         // Online / Success
-    
+    void: '#030305',
+    base: '#07080C',
+    raised: '#0D0F16',
+    overlay: '#131622',
+    hover: '#1A1E2E',
+    line: '#1F2336',
+    brandSky: '#3DCBFF',
+    brand: '#3B8EF2',
+    brandStrong: '#3353D6',
+    star: '#FFF36B',
+    halo: '#5A5C8E',
+    online: '#3DDC84',
+    idle: '#FFD34D',
+    danger: '#FF4D6A',
     text: {
-      primary: '#F0F4F8',
-      secondary: '#94A3B8',
-      muted: '#64748B',
-      contrast: '#07090E',
+      primary: '#EEF1FA',
+      secondary: '#A4A9C4',
+      muted: '#6D7294',
     },
   },
   fonts: [

@@ -23,8 +23,8 @@ export const transmitters = pgTable('transmitters', {
   passwordHash: text('password_hash').notNull(),
   displayName: text('display_name').notNull(),
   displayFont: text('display_font').default('default').notNull(),
-  displayColor: text('display_color').default('#00F0FF').notNull(),
-  bannerColor: text('banner_color').default('#0B0E14').notNull(),
+  displayColor: text('display_color').default('#EEF1FA').notNull(),
+  bannerColor: text('banner_color').default('#3353D6').notNull(),
   bannerUrl: text('banner_url'),
   avatarUrl: text('avatar_url'),
   bio: text('bio'),
@@ -98,7 +98,7 @@ export const beaconClusters = pgTable('beacon_clusters', {
   id: uuid('id').defaultRandom().primaryKey(),
   transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   name: text('name').notNull(),
-  color: text('color').default('#00F0FF').notNull(),
+  color: text('color').default('#3B8EF2').notNull(),
   position: integer('position').default(0).notNull(),
   beaconIds: jsonb('beacon_ids').$type<string[]>().default([]).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -385,4 +385,10 @@ export const beaconEmojis = pgTable('beacon_emojis', {
 export * from './schema-messaging.js';
 export * from './schema-community.js';
 
-
+/**
+ * One-time data migrations applied by api-service on boot (see apps/api-service/src/lib/data-migrations.ts).
+ */
+export const dataMigrations = pgTable('data_migrations', {
+  id: text('id').primaryKey(),
+  appliedAt: timestamp('applied_at', { withTimezone: true }).defaultNow().notNull(),
+});

@@ -43,7 +43,7 @@ export const clusterRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       .values({
         transmitterId: token.transmitterId,
         name: name.trim(),
-        color: color || '#00F0FF',
+        color: color || '#3B8EF2',
         position: Number(position) || 0,
         beaconIds: Array.isArray(beaconIds) ? beaconIds : [],
       })
