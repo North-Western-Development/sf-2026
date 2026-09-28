@@ -48,6 +48,9 @@ export function loadNativeEnv({ test = false } = {}) {
 
   if (test) {
     env.DATABASE_URL = env.TEST_DATABASE_URL;
+    // Separate Redis logical database so rate-limit counters, refresh tokens and
+    // presence from test runs never mix with development data.
+    env.REDIS_URL = env.TEST_REDIS_URL || env.REDIS_URL.replace(/\/\d+$/, '') + '/1';
     env.NODE_ENV = 'test';
   }
   return env;

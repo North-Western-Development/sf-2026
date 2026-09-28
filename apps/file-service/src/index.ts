@@ -8,6 +8,7 @@ import { createDatabaseClient } from '@subspace/database';
 import { requireSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from './s3.js';
 import { vaultRoutes } from './routes/vault.routes.js';
+import { mediaRoutes } from './routes/media.routes.js';
 
 // Package-local .env first, then the repo-root .env (native runs); existing env always wins.
 dotenv.config({ path: ['.env', '../../.env'] });
@@ -20,7 +21,9 @@ const s3Endpoint = process.env.S3_ENDPOINT || 'minio:9000';
 const s3AccessKey = requireSecret('MINIO_ROOT_USER', 'minio_subspace');
 const s3SecretKey = requireSecret('MINIO_ROOT_PASSWORD', 'minio_secret_subspace');
 const s3Bucket = process.env.S3_BUCKET || 'subspace-vault';
+const s3MediaBucket = process.env.S3_MEDIA_BUCKET || 'subspace-media';
 const s3PublicEndpoint = process.env.S3_PUBLIC_ENDPOINT || undefined;
+const mediaPublicBase = process.env.MEDIA_PUBLIC_BASE || '/subspace-media';
 
 export async function buildFileApp() {
   const app = Fastify({
@@ -53,16 +56,27 @@ export async function buildFileApp() {
     publicEndpoint: s3PublicEndpoint,
   });
 
-  // Provision bucket asynchronously
+  // Provision buckets asynchronously: the private Vault bucket, and the anonymous
+  // public-read `subspace-media` bucket for avatars/icons/glyphs (section 7).
   s3.ensureBucketExists().catch((err) => {
     app.log.warn({ err }, '[File Service] S3 bucket auto-provisioning warning');
   });
+  s3.ensureBucketExists(s3MediaBucket)
+    .then(() => s3.setPublicReadPolicy(s3MediaBucket))
+    .catch((err) => {
+      app.log.warn({ err }, '[File Service] Media bucket auto-provisioning warning');
+    });
 
   (app as any).db = dbClient ? dbClient.db : null;
   (app as any).s3 = s3;
+  (app as any).mediaBucket = s3MediaBucket;
+  (app as any).mediaPublicBase = mediaPublicBase;
 
   // Register Vault routes
   await app.register(vaultRoutes, { prefix: '/api/v1/vault' });
+
+  // Register public-read media upload routes (section 7)
+  await app.register(mediaRoutes, { prefix: '/api/v1/media' });
 
   app.get('/health', async () => {
     return {

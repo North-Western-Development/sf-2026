@@ -56,7 +56,7 @@ describe('Comm-Link Audio, Video & Holo-Cast E2E Suite', () => {
       method: 'POST',
       url: '/api/v1/beacons',
       headers: { authorization: `Bearer ${pilotToken}` },
-      payload: { name: 'USS Voyager Comm-Bay' },
+      payload: { name: 'USS Voyager Comm-Bay', isDiscoverable: true },
     });
     expect(bRes.statusCode).toBe(201);
     beaconId = JSON.parse(bRes.payload).beacon.id;

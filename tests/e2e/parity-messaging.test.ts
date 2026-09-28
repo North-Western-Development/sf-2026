@@ -44,7 +44,7 @@ describe('Parity: unified channel messaging (replies, mentions, reactions, pins,
       method: 'POST',
       url: '/api/v1/beacons',
       headers: { authorization: `Bearer ${ownerToken}` },
-      payload: { name: 'Parity Messaging Beacon' },
+      payload: { name: 'Parity Messaging Beacon', isDiscoverable: true },
     });
     beaconId = bRes.json().beacon.id;
 
@@ -67,7 +67,7 @@ describe('Parity: unified channel messaging (replies, mentions, reactions, pins,
       method: 'POST',
       url: '/api/v1/beacons',
       headers: { authorization: `Bearer ${outsiderToken}` },
-      payload: { name: 'Foreign Beacon' },
+      payload: { name: 'Foreign Beacon', isDiscoverable: true },
     });
     foreignBeaconId = fbRes.json().beacon.id;
     const [glyph] = await db

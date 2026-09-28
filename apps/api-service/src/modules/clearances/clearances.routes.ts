@@ -6,6 +6,7 @@ import {
   resolveBeaconActorContext,
   resolveBeaconTargetContext,
 } from '../../middleware/hierarchy.js';
+import { publishGatewayEvent } from '../../lib/events.js';
 
 export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -92,6 +93,13 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         allowDelegation: Boolean(allowDelegation),
       })
       .returning();
+
+    await publishGatewayEvent(
+      app,
+      'CLEARANCE_CREATE',
+      { beaconId, clearance: { ...newClearance, permissions: newClearance.permissions.toString() } },
+      { beaconId }
+    );
 
     return reply.status(201).send({
       message: 'Clearance created successfully',
@@ -190,6 +198,13 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       .where(eq(clearances.id, clearanceId))
       .returning();
 
+    await publishGatewayEvent(
+      app,
+      'CLEARANCE_UPDATE',
+      { beaconId, clearance: { ...updatedClearance, permissions: updatedClearance.permissions.toString() } },
+      { beaconId }
+    );
+
     return reply.send({
       message: 'Clearance updated successfully',
       clearance: {
@@ -267,6 +282,8 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     }
 
     await db.delete(clearances).where(eq(clearances.id, clearanceId));
+
+    await publishGatewayEvent(app, 'CLEARANCE_DELETE', { beaconId, clearanceId }, { beaconId });
 
     return reply.send({ message: 'Clearance decommissioned successfully' });
   });
@@ -355,6 +372,13 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           eq(beaconMembers.transmitterId, targetId)
         )
       );
+
+    await publishGatewayEvent(
+      app,
+      'MEMBER_UPDATE',
+      { beaconId, member: { beaconId, transmitterId: targetId, clearanceIds: updatedIds } },
+      { beaconId }
+    );
 
     return reply.send({
       message: `Clearance ${action === 'add' ? 'assigned to' : 'revoked from'} member`,

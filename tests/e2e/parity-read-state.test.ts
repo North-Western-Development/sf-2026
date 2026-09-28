@@ -31,7 +31,7 @@ describe('Parity: read state, unread mentions, notification settings', () => {
     ownerToken = signAccessToken({ transmitterId: ownerId, username: 'rs_owner', staffRank: 0 }, JWT_SECRET);
     memberToken = signAccessToken({ transmitterId: memberId, username: 'rs_member', staffRank: 0 }, JWT_SECRET);
 
-    const bRes = await app.inject({ method: 'POST', url: '/api/v1/beacons', headers: { authorization: `Bearer ${ownerToken}` }, payload: { name: 'RS Beacon' } });
+    const bRes = await app.inject({ method: 'POST', url: '/api/v1/beacons', headers: { authorization: `Bearer ${ownerToken}` }, payload: { name: 'RS Beacon', isDiscoverable: true } });
     beaconId = bRes.json().beacon.id;
     await app.inject({ method: 'POST', url: `/api/v1/beacons/${beaconId}/join`, headers: { authorization: `Bearer ${memberToken}` } });
     const rRes = await app.inject({

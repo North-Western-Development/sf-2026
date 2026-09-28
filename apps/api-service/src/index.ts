@@ -1,9 +1,10 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import dotenv from 'dotenv';
-import { TERMINOLOGY } from '@subspace/constants';
-import { createDatabaseClient } from '@subspace/database';
+import { TERMINOLOGY, DEFAULT_EVERYONE_PERMISSIONS } from '@subspace/constants';
+import { createDatabaseClient, eq, clearances, sql } from '@subspace/database';
 import { Redis } from 'ioredis';
 
 // Package-local .env first, then the repo-root .env (native runs); existing env always wins.
@@ -65,6 +66,28 @@ export async function buildApp() {
   (app as any).db = dbStatus === 'connected' && dbClient ? dbClient.db : null;
   (app as any).redis = redisStatus === 'connected' ? redisClient : null;
 
+  // Rate limiting (section 8): Redis-backed so limits are shared across every instance.
+  // Per-route limits are set individually (login, register, 2FA, invite lookup, ...);
+  // there is no global default so unlisted routes stay unlimited.
+  await app.register(rateLimit, {
+    global: false,
+    redis: (app as any).redis || undefined,
+    nameSpace: 'subspace-rl:',
+  });
+
+  // Data migration: existing beacons created before the Discord-parity permission bits
+  // were added need those bits ORed into their @everyone clearance. Idempotent (bitwise OR).
+  if ((app as any).db) {
+    try {
+      await (app as any).db
+        .update(clearances)
+        .set({ permissions: sql`${clearances.permissions} | ${DEFAULT_EVERYONE_PERMISSIONS.toString()}::bigint` })
+        .where(eq(clearances.position, 0));
+    } catch (err) {
+      app.log.warn({ err }, 'Failed to backfill @everyone permission bits');
+    }
+  }
+
   // Import and register routes
   const { authRoutes } = await import('./modules/auth/auth.routes.js');
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
@@ -110,6 +133,15 @@ export async function buildApp() {
 
   const { blacklistRoutes } = await import('./modules/blacklist/blacklist.routes.js');
   await app.register(blacklistRoutes, { prefix: '/api/v1/blacklist' });
+
+  const { profileRoutes } = await import('./modules/profiles/profiles.routes.js');
+  await app.register(profileRoutes, { prefix: '/api/v1/users' });
+
+  const { inviteRoutes } = await import('./modules/invites/invites.routes.js');
+  await app.register(inviteRoutes, { prefix: '/api/v1' });
+
+  const { relayOverwriteRoutes } = await import('./modules/relays/overwrites.routes.js');
+  await app.register(relayOverwriteRoutes, { prefix: '/api/v1/beacons/:beaconId/relays/:relayId/overwrites' });
 
   const { unfurlRoutes } = await import('./modules/unfurl/unfurl.js');
   await app.register(unfurlRoutes, { prefix: '/api/v1' });

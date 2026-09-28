@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, and, transmitters, transmitterPasskeys } from '@subspace/database';
-import { SUBSPACE_DIRECTIVES } from '@subspace/constants';
+import { SUBSPACE_DIRECTIVES, isValidUsername } from '@subspace/constants';
+import { checkRateLimit } from '../../lib/rate-limit.js';
 import {
   hashPassword,
   verifyPassword,
@@ -27,22 +28,14 @@ const CURRENT_RULES_VERSION = SUBSPACE_DIRECTIVES.version;
 
 const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
 
-export function serializeTransmitter(user: any) {
-  return {
-    id: user.id,
-    username: user.username,
-    discriminator: user.discriminator,
-    email: user.email,
-    displayName: user.displayName,
-    displayColor: user.displayColor,
-    displayFont: user.displayFont,
-    avatarUrl: user.avatarUrl,
-    bannerUrl: user.bannerUrl,
-    bannerColor: user.bannerColor,
-    bio: user.bio,
-    staffRank: user.staffRank,
-  };
+function extractPayload(request: any): TokenPayload | null {
+  const authHeader = request.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  return verifyAccessToken(authHeader.split(' ')[1], JWT_SECRET);
 }
+
+export { serializeTransmitter } from '../../lib/serialize.js';
+import { serializeTransmitter } from '../../lib/serialize.js';
 
 /**
  * Issue an access + refresh pair. Refresh tokens are single-use: their jti is stored in
@@ -54,7 +47,7 @@ async function issueSession(redis: any, user: any) {
     { transmitterId: user.id, username: user.username, staffRank: user.staffRank },
     JWT_SECRET
   );
-  const refreshToken = signRefreshToken(user.id, JWT_SECRET, '30d', jti);
+  const refreshToken = signRefreshToken(user.id, JWT_SECRET, '30d', jti, user.tokenVersion || 0);
   if (redis) {
     await redis.set(`refresh:${jti}`, user.id, 'EX', REFRESH_TTL_SECONDS).catch(() => {});
   }
@@ -114,7 +107,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * POST /api/v1/auth/register
    */
-  app.post('/register', async (request, reply) => {
+  app.post('/register', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const body = request.body as any;
     const { username, email, password, displayName, acceptDirectives } = body || {};
 
@@ -131,6 +124,12 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
 
     const cleanUsername = username.trim().toLowerCase();
+    if (!isValidUsername(cleanUsername)) {
+      return reply.status(400).send({
+        error: 'Username must be 2-32 characters of lowercase letters, digits, underscore, or period, and cannot start/end with or repeat a period',
+        code: 'INVALID_USERNAME',
+      });
+    }
 
     // Allocate random non-sequential 4-digit discriminator
     const discriminator = await allocateDiscriminator(db, cleanUsername);
@@ -174,7 +173,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * POST /api/v1/auth/login
    */
-  app.post('/login', async (request, reply) => {
+  app.post('/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as any;
     const { username, password } = body || {};
 
@@ -187,6 +186,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
 
     const cleanInput = username.trim();
+
+    const accountKey = `rl:login:account:${cleanInput.toLowerCase()}`;
+    if (!(await checkRateLimit(redis, accountKey, 5, 60))) {
+      return reply.status(429).send({ error: 'Too many login attempts for this account; try again shortly' });
+    }
     let user: any = null;
 
     if (cleanInput.includes('#')) {
@@ -295,7 +299,18 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * POST /api/v1/auth/2fa/verify
    */
-  app.post('/2fa/verify', async (request, reply) => {
+  app.post(
+    '/2fa/verify',
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '5 minutes',
+          keyGenerator: (request: any) => (request.body && request.body.token) || request.ip,
+        },
+      },
+    },
+    async (request, reply) => {
     const body = request.body as any;
     const { token, code, isBackupCode } = body || {};
 
@@ -394,7 +409,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const { refreshToken } = (request.body as any) || {};
     const payload =
       typeof refreshToken === 'string'
-        ? verifyTypedToken<{ transmitterId: string }>(refreshToken, JWT_SECRET, 'refresh')
+        ? verifyTypedToken<{ transmitterId: string; tokenVersion?: number }>(refreshToken, JWT_SECRET, 'refresh')
         : null;
     if (!payload || !payload.jti) {
       return reply.status(401).send({ error: 'Invalid or expired refresh token' });
@@ -412,6 +427,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (!user) return reply.status(401).send({ error: 'Transmitter not found' });
     if (user.isBanned) {
       return reply.status(403).send({ error: 'Transmitter account has been suspended', code: 'TRANSMITTER_SUSPENDED' });
+    }
+    // A password change bumps tokenVersion, invalidating every refresh token issued before it
+    // (except the one re-issued to the changing session at that moment).
+    if ((payload.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
+      return reply.status(401).send({ error: 'Refresh token revoked or already used' });
     }
 
     return reply.send(await issueSession(redis, user));
@@ -503,110 +523,102 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   });
 
   /**
+   * PATCH /api/v1/auth/me/password
+   * Change password. Revokes every refresh token issued before this request except the
+   * one re-issued in this response (bumping `tokenVersion` invalidates old refresh JWTs).
+   */
+  app.patch(
+    '/me/password',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['currentPassword', 'newPassword'],
+          properties: {
+            currentPassword: { type: 'string' },
+            newPassword: { type: 'string', minLength: 8 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const payload = extractPayload(request);
+      if (!payload) return reply.status(401).send({ error: 'Authentication required' });
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+      const { currentPassword, newPassword } = request.body as { currentPassword: string; newPassword: string };
+
+      const [user] = await db.select().from(transmitters).where(eq(transmitters.id, payload.transmitterId)).limit(1);
+      if (!user) return reply.status(404).send({ error: 'Transmitter not found' });
+
+      const isValid = await verifyPassword(user.passwordHash, currentPassword);
+      if (!isValid) return reply.status(401).send({ error: 'Current password is incorrect' });
+
+      const newHash = await hashPassword(newPassword);
+      const newTokenVersion = (user.tokenVersion || 0) + 1;
+
+      const [updated] = await db
+        .update(transmitters)
+        .set({ passwordHash: newHash, tokenVersion: newTokenVersion, updatedAt: new Date() })
+        .where(eq(transmitters.id, user.id))
+        .returning();
+
+      return reply.send({
+        message: 'Password changed; other sessions have been signed out',
+        ...(await issueSession(redis, updated)),
+      });
+    }
+  );
+
+  /**
+   * POST /api/v1/auth/2fa/disable
+   */
+  app.post('/2fa/disable', async (request, reply) => {
+    const payload = extractPayload(request);
+    if (!payload) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const { code } = (request.body as any) || {};
+    if (!code) return reply.status(400).send({ error: '2FA code required' });
+
+    const [user] = await db.select().from(transmitters).where(eq(transmitters.id, payload.transmitterId)).limit(1);
+    if (!user) return reply.status(404).send({ error: 'Transmitter not found' });
+    if (!user.is2faEnabled) return reply.status(400).send({ error: '2FA is not enabled for this transmitter' });
+
+    let isValid = false;
+    let remainingBackupCodes = user.backupCodes || [];
+    if (user.totpSecret && verifyTotpToken(user.totpSecret, code)) {
+      isValid = true;
+    } else {
+      const backupResult = verifyBackupCode(code, user.backupCodes || []);
+      if (backupResult.valid) {
+        isValid = true;
+        remainingBackupCodes = backupResult.remaining;
+      }
+    }
+
+    if (!isValid) return reply.status(400).send({ error: 'Invalid 2FA code' });
+
+    await db
+      .update(transmitters)
+      .set({ is2faEnabled: false, totpSecret: null, backupCodes: remainingBackupCodes })
+      .where(eq(transmitters.id, user.id));
+
+    return reply.send({ message: '2FA security protocol deactivated' });
+  });
+
+  /**
    * PATCH /api/v1/auth/me/profile
-   * Update profile information, enforcing max 500 characters for bio.
-   * If username changes, allocate a new random discriminator for the new username.
+   * Legacy alias for `PATCH /users/@me/profile` (section 9); same validated handler.
    */
   app.patch('/me/profile', async (request, reply) => {
-    const authHeader = request.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return reply.status(401).send({ error: 'Authentication required' });
-    }
+    const payload = extractPayload(request);
+    if (!payload) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
 
-    const token = authHeader.split(' ')[1];
-    const payload = verifyAccessToken(token, JWT_SECRET);
-    if (!payload) {
-      return reply.status(401).send({ error: 'Invalid or expired token' });
-    }
-
-    if (!db) {
-      return reply.status(503).send({ error: 'Database service unavailable' });
-    }
-
-    const [user] = await db
-      .select()
-      .from(transmitters)
-      .where(eq(transmitters.id, payload.transmitterId))
-      .limit(1);
-
-    if (!user) {
-      return reply.status(404).send({ error: 'Transmitter not found' });
-    }
-
-    const body = request.body as any;
-    const updates: Record<string, any> = { updatedAt: new Date() };
-
-    if (body.bio !== undefined) {
-      if (typeof body.bio === 'string' && body.bio.length > 500) {
-        return reply.status(400).send({ error: 'Bio cannot exceed 500 characters' });
-      }
-      updates.bio = body.bio ? body.bio.trim() : null;
-    }
-
-    if (body.displayName !== undefined) {
-      updates.displayName = body.displayName.trim();
-    }
-
-    if (body.displayColor !== undefined) {
-      updates.displayColor = body.displayColor;
-    }
-
-    if (body.displayFont !== undefined) {
-      updates.displayFont = body.displayFont;
-    }
-
-    if (body.avatarUrl !== undefined) {
-      updates.avatarUrl = body.avatarUrl;
-    }
-
-    if (body.bannerUrl !== undefined) {
-      updates.bannerUrl = body.bannerUrl;
-    }
-
-    if (body.bannerColor !== undefined) {
-      updates.bannerColor = body.bannerColor;
-    }
-
-    if (body.username !== undefined) {
-      const newUsername = body.username.trim().toLowerCase();
-      if (newUsername.length < 2) {
-        return reply.status(400).send({ error: 'Username must be at least 2 characters long' });
-      }
-      if (newUsername !== user.username) {
-        const newDisc = await allocateDiscriminator(db, newUsername);
-        if (!newDisc) {
-          return reply.status(409).send({
-            error: 'All discriminator tags for this username are currently in use',
-            code: 'DISCRIMINATOR_POOL_EXHAUSTED',
-          });
-        }
-        updates.username = newUsername;
-        updates.discriminator = newDisc;
-      }
-    }
-
-    const [updatedUser] = await db
-      .update(transmitters)
-      .set(updates)
-      .where(eq(transmitters.id, user.id))
-      .returning();
-
-    return reply.send({
-      message: 'Profile updated successfully',
-      transmitter: {
-        id: updatedUser.id,
-        username: updatedUser.username,
-        discriminator: updatedUser.discriminator,
-        email: updatedUser.email,
-        displayName: updatedUser.displayName,
-        displayColor: updatedUser.displayColor,
-        displayFont: updatedUser.displayFont,
-        avatarUrl: updatedUser.avatarUrl,
-        bannerUrl: updatedUser.bannerUrl,
-        bannerColor: updatedUser.bannerColor,
-        bio: updatedUser.bio,
-        staffRank: updatedUser.staffRank,
-      },
-    });
+    const { applyProfileUpdate } = await import('../profiles/profiles.routes.js');
+    const result = await applyProfileUpdate(app, db, payload.transmitterId, request.body || {});
+    return reply.status(result.status).send(result.body);
   });
 };

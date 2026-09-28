@@ -67,7 +67,7 @@ describe('Gateway Real-Time Transmission Events Fanout E2E Suite', () => {
       method: 'POST',
       url: '/api/v1/beacons',
       headers: { authorization: `Bearer ${user1Token}` },
-      payload: { name: 'Delta Quadrant Gateway' },
+      payload: { name: 'Delta Quadrant Gateway', isDiscoverable: true },
     });
     expect(bRes.statusCode).toBe(201);
     beaconId = bRes.json().beacon.id;
