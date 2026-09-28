@@ -1,0 +1,462 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { clsx } from 'clsx';
+import { AtSign, CirclePlus, Gift, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
+import { ComingSoon, Tooltip, useContextMenu } from '@subspace/ui';
+import { useStore, getState } from '../../data/store';
+import { notifyTyping, sendMessage } from '../../data/actions';
+import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
+import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types';
+import { resolveName } from '../../lib/normalize';
+import { useUi, toast } from '../../app/ui';
+import { api } from '../../services/api';
+import { Avatar } from '../common/Avatar';
+import { UserName } from '../common/UserName';
+import { EmojiPicker, EMOJI_INDEX, loadGlyphs, type Glyph } from './EmojiPicker';
+
+const MAX_LENGTH = 2000;
+
+type Suggestion =
+  | { kind: 'user'; id: string; label: string; user: UserRef; insert: string; token: string }
+  | { kind: 'role'; id: string; label: string; color: string; insert: string; token: string }
+  | { kind: 'special'; id: string; label: string; description: string; insert: string; token: string }
+  | { kind: 'relay'; id: string; label: string; insert: string; token: string }
+  | { kind: 'emoji'; id: string; label: string; emoji?: string; glyph?: Glyph; insert: string; token: string };
+
+interface Trigger {
+  char: '@' | '#' | ':';
+  query: string;
+  start: number;
+}
+
+function findTrigger(text: string, caret: number): Trigger | null {
+  const before = text.slice(0, caret);
+  const m = before.match(/(^|\s)([@#:])([^\s@#:]{0,32})$/);
+  if (!m) return null;
+  if (m[2] === ':' && m[3].length < 2) return null;
+  return { char: m[2] as Trigger['char'], query: m[3].toLowerCase(), start: caret - m[3].length - 1 };
+}
+
+/** Replace inserted display labels with wire tokens (longest labels first). */
+export function encodeMentions(text: string, tokens: Map<string, string>): string {
+  const labels = [...tokens.keys()].sort((a, b) => b.length - a.length);
+  let out = text;
+  for (const label of labels) out = out.split(label).join(tokens.get(label)!);
+  return out;
+}
+
+export function Composer({ channelKey: key, beaconId, placeholder }: { channelKey: ChannelKey; beaconId?: string; placeholder: string }) {
+  const { type, id } = parseChannelKey(key);
+  const [text, setText] = useState(() => sessionStorage.getItem(`draft:${key}`) ?? '');
+  const [trigger, setTrigger] = useState<Trigger | null>(null);
+  const [active, setActive] = useState(0);
+  const [emojiAnchor, setEmojiAnchor] = useState<DOMRect | null>(null);
+  const [glyphs, setGlyphs] = useState<Glyph[]>([]);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [attachmentIds, setAttachmentIds] = useState<Array<{ id: string; name: string }>>([]);
+  const tokens = useRef(new Map<string, string>());
+  const area = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const { openContextMenu } = useContextMenu();
+
+  const reply = useUi((s) => s.replyingTo[key]);
+  const replyMsg = useStore((s) => (reply ? s.messages[key]?.byId[reply.messageId] : undefined));
+  const perms = useStore((s) => (type === 'relay' ? relayPermissions(s, id) : null));
+  const canSend = perms === null || can(perms, PERMISSIONS.SEND_TRANSMISSIONS);
+  const canAttach = perms === null || can(perms, PERMISSIONS.ATTACH_FILES);
+  const canEveryone = perms === null ? false : can(perms, PERMISSIONS.MENTION_EVERYONE);
+
+  // Reset per channel.
+  useEffect(() => {
+    setText(sessionStorage.getItem(`draft:${key}`) ?? '');
+    setAttachmentIds([]);
+    tokens.current.clear();
+    area.current?.focus();
+  }, [key]);
+
+  useEffect(() => {
+    if (beaconId) void loadGlyphs(beaconId).then(setGlyphs);
+  }, [beaconId]);
+
+  useEffect(() => {
+    try {
+      if (text) sessionStorage.setItem(`draft:${key}`, text);
+      else sessionStorage.removeItem(`draft:${key}`);
+    } catch {
+      /* ignore */
+    }
+  }, [text, key]);
+
+  // Autosize
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = '0px';
+    el.style.height = `${Math.min(el.scrollHeight, 50 * 22)}px`;
+  }, [text]);
+
+  // Focus composer when replying.
+  useEffect(() => {
+    if (reply) area.current?.focus();
+  }, [reply]);
+
+  const suggestions = useMemo<Suggestion[]>(() => {
+    if (!trigger) return [];
+    const s = getState();
+    const q = trigger.query;
+    if (trigger.char === '@') {
+      let people: UserRef[] = [];
+      if (type === 'relay' && beaconId) people = Object.values(s.members[beaconId] ?? {}).map((m) => m.user);
+      else if (type === 'link') people = [s.links[id]?.recipient, s.me].filter(Boolean) as UserRef[];
+      else if (type === 'mesh') people = s.meshes[id]?.members ?? [];
+      const users: Suggestion[] = people
+        .filter((u) => {
+          const member = beaconId ? s.members[beaconId]?.[u.id] : undefined;
+          return [u.username, u.displayName ?? '', member?.nickname ?? ''].some((n) => n.toLowerCase().includes(q));
+        })
+        .slice(0, 8)
+        .map((u) => {
+          const label = `@${resolveName(u, beaconId ? s.members[beaconId]?.[u.id] : undefined)}`;
+          return { kind: 'user', id: u.id, label, user: u, insert: label, token: `<@${u.id}>` };
+        });
+      const roles: Suggestion[] = beaconId
+        ? (s.clearances[beaconId] ?? [])
+            .filter((c) => c.position > 0 && c.name.toLowerCase().includes(q))
+            .slice(0, 5)
+            .map((c) => ({ kind: 'role', id: c.id, label: `@${c.name}`, color: c.color, insert: `@${c.name}`, token: `<@&${c.id}>` }))
+        : [];
+      const special: Suggestion[] =
+        type === 'relay'
+          ? (['everyone', 'here'] as const)
+              .filter((k) => k.startsWith(q))
+              .map((k) => ({
+                kind: 'special',
+                id: k,
+                label: `@${k}`,
+                description: canEveryone ? (k === 'everyone' ? 'Notify everyone who can see this relay.' : 'Notify everyone online.') : 'You cannot ping everyone here.',
+                insert: `@${k}`,
+                token: `@${k}`,
+              }))
+          : [];
+      return [...users, ...roles, ...special];
+    }
+    if (trigger.char === '#' && beaconId) {
+      return (s.relayIdsByBeacon[beaconId] ?? [])
+        .map((rid) => s.relays[rid])
+        .filter((r) => r && r.type !== 'category' && r.name.toLowerCase().includes(q))
+        .slice(0, 10)
+        .map((r) => ({ kind: 'relay', id: r.id, label: `#${r.name}`, insert: `#${r.name}`, token: `<#${r.id}>` }));
+    }
+    if (trigger.char === ':') {
+      const g: Suggestion[] = glyphs
+        .filter((x) => x.name.toLowerCase().includes(q))
+        .slice(0, 4)
+        .map((x) => ({ kind: 'emoji', id: x.id, label: `:${x.name}:`, glyph: x, insert: `:${x.name}:`, token: `<:${x.name}:${x.id}>` }));
+      const u: Suggestion[] = EMOJI_INDEX.filter((e) => e.slug.startsWith(q))
+        .slice(0, 10 - g.length)
+        .map((e) => ({ kind: 'emoji', id: e.slug, label: `:${e.slug}:`, emoji: e.emoji, insert: e.emoji, token: e.emoji }));
+      return [...g, ...u];
+    }
+    return [];
+  }, [trigger, type, id, beaconId, glyphs, canEveryone]);
+
+  useEffect(() => setActive(0), [trigger?.query, trigger?.char]);
+
+  const applySuggestion = (sug: Suggestion) => {
+    if (!trigger) return;
+    const el = area.current!;
+    const before = text.slice(0, trigger.start);
+    const after = text.slice(el.selectionStart);
+    const insert = `${sug.insert} `;
+    if (sug.insert !== sug.token) tokens.current.set(sug.insert, sug.token);
+    const next = before + insert + after;
+    setText(next);
+    setTrigger(null);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = before.length + insert.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
+  const insertAtCaret = (value: string) => {
+    const el = area.current!;
+    const start = el.selectionStart ?? text.length;
+    const next = text.slice(0, start) + value + text.slice(el.selectionEnd ?? start);
+    setText(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + value.length, start + value.length);
+    });
+  };
+
+  const submit = async () => {
+    const content = encodeMentions(text, tokens.current).trim();
+    if ((!content && !attachmentIds.length) || content.length > MAX_LENGTH) return;
+    setText('');
+    tokens.current.clear();
+    const opts = {
+      replyToId: reply?.messageId,
+      replyPing: reply?.ping,
+      attachmentIds: attachmentIds.length ? attachmentIds.map((a) => a.id) : undefined,
+    };
+    setAttachmentIds([]);
+    useUi.setState((s) => ({ replyingTo: { ...s.replyingTo, [key]: undefined } }));
+    await sendMessage(key, content, opts);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (suggestions.length && trigger) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        applySuggestion(suggestions[active]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setTrigger(null);
+        return;
+      }
+    }
+    if (e.key === 'Escape' && reply) {
+      useUi.setState((s) => ({ replyingTo: { ...s.replyingTo, [key]: undefined } }));
+      return;
+    }
+    if (e.key === 'ArrowUp' && !text) {
+      const s = getState();
+      const ch = s.messages[key];
+      const mine = ch?.ids.map((x) => ch.byId[x]).filter((m) => m.author.id === s.me?.id && !m.pending).at(-1);
+      if (mine) {
+        e.preventDefault();
+        useUi.setState({ editing: { key, messageId: mine.id } });
+      }
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      void submit();
+    }
+  };
+
+  const upload = async (files: FileList | File[]) => {
+    for (const file of Array.from(files).slice(0, 10)) {
+      setUploading(file.name);
+      try {
+        const saved = await api.uploadVaultFile(file);
+        setAttachmentIds((a) => [...a, { id: saved.id, name: file.name }]);
+      } catch (err) {
+        toast(`Upload failed: ${(err as Error).message}`, 'error');
+      } finally {
+        setUploading(null);
+      }
+    }
+  };
+
+  if (!canSend) {
+    return (
+      <div className="px-4 pb-6">
+        <div className="flex h-11 items-center rounded-lg bg-raised px-4 text-sm text-fg-subtle">You do not have permission to transmit in this relay.</div>
+      </div>
+    );
+  }
+
+  const over = text.length > MAX_LENGTH;
+
+  return (
+    <div className="relative px-4 pb-6">
+      {suggestions.length > 0 && trigger && (
+        <div role="listbox" className="absolute inset-x-4 bottom-full mb-2 max-h-80 overflow-y-auto rounded-lg bg-overlay p-2 shadow-pop">
+          <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+            {trigger.char === '@' ? 'Transmitters & Clearances' : trigger.char === '#' ? 'Relays' : 'Emoji matching'} {trigger.query && `“${trigger.query}”`}
+          </p>
+          {suggestions.map((sug, i) => (
+            <button
+              key={`${sug.kind}:${sug.id}`}
+              role="option"
+              aria-selected={i === active}
+              type="button"
+              onMouseEnter={() => setActive(i)}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applySuggestion(sug);
+              }}
+              className={clsx('flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm', i === active ? 'bg-active' : '')}
+            >
+              {sug.kind === 'user' && (
+                <>
+                  <Avatar user={sug.user} size={24} showPresence ring="var(--color-overlay)" />
+                  <UserName user={sug.user} beaconId={beaconId} className="font-medium" styled={false} />
+                  <span className="text-fg-subtle">{sug.user.username}</span>
+                </>
+              )}
+              {sug.kind === 'role' && <span style={{ color: sug.color }} className="font-medium">{sug.label}</span>}
+              {sug.kind === 'special' && (
+                <>
+                  <AtSign className="h-4 w-4 text-fg-subtle" />
+                  <span className="font-medium">{sug.label}</span>
+                  <span className="truncate text-fg-subtle">{sug.description}</span>
+                </>
+              )}
+              {sug.kind === 'relay' && (
+                <>
+                  <Hash className="h-4 w-4 text-fg-subtle" />
+                  <span>{sug.label.slice(1)}</span>
+                </>
+              )}
+              {sug.kind === 'emoji' && (
+                <>
+                  {sug.glyph ? <img src={sug.glyph.url} alt="" className="h-5 w-5 object-contain" /> : <span className="text-lg">{sug.emoji}</span>}
+                  <span>{sug.label}</span>
+                </>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {reply && replyMsg && (
+        <div className="flex h-9 items-center gap-2 rounded-t-lg bg-raised px-4 text-sm text-fg-muted">
+          <span className="min-w-0 flex-1 truncate">
+            Replying to <span className="font-semibold text-fg"><UserName user={replyMsg.author} beaconId={beaconId} styled={false} /></span>
+          </span>
+          {replyMsg.author.id !== getState().me?.id && (
+            <Tooltip content={reply.ping ? 'Click to disable pinging the author' : 'Click to enable pinging the author'}>
+              <button
+                type="button"
+                aria-pressed={reply.ping}
+                onClick={() => useUi.setState((s) => ({ replyingTo: { ...s.replyingTo, [key]: { ...reply, ping: !reply.ping } } }))}
+                className={clsx('flex items-center gap-0.5 text-xs font-bold', reply.ping ? 'text-brand-sky' : 'text-fg-subtle')}
+              >
+                <AtSign className="h-4 w-4" />
+                {reply.ping ? 'ON' : 'OFF'}
+              </button>
+            </Tooltip>
+          )}
+          <button
+            type="button"
+            aria-label="Cancel reply"
+            onClick={() => useUi.setState((s) => ({ replyingTo: { ...s.replyingTo, [key]: undefined } }))}
+            className="text-fg-subtle hover:text-fg"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {(attachmentIds.length > 0 || uploading) && (
+        <div className="flex flex-wrap gap-2 bg-raised px-4 pt-3">
+          {attachmentIds.map((a) => (
+            <span key={a.id} className="flex items-center gap-1.5 rounded-md bg-overlay px-2 py-1 text-xs text-fg">
+              <FileUp className="h-3.5 w-3.5" />
+              {a.name}
+              <button aria-label={`Remove ${a.name}`} onClick={() => setAttachmentIds((l) => l.filter((x) => x.id !== a.id))} className="text-fg-subtle hover:text-danger">
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          {uploading && <span className="text-xs text-fg-subtle">Uploading {uploading}…</span>}
+        </div>
+      )}
+
+      <div
+        className={clsx('flex items-start gap-1 bg-raised px-3', reply || attachmentIds.length || uploading ? 'rounded-b-lg' : 'rounded-lg')}
+        onDragOver={(e) => canAttach && e.dataTransfer.types.includes('Files') && e.preventDefault()}
+        onDrop={(e) => {
+          if (!canAttach || !e.dataTransfer.files.length) return;
+          e.preventDefault();
+          void upload(e.dataTransfer.files);
+        }}
+      >
+        <Tooltip content="Upload a File">
+          <button
+            type="button"
+            aria-label="Add attachment"
+            disabled={!canAttach}
+            onClick={(e) =>
+              openContextMenu({ clientX: e.clientX, clientY: e.clientY - 8 }, [
+                { label: 'Upload a File', icon: <FileUp className="h-4 w-4" />, onClick: () => fileInput.current?.click() },
+                { label: 'Create Thread', disabled: true, sublabel: 'Coming soon' },
+                { label: 'Use Apps', disabled: true, sublabel: 'Coming soon' },
+              ])
+            }
+            className="mt-2.5 flex h-6 w-6 items-center justify-center rounded-full text-fg-muted hover:text-fg disabled:opacity-40"
+          >
+            <CirclePlus className="h-6 w-6" />
+          </button>
+        </Tooltip>
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            if (e.target.files) void upload(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <textarea
+          ref={area}
+          value={text}
+          rows={1}
+          aria-label={placeholder}
+          placeholder={placeholder}
+          onChange={(e) => {
+            setText(e.target.value);
+            setTrigger(findTrigger(e.target.value, e.target.selectionStart));
+            if (e.target.value) notifyTyping(key);
+          }}
+          onKeyDown={onKeyDown}
+          onClick={(e) => setTrigger(findTrigger(text, e.currentTarget.selectionStart))}
+          onPaste={(e) => {
+            if (canAttach && e.clipboardData.files.length) {
+              e.preventDefault();
+              void upload(e.clipboardData.files);
+            }
+          }}
+          className="max-h-[50vh] min-h-[44px] flex-1 resize-none bg-transparent px-1 py-[11px] text-[15px] leading-[22px] text-fg outline-none placeholder:text-fg-subtle"
+        />
+        <div className="mt-2 flex items-center gap-1">
+          <ComingSoon label="Gifts">
+            <span className="flex h-7 w-7 items-center justify-center text-fg-muted"><Gift className="h-5 w-5" /></span>
+          </ComingSoon>
+          <ComingSoon label="GIFs">
+            <span className="flex h-7 items-center justify-center rounded-xs border-2 border-fg-muted px-0.5 text-[10px] font-bold text-fg-muted">GIF</span>
+          </ComingSoon>
+          <ComingSoon label="Stickers">
+            <span className="flex h-7 w-7 items-center justify-center text-fg-muted"><Sticker className="h-5 w-5" /></span>
+          </ComingSoon>
+          <Tooltip content="Select emoji">
+            <button type="button" aria-label="Select emoji" onClick={(e) => setEmojiAnchor(e.currentTarget.getBoundingClientRect())} className="flex h-7 w-7 items-center justify-center text-fg-muted hover:text-fg">
+              <Smile className="h-5 w-5" />
+            </button>
+          </Tooltip>
+        </div>
+      </div>
+
+      {text.length > MAX_LENGTH - 200 && (
+        <span className={clsx('absolute bottom-1 right-6 text-xs tabular-nums', over ? 'text-danger' : 'text-fg-subtle')}>
+          {MAX_LENGTH - text.length}
+        </span>
+      )}
+
+      {emojiAnchor && (
+        <EmojiPicker
+          anchor={emojiAnchor}
+          beaconId={beaconId}
+          placement="above"
+          onClose={() => setEmojiAnchor(null)}
+          onPick={(emoji, glyph) => {
+            if (glyph) {
+              const label = `:${glyph.name}:`;
+              tokens.current.set(label, `<:${glyph.name}:${glyph.id}>`);
+              insertAtCaret(label);
+            } else insertAtCaret(emoji);
+          }}
+        />
+      )}
+    </div>
+  );
+}

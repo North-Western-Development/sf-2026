@@ -14,7 +14,12 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@subspace/ui": ["../../packages/ui/src/index.ts"],
+      "@subspace/constants": ["../../packages/constants/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

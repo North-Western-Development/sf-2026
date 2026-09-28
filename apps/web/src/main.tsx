@@ -1,13 +1,17 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { App } from './App';
+import { ContextMenuProvider } from '@subspace/ui';
+import { AppShell } from './app/AppShell';
 import { AuthGate } from './features/auth/AuthGate';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AuthGate>
-      <App />
-    </AuthGate>
+    {/* Outermost so the browser context menu never appears, including on the auth screens. */}
+    <ContextMenuProvider>
+      <AuthGate>
+        <AppShell />
+      </AuthGate>
+    </ContextMenuProvider>
   </React.StrictMode>
 );
