@@ -3,6 +3,7 @@ import { gateway } from '../services/gateway';
 import {
   toBeacon,
   toClearance,
+  toEditPatch,
   toMember,
   toMesh,
   toRelay,
@@ -21,7 +22,7 @@ import {
   upsertMessages,
   patchMessage,
 } from './store';
-import { ackChannel, applyReaction, loadBeacon, loadTransmissionRequests, refreshRelationships } from './actions';
+import { ackChannel, applyReaction, loadBeacon, loadMessages, loadTransmissionRequests, refreshRelationships } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 
 type Raw = Record<string, any>;
@@ -106,13 +107,16 @@ function onTransmissionCreate(d: Raw) {
 
 const handlers: Record<string, (d: Raw) => void> = {
   READY(d) {
+    handlers.RELATIONSHIPS_REFRESH(d);
+    // Catch up on anything sent between the REST load (or a dropped connection) and this READY.
+    const { messages } = getState();
+    for (const key of Object.keys(messages) as ChannelKey[]) if (messages[key].loaded) void loadMessages(key);
+  },
+  RELATIONSHIPS_REFRESH(d) {
     const me = getState().me;
     if (me && d.presence) setPresence(me.id, { status: d.presence, customStatus: me.customStatus ?? null });
     for (const p of d.presences ?? []) setPresence(p.transmitter_id, { status: p.presence, customStatus: p.custom_status });
     handlers.VOICE_STATES_REPLACE(d);
-  },
-  RELATIONSHIPS_REFRESH(d) {
-    handlers.READY(d);
   },
   VOICE_STATES_REPLACE(d) {
     const voice: Record<string, any> = {};
@@ -162,7 +166,9 @@ const handlers: Record<string, (d: Raw) => void> = {
   MESH_TRANSMISSION_CREATE: onTransmissionCreate,
   TRANSMISSION_UPDATE(d) {
     const key = eventChannel(d);
-    if (key && d.transmission) upsertMessages(key, [toTransmission(d.transmission)]);
+    if (!key || !d.transmission) return;
+    if (getState().messages[key]?.byId[d.transmission.id]) patchMessage(key, d.transmission.id, toEditPatch(d.transmission));
+    else upsertMessages(key, [toTransmission(d.transmission)]);
   },
   TRANSMISSION_DELETE(d) {
     const key = eventChannel(d);

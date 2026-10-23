@@ -2,9 +2,11 @@
 // Run the full Subspace stack on the host (no Docker).
 // Requires Postgres + Redis reachable on 127.0.0.1 (see scripts/native/README.md).
 // MinIO (vault uploads) and LiveKit (voice/video) are optional.
+// --test-stack: the isolated stack Playwright drives (test database, Redis /1,
+// web on :4173, services on 4001-4003) so it can run beside the dev stack.
 import { spawn } from 'node:child_process';
 import net from 'node:net';
-import { loadNativeEnv, ROOT } from './env.mjs';
+import { flushTestRedis, loadNativeEnv, ROOT } from './env.mjs';
 import { ensureInfra } from './infra.mjs';
 
 
@@ -22,7 +24,14 @@ const pushSchema = (env, cwd) =>
     child.on('exit', (code) => resolve(code === 0 && !/^error:/m.test(out) ? 0 : 1));
   });
 
-const env = loadNativeEnv();
+const testStack = process.argv.includes('--test-stack');
+const env = loadNativeEnv({ test: testStack });
+if (testStack) {
+  Object.assign(env, { API_PORT: '4001', GATEWAY_PORT: '4002', FILE_PORT: '4003', WEB_PORT: '4173', REGISTER_RATE_LIMIT: '10000' });
+  env.S3_PUBLIC_ENDPOINT = 'http://localhost:4173';
+  // NODE_ENV=test stops the services from listening; they must serve here.
+  env.NODE_ENV = 'development';
+}
 
 const probe = (port) =>
   new Promise((resolve) => {
@@ -61,8 +70,11 @@ if ((await pushSchema(env, ROOT)) !== 0) {
   process.exit(1);
 }
 
-console.log('[native] Starting services (web on http://localhost:5173)...');
-const services = ['@subspace/api-service', '@subspace/gateway-service', '@subspace/file-service', '@subspace/badge-worker', '@subspace/web'];
+if (testStack && (await flushTestRedis(env.REDIS_URL)) !== 0) process.exit(1);
+
+console.log(`[native] Starting services (web on http://localhost:${env.WEB_PORT || 5173})...`);
+const services = ['@subspace/api-service', '@subspace/gateway-service', '@subspace/file-service', '@subspace/web'];
+if (!testStack) services.push('@subspace/badge-worker');
 const child = spawn('pnpm', ['--parallel', ...services.flatMap((s) => ['--filter', s]), 'dev'], {
   cwd: ROOT,
   env,

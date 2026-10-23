@@ -100,6 +100,9 @@ async function allocateDiscriminator(db: any, username: string): Promise<string 
   return untaken.length > 0 ? untaken[Math.floor(Math.random() * untaken.length)] : null;
 }
 
+// The isolated UI-test stack raises this (every browser test registers fresh accounts). Never honoured in production.
+const REGISTER_LIMIT = process.env.NODE_ENV !== 'production' && Number(process.env.REGISTER_RATE_LIMIT) > 0 ? Number(process.env.REGISTER_RATE_LIMIT) : 5;
+
 export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
   const redis = (app as any).redis;
@@ -107,7 +110,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * POST /api/v1/auth/register
    */
-  app.post('/register', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+  app.post('/register', { config: { rateLimit: { max: REGISTER_LIMIT, timeWindow: '1 hour' } } }, async (request, reply) => {
     const body = request.body as any;
     const { username, email, password, displayName, acceptDirectives } = body || {};
 

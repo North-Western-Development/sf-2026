@@ -60,3 +60,8 @@ ui-examples/
 graphify-out/
 .native-data/
 .claude/worktrees/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

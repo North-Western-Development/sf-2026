@@ -3,6 +3,7 @@ import {
   toBeacon,
   toClearance,
   toCluster,
+  toEditPatch,
   toLink,
   toMember,
   toMesh,
@@ -251,7 +252,7 @@ export async function retryMessage(key: ChannelKey, pendingId: string) {
 
 export const editMessage = async (key: ChannelKey, id: string, content: string) => {
   const res = await http.patch<{ transmission: Raw }>(`/transmissions/${id}`, { content });
-  upsertMessages(key, [{ ...toTransmission(res.transmission), ...parseChannelFields(key) }]);
+  patchMessage(key, id, toEditPatch(res.transmission));
 };
 
 export const deleteMessage = async (key: ChannelKey, id: string) => {

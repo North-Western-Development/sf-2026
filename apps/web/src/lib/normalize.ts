@@ -145,6 +145,12 @@ export function toTransmission(t: Raw): Transmission {
   };
 }
 
+/** The fields an edit changes. Edit payloads are bare rows, so applying them whole would drop author, reactions and reply. */
+export function toEditPatch(t: Raw): Partial<Transmission> {
+  const n = toTransmission(t);
+  return { content: n.content, editedAt: n.editedAt, mentions: n.mentions, mentionRoles: n.mentionRoles, mentionEveryone: n.mentionEveryone };
+}
+
 export function toCluster(c: Raw): Cluster {
   return {
     id: c.id,

@@ -306,9 +306,11 @@ class SubspaceApiClient {
 
   private async fetchAuth(url: string, options: RequestInit = {}): Promise<Response> {
     await this.ensureAuthenticated();
-    const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    // Only a JSON body gets the JSON content type: Fastify rejects an empty body declared as JSON,
+    // which broke every DELETE.
+    const isJson = typeof options.body === 'string';
     const build = () => ({
-      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
+      ...(isJson ? { 'Content-Type': 'application/json' } : {}),
       ...((options.headers as Record<string, string>) || {}),
       Authorization: `Bearer ${this.token}`,
     });

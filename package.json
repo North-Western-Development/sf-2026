@@ -13,9 +13,11 @@
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",
     "dev:native": "node scripts/native/dev.mjs",
-    "test:native": "node scripts/native/test.mjs"
+    "test:native": "node scripts/native/test.mjs",
+    "test:ui": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/ws": "^8.5.14",
     "ioredis": "^5.11.1",
     "turbo": "^2.4.4",
