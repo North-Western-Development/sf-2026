@@ -22,7 +22,7 @@ import {
   upsertMessages,
   patchMessage,
 } from './store';
-import { ackChannel, applyReaction, loadBeacon, loadMessages, loadTransmissionRequests, refreshRelationships } from './actions';
+import { ackChannel, applyReaction, loadBeacon, loadMessages, syncReadStates, loadTransmissionRequests, refreshRelationships } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 
 type Raw = Record<string, any>;
@@ -109,6 +109,8 @@ const handlers: Record<string, (d: Raw) => void> = {
   READY(d) {
     handlers.RELATIONSHIPS_REFRESH(d);
     // Catch up on anything sent between the REST load (or a dropped connection) and this READY.
+    void syncReadStates().catch(() => {});
+    void refreshRelationships().catch(() => {});
     const { messages } = getState();
     for (const key of Object.keys(messages) as ChannelKey[]) if (messages[key].loaded) void loadMessages(key);
   },
@@ -300,8 +302,10 @@ const handlers: Record<string, (d: Raw) => void> = {
     const me = getState().me;
     if (me && u.id === me.id) setState({ me: { ...me, ...(d.user ?? d) } });
   },
-  RELATIONSHIP_ADD() {
+  RELATIONSHIP_ADD(d) {
     void refreshRelationships().catch(() => {});
+    const a = d.affiliation;
+    if (a?.status === 'pending' && a.targetId === getState().me?.id) playPing();
   },
   RELATIONSHIP_REMOVE() {
     void refreshRelationships().catch(() => {});

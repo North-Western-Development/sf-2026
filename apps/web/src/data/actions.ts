@@ -43,6 +43,44 @@ const PAGE = 50;
 // Bootstrap
 // ---------------------------------------------------------------------------
 
+function parseReadStates(readRes: Raw) {
+  const readStates: Record<string, any> = {};
+  for (const r of readRes.readStates ?? []) {
+    readStates[channelKey(r.channelType, r.channelId)] = {
+      lastReadId: r.lastReadId ?? null,
+      lastReadAt: r.lastReadAt ?? null,
+      mentionCount: r.mentionCount ?? 0,
+    };
+  }
+  const activity: Record<string, any> = {};
+  for (const c of readRes.channels ?? []) {
+    activity[channelKey(c.channelType, c.channelId)] = {
+      lastId: c.lastTransmissionId ?? null,
+      lastAt: c.lastTransmissionAt ?? null,
+      beaconId: c.beaconId,
+    };
+  }
+  return { readStates, activity };
+}
+
+/** Re-read unread markers and mention counts, e.g. after the gateway (re)connects. */
+export async function syncReadStates(): Promise<void> {
+  const res = await http.get<Raw>('/read-states');
+  const fresh = parseReadStates(res);
+  const time = (at?: string | null) => (at ? Date.parse(at) : 0);
+  setState((s) => {
+    const readStates = { ...s.readStates };
+    const activity = { ...s.activity };
+    for (const key of new Set([...Object.keys(fresh.readStates), ...Object.keys(fresh.activity)]) as Set<ChannelKey>) {
+      // A live event newer than this snapshot already updated the channel; the snapshot would undo it.
+      if (time(s.activity[key]?.lastAt) > time(fresh.activity[key]?.lastAt)) continue;
+      if (fresh.activity[key]) activity[key] = { ...s.activity[key], ...fresh.activity[key] };
+      if (fresh.readStates[key]) readStates[key] = fresh.readStates[key];
+    }
+    return { readStates, activity };
+  });
+}
+
 export async function bootstrap(): Promise<void> {
   const [meRes, beaconsRes, clustersRes, linksRes, meshesRes, relRes, readRes, notifRes] = await Promise.all([
     http.get<{ transmitter: Raw }>('/auth/me'),
@@ -62,22 +100,7 @@ export async function bootstrap(): Promise<void> {
   const meshes = meshesRes.meshes.map(toMesh);
   const relationships = toRelationships(relRes, me.id);
 
-  const readStates: Record<string, any> = {};
-  for (const r of readRes.readStates ?? []) {
-    readStates[channelKey(r.channelType, r.channelId)] = {
-      lastReadId: r.lastReadId ?? null,
-      lastReadAt: r.lastReadAt ?? null,
-      mentionCount: r.mentionCount ?? 0,
-    };
-  }
-  const activity: Record<string, any> = {};
-  for (const c of readRes.channels ?? []) {
-    activity[channelKey(c.channelType, c.channelId)] = {
-      lastId: c.lastTransmissionId ?? null,
-      lastAt: c.lastTransmissionAt ?? null,
-      beaconId: c.beaconId,
-    };
-  }
+  const { readStates, activity } = parseReadStates(readRes);
   for (const l of links) activity[channelKey('link', l.id)] ??= { lastId: l.lastTransmissionId, lastAt: l.lastTransmissionAt };
   for (const m of meshes) activity[channelKey('mesh', m.id)] ??= { lastId: m.lastTransmissionId ?? null, lastAt: m.lastTransmissionAt };
 

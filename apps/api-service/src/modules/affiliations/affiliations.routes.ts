@@ -105,7 +105,8 @@ export const affiliationRoutes: FastifyPluginAsync = async (app: FastifyInstance
       })
       .returning();
 
-    await publishGatewayEvent(app, 'TRANSMISSION_REQUEST_CREATE', { affiliation: newAffiliation }, { transmitterIds: [targetId] });
+    // Both sides' lists change (incoming for the target, outgoing for the sender).
+    await publishGatewayEvent(app, 'RELATIONSHIP_ADD', { affiliation: newAffiliation }, { transmitterIds: [targetId, token.transmitterId] });
 
     return reply.status(201).send({
       message: 'Affiliation request dispatched',

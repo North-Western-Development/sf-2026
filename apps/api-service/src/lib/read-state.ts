@@ -53,7 +53,8 @@ export interface MentionRecipientCheck {
 
 /**
  * Increments `mention_count` on each recipient's read state row for this channel,
- * honoring notification-setting suppressions, mutes, and blocks. Recipients are all
+ * honoring notification-setting suppressions and blocks. Mutes do not apply: muting hides
+ * unread indicators "unless you are mentioned" (Discord, and our settings copy). Recipients are all
  * channel members except the sender.
  */
 export async function incrementMentionCounts(
@@ -82,7 +83,7 @@ export async function incrementMentionCounts(
     if (blockedBySender) continue;
 
     const effective = await resolveEffectiveNotification(db, candidate.recipientId, chain, defaultLevel);
-    if (effective.level === 'nothing' || effective.muted) continue;
+    if (effective.level === 'nothing') continue;
     if (candidate.isEveryoneOnly && effective.suppressEveryone) continue;
 
     await db

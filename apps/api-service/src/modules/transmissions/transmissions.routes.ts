@@ -18,6 +18,7 @@ import {
 import { publishGatewayEvent, audienceForTransmission } from '../../lib/events.js';
 import { loadChannel } from '../../lib/channels.js';
 import { parseMentions } from '../../lib/mentions.js';
+import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { beaconMembers as beaconMembersTable, subspaceMeshMembers as subspaceMeshMembersTable } from '@subspace/database';
 
 import { resolveVaultAttachments } from '../../lib/attachments.js';
@@ -96,6 +97,8 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
         attachments,
       })
       .returning();
+    // Keep the relay's unread marker current, as the unified send route does.
+    await touchChannelLastTransmission(db, { channelType: 'relay', channelId: relayId }, newTransmission.id, newTransmission.createdAt);
 
     const [authorProfile] = await db
       .select({

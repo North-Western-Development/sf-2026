@@ -62,7 +62,7 @@ export class Api {
     await this.post(`/beacons/${beaconId}/onboarding/complete`, { agreedToRules: true });
   }
   async send(relayId: string, content: string) {
-    return (await this.post(`/relays/${relayId}/transmissions`, { content })).transmission as { id: string };
+    return (await this.post(`/channels/relay/${relayId}/transmissions`, { content })).transmission as { id: string };
   }
   async befriend(other: Session) {
     const { affiliation } = await this.post('/affiliations/request', { targetId: other.transmitter.id });

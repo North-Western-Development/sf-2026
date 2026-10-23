@@ -156,7 +156,11 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
       await db.delete(pointToPointLinkHidden).where(and(eq(pointToPointLinkHidden.transmitterId, token.transmitterId), eq(pointToPointLinkHidden.linkId, link.id)));
 
-      return reply.status(201).send({ link });
+      // Same shape as GET /links so the client can show who the DM is with.
+      const [recipient] = await db.select(AUTHOR_FIELDS).from(transmitters).where(eq(transmitters.id, targetId)).limit(1);
+      return reply.status(201).send({
+        link: { ...link, recipient, lastTransmissionId: link.lastTransmissionId, lastTransmissionAt: link.lastTransmissionAt },
+      });
     }
   );
 

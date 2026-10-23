@@ -159,7 +159,7 @@ describe('Parity: read state, unread mentions, notification settings', () => {
     expect(relayState.mentionCount).toBe(0);
   });
 
-  it('suppresses mention_count while muted', async () => {
+  it('still counts direct mentions while muted (muting hides unread, not pings)', async () => {
     if (!(app as any).db) return;
     await app.inject({
       method: 'PUT',
@@ -177,7 +177,7 @@ describe('Parity: read state, unread mentions, notification settings', () => {
 
     const rsRes = await app.inject({ method: 'GET', url: '/api/v1/read-states', headers: { authorization: `Bearer ${memberToken}` } });
     const relayState = rsRes.json().readStates.find((r: any) => r.channelId === relayId);
-    expect(relayState.mentionCount).toBe(0);
+    expect(relayState.mentionCount).toBe(1);
   });
 
   it('400s on invalid scopeType', async () => {
