@@ -178,6 +178,28 @@ describe('Parity Section 6: Invites, Bans, Members, Glyphs E2E Suite', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('lists only redeemable invites, each with its inviter', async () => {
+    if (!(app as any).db) return;
+    const db = (app as any).db;
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/beacons/${beaconId}/invites`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const listed = res.json().invites as any[];
+    expect(listed.length).toBeGreaterThan(0);
+    const all = await db.select().from(invites).where(eq(invites.beaconId, beaconId));
+    const dead = all.filter((i: any) => (i.expiresAt && new Date(i.expiresAt).getTime() <= Date.now()) || (i.maxUses && i.uses >= i.maxUses));
+    expect(dead.length).toBeGreaterThanOrEqual(2); // the used-up and expired invites from the tests above
+    for (const d of dead) expect(listed.some((i) => i.code === d.code)).toBe(false);
+    for (const i of listed) {
+      expect(i.inviter).toMatchObject({ id: ownerId, username: 'invite_owner' });
+      expect(i.inviter.passwordHash).toBeUndefined();
+      expect(i.inviter.email).toBeUndefined();
+    }
+  });
+
   it('bans a member: removes membership, blocks rejoin, and rejects invite accept', async () => {
     if (!(app as any).db) return;
     // Ban the joiner
@@ -270,6 +292,18 @@ describe('Parity Section 6: Invites, Bans, Members, Glyphs E2E Suite', () => {
     expect(selfRes.statusCode).toBe(200);
     expect(selfRes.json().member.nickname).toBe('Self Nick');
     expect(selfRes.json().member.bio).toBe('hello there');
+  });
+
+  it('exposes per-beacon profile overrides in the member list', async () => {
+    if (!(app as any).db) return;
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/v1/beacons/${beaconId}/members`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const joiner = (res.json().members as any[]).find((m) => m.transmitterId === joinerId);
+    expect(joiner.member).toMatchObject({ bio: 'hello there' });
   });
 
   it('validation: 400 on oversized per-beacon profile fields', async () => {

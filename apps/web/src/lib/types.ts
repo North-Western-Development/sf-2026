@@ -99,6 +99,10 @@ export interface Member {
   joinedAt?: string;
   isOwner?: boolean;
   avatarUrl?: string | null;
+  /** Per-beacon profile overrides (null = use the global profile). */
+  bannerUrl?: string | null;
+  bio?: string | null;
+  pronouns?: string | null;
   hasCompletedOnboarding?: boolean;
 }
 

@@ -39,7 +39,7 @@ import { PERMISSION_GROUPS } from '../../lib/permissionMeta';
 import { term } from '../../lib/strings';
 import type { Clearance, Member, Relay } from '../../lib/types';
 import { closeModal, confirmAction, toast } from '../../app/ui';
-import { SettingsLayout, SettingsHeader, SettingsTitle, Field, Switch, SaveBar } from './SettingsLayout';
+import { SettingsLayout, SettingsHeader, SettingsTitle, Field, Switch, SaveBar, useWideSettingsPage } from './SettingsLayout';
 import { RelayIcon } from '../sidebar/BeaconSidebar';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
@@ -111,7 +111,9 @@ function OverviewTab({ beaconId }: { beaconId: string }) {
           <p className="w-28 text-center text-xs text-fg-subtle">Minimum 128x128. PNG, JPEG, GIF or WebP.</p>
         </div>
         <div className="flex-1 space-y-4">
-          <Input label={`${term('beacon')} Name`} value={d.name} maxLength={100} onChange={(e) => setD({ ...d, name: e.target.value })} />
+          <Field label={`${term('beacon')} Name`}>
+            <Input aria-label={`${term('beacon')} Name`} value={d.name} maxLength={100} onChange={(e) => setD({ ...d, name: e.target.value })} />
+          </Field>
           <Field label="Description" hint="Shown in Discover and on invites.">
             <textarea value={d.description} maxLength={300} rows={3} onChange={(e) => setD({ ...d, description: e.target.value })} className="w-full resize-none rounded-md border border-line bg-void px-3 py-2 text-sm text-fg outline-none focus:border-brand" />
           </Field>
@@ -148,6 +150,7 @@ function PermissionToggle({ label, description, checked, disabled, onChange }: {
 }
 
 function ClearancesTab({ beaconId }: { beaconId: string }) {
+  useWideSettingsPage();
   const clearances = useStore(useShallow((s) => [...(s.clearances[beaconId] ?? [])].sort((a, b) => b.position - a.position)));
   const myPerms = useStore((s) => beaconPermissions(s, beaconId));
   const isOwner = useStore((s) => s.beacons[beaconId]?.ownerId === s.me?.id);
@@ -282,7 +285,9 @@ function ClearancesTab({ beaconId }: { beaconId: string }) {
             <fieldset disabled={!editable} className="disabled:opacity-60">
               {sub === 'display' && (
                 <>
-                  {current.position > 0 && <Input label={`${term('clearance')} Name`} value={draft.name} maxLength={100} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />}
+                  {current.position > 0 && <Field label={`${term('clearance')} Name`}>
+            <Input aria-label={`${term('clearance')} Name`} value={draft.name} maxLength={100} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          </Field>}
                   <Field label={`${term('clearance')} Color`} hint="Members use the color of their highest clearance.">
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {PRESET_COLORS.map((c) => (
@@ -345,6 +350,7 @@ function ClearancesTab({ beaconId }: { beaconId: string }) {
 type Overwrite = { targetId: string; targetType: 'clearance' | 'transmitter'; allow: string; deny: string };
 
 function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) {
+  useWideSettingsPage();
   const navigate = useNavigate();
   const relay = useStore((s) => s.relays[relayId]);
   const clearances = useStore(useShallow((s) => [...(s.clearances[beaconId] ?? [])].sort((a, b) => b.position - a.position)));
@@ -411,7 +417,9 @@ function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) 
       </nav>
       {sub === 'overview' ? (
         <>
-          <Input label={`${term('relay')} Name`} value={d.name} maxLength={100} onChange={(e) => setD({ ...d, name: e.target.value })} />
+          <Field label={`${term('relay')} Name`}>
+            <Input aria-label={`${term('relay')} Name`} value={d.name} maxLength={100} onChange={(e) => setD({ ...d, name: e.target.value })} />
+          </Field>
           <div className="mt-4">
             <Field label={`${term('relay')} Topic`} hint="Supports markdown. Shown in the relay header.">
               <textarea value={d.topic} maxLength={1024} rows={3} onChange={(e) => setD({ ...d, topic: e.target.value })} className="w-full resize-none rounded-md border border-line bg-void px-3 py-2 text-sm text-fg outline-none focus:border-brand" />
@@ -582,6 +590,7 @@ function GlyphsTab({ beaconId }: { beaconId: string }) {
 }
 
 function MembersTab({ beaconId }: { beaconId: string }) {
+  useWideSettingsPage();
   const members = useStore(useShallow((s) => Object.values(s.members[beaconId] ?? {})));
   const clearances = useStore((s) => s.clearances[beaconId] ?? EMPTY_CLEARANCES);
   const [q, setQ] = useState('');
@@ -636,6 +645,7 @@ function MembersTab({ beaconId }: { beaconId: string }) {
 }
 
 function InvitesTab({ beaconId }: { beaconId: string }) {
+  useWideSettingsPage();
   const [invites, setInvites] = useState<any[] | null>(null);
   useEffect(() => {
     void optional(http.get<{ invites: any[] }>(`/beacons/${beaconId}/invites`), { invites: [] })
@@ -658,7 +668,17 @@ function InvitesTab({ beaconId }: { beaconId: string }) {
         <tbody>
           {(invites ?? []).map((inv) => (
             <tr key={inv.code} className="border-t border-line">
-              <td className="py-2 text-fg">{inv.inviter ? userTag(inv.inviter) : '—'}</td>
+              <td className="py-2">
+                {inv.inviter ? (
+                  <span className="flex items-center gap-2">
+                    <Avatar user={inv.inviter} size={24} />
+                    <span className="text-fg">{inv.inviter.displayName || inv.inviter.username}</span>
+                    <span className="text-xs text-fg-subtle">{userTag(inv.inviter)}</span>
+                  </span>
+                ) : (
+                  '—'
+                )}
+              </td>
               <td className="font-mono text-fg">{inv.code}</td>
               <td className="text-fg-muted">
                 {inv.uses}
@@ -680,6 +700,7 @@ function InvitesTab({ beaconId }: { beaconId: string }) {
 }
 
 function BansTab({ beaconId }: { beaconId: string }) {
+  useWideSettingsPage();
   const [bans, setBans] = useState<any[] | null>(null);
   useEffect(() => {
     void optional(http.get<{ bans: any[] }>(`/beacons/${beaconId}/bans`), { bans: [] })

@@ -84,6 +84,11 @@
     height: 100%;
   }
 
+  /* Native controls (select popups, pickers, scrollbars) render dark. */
+  html {
+    color-scheme: dark;
+  }
+
   body {
     margin: 0;
     font-family: var(--font-sans);

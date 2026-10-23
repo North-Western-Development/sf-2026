@@ -115,14 +115,31 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (!actorContext) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
 
     const canManage = hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_BEACON);
-    const rows = canManage
-      ? await db.select().from(invites).where(eq(invites.beaconId, beaconId))
-      : await db
-          .select()
-          .from(invites)
-          .where(and(eq(invites.beaconId, beaconId), eq(invites.inviterId, token.transmitterId)));
+    const scope = canManage
+      ? eq(invites.beaconId, beaconId)
+      : and(eq(invites.beaconId, beaconId), eq(invites.inviterId, token.transmitterId));
+    const rows = await db
+      .select({
+        invite: invites,
+        inviter: {
+          id: transmitters.id,
+          username: transmitters.username,
+          discriminator: transmitters.discriminator,
+          displayName: transmitters.displayName,
+          avatarUrl: transmitters.avatarUrl,
+        },
+      })
+      .from(invites)
+      .innerJoin(transmitters, eq(invites.inviterId, transmitters.id))
+      .where(scope);
 
-    return reply.send({ invites: rows });
+    // Expired and used-up invites can no longer be redeemed, so they are not listed.
+    const now = Date.now();
+    const live = rows.filter(
+      ({ invite }: any) =>
+        (!invite.expiresAt || new Date(invite.expiresAt).getTime() > now) && (!invite.maxUses || invite.uses < invite.maxUses)
+    );
+    return reply.send({ invites: live.map(({ invite, inviter }: any) => ({ ...invite, inviter })) });
   });
 
   /**
