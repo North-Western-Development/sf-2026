@@ -85,7 +85,7 @@ export async function register(prefix = 'pilot', displayName?: string): Promise<
 }
 
 /** Put the session in localStorage before the app boots, exactly as a real sign-in leaves it. */
-export async function signIn(page: Page, session: Session, path = '/channels/@me') {
+export async function signIn(page: Page, session: Session, path = '/channels/@me', { shell = !path.startsWith('/invite/') } = {}) {
   await page.addInitScript((s) => {
     if (sessionStorage.getItem('ui-test-signed-in')) return;
     sessionStorage.setItem('ui-test-signed-in', '1');
@@ -94,7 +94,8 @@ export async function signIn(page: Page, session: Session, path = '/channels/@me
     localStorage.setItem('subspace_user', JSON.stringify(s.transmitter));
   }, { accessToken: session.accessToken, refreshToken: session.refreshToken, transmitter: session.transmitter });
   await page.goto(path);
-  await expect(page.getByRole('navigation', { name: 'Beacons' })).toBeVisible();
+  if (shell) await expect(page.getByRole('navigation', { name: 'Beacons' })).toBeVisible();
+  else await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
 }
 
 /** A second browser context for multi-user scenarios (separate storage, like another device). */

@@ -102,6 +102,7 @@ function NewPostModal({ relay, tags, onClose, onCreated }: { relay: Relay; tags:
             onChange={(e) => setContent(e.target.value)}
             rows={6}
             maxLength={2000}
+            aria-label="Opening transmission"
             placeholder="Markdown, quotes and code blocks are supported."
             className="w-full resize-y rounded-md border border-line bg-void px-3 py-2 text-sm text-fg outline-none focus:border-brand"
           />

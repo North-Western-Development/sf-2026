@@ -59,10 +59,14 @@ export const usersRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         .returning();
 
       const peers = await resolvePresencePeers(db, token.transmitterId);
+      // Live presence lives in the gateway's Redis hash (already masked for invisible);
+      // the DB column is stale and broadcasting it made the user appear offline.
+      const redis = (app as any).redis;
+      const live = redis ? await redis.hget('presence', token.transmitterId).catch(() => null) : null;
       await publishGatewayEvent(
         app,
         'PRESENCE_UPDATE',
-        { transmitter_id: token.transmitterId, presence: updated.presence, custom_status: updated.customStatus },
+        { transmitter_id: token.transmitterId, presence: live || 'offline', custom_status: updated.customStatus },
         { transmitterIds: peers }
       );
 

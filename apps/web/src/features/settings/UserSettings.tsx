@@ -81,6 +81,7 @@ function PlaceholderRow(props: React.ComponentProps<typeof SettingsRow> & { soon
 function PasswordDialog({ onClose }: { onClose: () => void }) {
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [busy, setBusy] = useState(false);
+  const [currentError, setCurrentError] = useState<string | null>(null);
   const mismatch = pw.confirm.length > 0 && pw.confirm !== pw.next;
 
   const submit = async (e: FormEvent) => {
@@ -96,7 +97,8 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
       toast('Password updated. Other sessions were signed out.', 'success');
       onClose();
     } catch (err) {
-      toast((err as Error).message, 'error');
+      if (err instanceof ApiError && err.code === 'PASSWORD_INCORRECT') setCurrentError('Password does not match.');
+      else toast((err as Error).message, 'error');
     } finally {
       setBusy(false);
     }
@@ -110,7 +112,11 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
           type="password"
           autoComplete="current-password"
           value={pw.current}
-          onChange={(e) => setPw({ ...pw, current: e.target.value })}
+          onChange={(e) => {
+            setPw({ ...pw, current: e.target.value });
+            setCurrentError(null);
+          }}
+          error={currentError ?? undefined}
           autoFocus
           required
         />

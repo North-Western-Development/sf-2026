@@ -556,7 +556,8 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       if (!user) return reply.status(404).send({ error: 'Transmitter not found' });
 
       const isValid = await verifyPassword(user.passwordHash, currentPassword);
-      if (!isValid) return reply.status(401).send({ error: 'Current password is incorrect' });
+      // Not 401: that means "session expired" and the client would sign the user out.
+      if (!isValid) return reply.status(400).send({ error: 'Current password is incorrect', code: 'PASSWORD_INCORRECT' });
 
       const newHash = await hashPassword(newPassword);
       const newTokenVersion = (user.tokenVersion || 0) + 1;

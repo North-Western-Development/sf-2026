@@ -58,7 +58,8 @@ describe('Parity Section 8: Account (password, 2FA, rate limits) E2E Suite', () 
       headers: { authorization: `Bearer ${userToken}` },
       payload: { currentPassword: 'totally-wrong', newPassword: 'NewPassword123' },
     });
-    expect([401, 400]).toContain(res.statusCode);
+    // Must not be 401: the web client treats 401 as an expired session and signs out.
+    expect(res.statusCode).toBe(400);
   });
 
   it('400s on a too-short new password (schema validation)', async () => {

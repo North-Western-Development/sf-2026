@@ -63,6 +63,13 @@ function parseReadStates(readRes: Raw) {
   return { readStates, activity };
 }
 
+/** Re-read the joined beacons (names, icons, joins and leaves) after the gateway (re)connects. */
+export async function refreshBeacons(): Promise<void> {
+  const res = await http.get<{ beacons: Raw[] }>('/beacons/me');
+  const beacons = res.beacons.map(toBeacon);
+  setState({ beacons: Object.fromEntries(beacons.map((b) => [b.id, b])), beaconOrder: beacons.map((b) => b.id) });
+}
+
 /** Re-read unread markers and mention counts, e.g. after the gateway (re)connects. */
 export async function syncReadStates(): Promise<void> {
   const res = await http.get<Raw>('/read-states');

@@ -22,7 +22,7 @@ import {
   upsertMessages,
   patchMessage,
 } from './store';
-import { ackChannel, applyReaction, loadBeacon, loadMessages, syncReadStates, loadTransmissionRequests, refreshRelationships } from './actions';
+import { ackChannel, applyReaction, loadBeacon, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshRelationships } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 
 type Raw = Record<string, any>;
@@ -111,13 +111,16 @@ const handlers: Record<string, (d: Raw) => void> = {
     // Catch up on anything sent between the REST load (or a dropped connection) and this READY.
     void syncReadStates().catch(() => {});
     void refreshRelationships().catch(() => {});
-    const { messages } = getState();
+    void refreshBeacons().catch(() => {});
+    const { messages, relayIdsByBeacon } = getState();
+    for (const beaconId of Object.keys(relayIdsByBeacon)) void loadBeacon(beaconId).catch(() => {});
     for (const key of Object.keys(messages) as ChannelKey[]) if (messages[key].loaded) void loadMessages(key);
   },
   RELATIONSHIPS_REFRESH(d) {
     const me = getState().me;
-    if (me && d.presence) setPresence(me.id, { status: d.presence, customStatus: me.customStatus ?? null });
-    for (const p of d.presences ?? []) setPresence(p.transmitter_id, { status: p.presence, customStatus: p.custom_status });
+    // Snapshots carry status only; keep custom statuses already received (or set by me since boot).
+    if (me && d.presence) setPresence(me.id, { status: d.presence });
+    for (const p of d.presences ?? []) setPresence(p.transmitter_id, { status: p.presence, ...(p.custom_status !== undefined ? { customStatus: p.custom_status } : {}) });
     handlers.VOICE_STATES_REPLACE(d);
   },
   VOICE_STATES_REPLACE(d) {
