@@ -222,6 +222,17 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(404).send({ error: 'Beacon not found' });
     }
 
+    // Private beacons are only visible to their members; same 404 so ids cannot be probed.
+    if (!beacon.isDiscoverable) {
+      const token = extractAuthToken(request)!;
+      const [membership] = await db
+        .select({ id: beaconMembers.transmitterId })
+        .from(beaconMembers)
+        .where(and(eq(beaconMembers.beaconId, beaconId), eq(beaconMembers.transmitterId, token.transmitterId)))
+        .limit(1);
+      if (!membership) return reply.status(404).send({ error: 'Beacon not found' });
+    }
+
     return reply.send({ beacon });
   });
 

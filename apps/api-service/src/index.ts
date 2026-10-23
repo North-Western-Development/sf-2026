@@ -21,6 +21,23 @@ export async function buildApp() {
     logger: process.env.NODE_ENV !== 'test',
   });
 
+  // Every registered route, so the endpoint-coverage security test can sweep them all.
+  const routeTable: Array<{ method: string; url: string }> = [];
+  app.addHook('onRoute', (r) => {
+    for (const method of [r.method].flat()) if (method !== 'HEAD' && method !== 'OPTIONS') routeTable.push({ method, url: r.url });
+  });
+  app.decorate('routeTable', routeTable);
+
+  // Secure by default: every route needs a valid access token before validation or the
+  // handler runs. Routes that must work signed-out opt out with `config: { public: true }`.
+  // Imported here, like the route modules, so the JWT secret is read after dotenv runs.
+  const { extractAuthToken } = await import('./middleware/hierarchy.js');
+  app.addHook('onRequest', async (request, reply) => {
+    const config = request.routeOptions.config as { public?: boolean } | undefined;
+    if (!request.routeOptions.url || config?.public) return;
+    if (!extractAuthToken(request)) return reply.status(401).send({ error: 'Authentication required' });
+  });
+
   await app.register(cors, {
     origin: true,
     credentials: true,
@@ -167,7 +184,7 @@ export async function buildApp() {
   // Subspace Vault is served by file-service (/api/v1/vault is routed there by the web proxy).
 
   // Health check endpoint
-  app.get('/health', async () => {
+  app.get('/health', { config: { public: true } }, async () => {
     return {
       status: 'ok',
       service: 'api-service',
@@ -185,7 +202,7 @@ export async function buildApp() {
   });
 
   // Diagnostics / System Information
-  app.get('/api/v1/system/info', async () => {
+  app.get('/api/v1/system/info', { config: { public: true } }, async () => {
     return {
       instance: 'Subspace Frequency Node',
       version: '0.1.0',

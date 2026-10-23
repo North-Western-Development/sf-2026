@@ -239,7 +239,7 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    * Redirects to a short-lived presigned URL. Only well-known media types render inline;
    * everything else is forced to download so uploaded HTML/SVG can never run in our origin.
    */
-  app.get('/files/:id', async (request, reply) => {
+  app.get('/files/:id', { config: { public: true } }, async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.status(404).send({ error: 'File not found' });
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });

@@ -170,7 +170,7 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
    */
   app.get(
     '/invites/:code',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    { config: { public: true, rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (request, reply) => {
       if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
       const { code } = request.params as { code: string };

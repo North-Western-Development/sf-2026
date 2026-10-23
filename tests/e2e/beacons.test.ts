@@ -301,6 +301,7 @@ describe('Beacons, Beacon Clusters & Clearances E2E Suite', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/beacons/discovery?q=Starbase',
+      headers: { authorization: `Bearer ${cadetToken}` },
     });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.payload);

@@ -261,4 +261,23 @@ describe('Security: access control sweep', () => {
     const body = res.json();
     expect(JSON.stringify(body)).not.toContain('Security Sweep');
   });
+
+  it('hides private beacons from non-members by id (404, same as missing)', async () => {
+    const priv = (await inject('POST', '/api/v1/beacons', tok(owner), { name: 'Hidden Base', isDiscoverable: false })).json().beacon;
+    expect((await inject('GET', `/api/v1/beacons/${priv.id}`, tok(outsider))).statusCode).toBe(404);
+    expect((await inject('GET', `/api/v1/beacons/${priv.id}`)).statusCode).toBe(401);
+    const mine = await inject('GET', `/api/v1/beacons/${priv.id}`, tok(owner));
+    expect(mine.statusCode).toBe(200);
+    expect(mine.json().beacon.name).toBe('Hidden Base');
+    // Discoverable beacons stay previewable for any signed-in pilot.
+    expect((await inject('GET', `/api/v1/beacons/${beaconId}`, tok(outsider))).statusCode).toBe(200);
+  });
+
+  it('opening a DM returns who it is with (not a bare row)', async () => {
+    const res = await inject('POST', '/api/v1/links', tok(owner), { targetId: member.id });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().link.recipient).toMatchObject({ id: member.id, username: member.username });
+    expect(res.json().link.recipient.passwordHash).toBeUndefined();
+    expect(res.json().link.recipient.email).toBeUndefined();
+  });
 });

@@ -1,3 +1,4 @@
+import { extractAuthToken } from './routes/vault.routes.js';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
@@ -28,6 +29,21 @@ const mediaPublicBase = process.env.MEDIA_PUBLIC_BASE || '/subspace-media';
 export async function buildFileApp() {
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
+  });
+
+  // Every registered route, so the endpoint-coverage security test can sweep them all.
+  const routeTable: Array<{ method: string; url: string }> = [];
+  app.addHook('onRoute', (r) => {
+    for (const method of [r.method].flat()) if (method !== 'HEAD' && method !== 'OPTIONS') routeTable.push({ method, url: r.url });
+  });
+  app.decorate('routeTable', routeTable);
+
+  // Secure by default: every route needs a valid access token before validation or the
+  // handler runs. Routes that must work signed-out opt out with `config: { public: true }`.
+  app.addHook('onRequest', async (request, reply) => {
+    const config = request.routeOptions.config as { public?: boolean } | undefined;
+    if (!request.routeOptions.url || config?.public) return;
+    if (!extractAuthToken(request)) return reply.status(401).send({ error: 'Authentication required' });
   });
 
   await app.register(cors, {
@@ -78,7 +94,7 @@ export async function buildFileApp() {
   // Register public-read media upload routes (section 7)
   await app.register(mediaRoutes, { prefix: '/api/v1/media' });
 
-  app.get('/health', async () => {
+  app.get('/health', { config: { public: true } }, async () => {
     return {
       status: 'ok',
       service: 'file-service',

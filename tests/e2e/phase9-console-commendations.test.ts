@@ -330,6 +330,7 @@ describe('Phase 9: Command Console, Moderation & Commendations E2E Suite', () =>
       const deckRes = await app.inject({
         method: 'GET',
         url: `/api/v1/transmitters/${regularId}/commendations`,
+        headers: { authorization: `Bearer ${adminToken}` },
       });
       expect(deckRes.statusCode).toBe(200);
       const deck = deckRes.json().deck;
@@ -341,6 +342,7 @@ describe('Phase 9: Command Console, Moderation & Commendations E2E Suite', () =>
       const deckRes = await app.inject({
         method: 'GET',
         url: `/api/v1/transmitters/${rootId}/commendations`,
+        headers: { authorization: `Bearer ${adminToken}` },
       });
 
       expect(deckRes.statusCode).toBe(200);

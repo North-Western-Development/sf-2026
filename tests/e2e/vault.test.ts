@@ -170,6 +170,7 @@ describe('Subspace Vault (Storage) & Cloud Integrations E2E Suite', () => {
     const res = await fileApp.inject({
       method: 'GET',
       url: '/api/v1/vault/integrations/config',
+      headers: { authorization: `Bearer ${userToken}` },
     });
 
     expect(res.statusCode).toBe(200);

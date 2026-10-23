@@ -110,11 +110,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * POST /api/v1/auth/register
    */
-  app.post('/register', { config: { rateLimit: { max: REGISTER_LIMIT, timeWindow: '1 hour' } } }, async (request, reply) => {
+  app.post('/register', { config: { public: true, rateLimit: { max: REGISTER_LIMIT, timeWindow: '1 hour' } } }, async (request, reply) => {
     const body = request.body as any;
     const { username, email, password, displayName, acceptDirectives } = body || {};
 
-    if (!username || !email || !password) {
+    if (typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !username || !email || !password) {
       return reply.status(400).send({ error: 'Missing required credentials' });
     }
 
@@ -176,11 +176,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   /**
    * POST /api/v1/auth/login
    */
-  app.post('/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/login', { config: { public: true, rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as any;
     const { username, password } = body || {};
 
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
       return reply.status(400).send({ error: 'Username and password required' });
     }
 
@@ -306,6 +306,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     '/2fa/verify',
     {
       config: {
+        public: true,
         rateLimit: {
           max: 5,
           timeWindow: '5 minutes',
@@ -408,7 +409,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    * POST /api/v1/auth/refresh
    * Exchange a refresh token for a new session (rotating the refresh token).
    */
-  app.post('/refresh', async (request, reply) => {
+  app.post('/refresh', { config: { public: true } }, async (request, reply) => {
     const { refreshToken } = (request.body as any) || {};
     const payload =
       typeof refreshToken === 'string'
@@ -444,7 +445,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    * POST /api/v1/auth/logout
    * Revoke the supplied refresh token.
    */
-  app.post('/logout', async (request, reply) => {
+  app.post('/logout', { config: { public: true } }, async (request, reply) => {
     const { refreshToken } = (request.body as any) || {};
     const payload =
       typeof refreshToken === 'string'
@@ -458,7 +459,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    * GET /api/v1/auth/directives
    * Public: the instance rules shown at registration and whenever they change.
    */
-  app.get('/directives', async () => SUBSPACE_DIRECTIVES);
+  app.get('/directives', { config: { public: true } }, async () => SUBSPACE_DIRECTIVES);
 
   /**
    * POST /api/v1/auth/directives/accept
