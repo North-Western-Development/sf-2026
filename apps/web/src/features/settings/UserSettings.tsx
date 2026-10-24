@@ -38,6 +38,7 @@ import { http, ApiError } from '../../lib/http';
 import { pickImage, uploadMedia } from '../../lib/media';
 import { userTag } from '../../lib/normalize';
 import { setChatPrefs, useChatPrefs } from '../../lib/chatPrefs';
+import { ensureDevice } from '../../lib/e2ee/client';
 import { term, PRESENCE_LABELS } from '../../lib/strings';
 import type { DisplayNameStyle, SelfUser, CustomStatus, Presence } from '../../lib/types';
 import { closeModal, confirmAction, openModal, promptText, toast } from '../../app/ui';
@@ -1736,7 +1737,75 @@ function DevicesTab() {
           Log out all known devices
         </RowButton>
       </SettingsSection>
+      <EncryptionKeys />
     </>
+  );
+}
+
+interface EncryptionDevice {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+/** Browsers holding keys for end-to-end encrypted conversations. */
+function EncryptionKeys() {
+  const meId = useStore((s) => s.me?.id);
+  const [devices, setDevices] = useState<EncryptionDevice[] | null>(null);
+  const [thisDevice, setThisDevice] = useState<string | null>(null);
+  const load = () => http.get<{ devices: EncryptionDevice[] }>('/e2ee/devices').then((r) => setDevices(r.devices ?? []), () => setDevices([]));
+  useEffect(() => {
+    void load();
+    if (meId) void ensureDevice(meId).then((rec) => setThisDevice(rec?.deviceId ?? null));
+  }, [meId]);
+
+  const remove = (d: EncryptionDevice) =>
+    confirmAction({
+      title: 'Remove encryption keys?',
+      body: `${d.name} will stop receiving end-to-end encrypted transmissions. Anything it has already decrypted stays on it.`,
+      confirmLabel: 'Remove',
+      danger: true,
+      onConfirm: async () => {
+        await http.delete(`/e2ee/devices/${d.id}`);
+        await load();
+      },
+    });
+
+  return (
+    <SettingsSection
+      id="encryption-keys"
+      title="Encryption Keys"
+      description="Each browser that can read your end-to-end encrypted conversations has its own keys. Remove any you no longer use."
+    >
+      {devices === null ? (
+        <p className="text-sm text-fg-muted">Loading…</p>
+      ) : devices.length === 0 ? (
+        <p className="text-sm text-fg-muted">No browsers have encryption keys yet.</p>
+      ) : (
+        <ul aria-label="Encryption keys" className="divide-y divide-line">
+          {devices.map((d) => (
+            <li key={d.id} className="flex items-center gap-3 py-3">
+              <KeyRound className="h-5 w-5 shrink-0 text-online" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-fg">
+                  {d.name}
+                  {d.id === thisDevice && <span className="ml-2 text-xs font-semibold uppercase text-online">This browser</span>}
+                </p>
+                <p className="text-xs text-fg-muted">
+                  Added {new Date(d.createdAt).toLocaleDateString()} · Last used {new Date(d.lastSeenAt).toLocaleDateString()}
+                </p>
+              </div>
+              {d.id !== thisDevice && (
+                <RowButton danger onClick={() => remove(d)}>
+                  Remove
+                </RowButton>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </SettingsSection>
   );
 }
 
