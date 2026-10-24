@@ -355,13 +355,13 @@ function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) 
   const relay = useStore((s) => s.relays[relayId]);
   const clearances = useStore(useShallow((s) => [...(s.clearances[beaconId] ?? [])].sort((a, b) => b.position - a.position)));
   const members = useStore((s) => s.members[beaconId] ?? EMPTY_MEMBERS);
-  const [d, setD] = useState({ name: relay?.name ?? '', topic: relay?.topic ?? '', isUnhideable: !!relay?.isUnhideable });
+  const [d, setD] = useState({ name: relay?.name ?? '', topic: relay?.topic ?? '', isUnhideable: !!relay?.isUnhideable, isE2ee: !!relay?.isE2ee });
   const [overwrites, setOverwrites] = useState<Overwrite[] | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [sub, setSub] = useState<'overview' | 'permissions'>('overview');
 
   useEffect(() => {
-    if (relay) setD({ name: relay.name, topic: relay.topic ?? '', isUnhideable: relay.isUnhideable });
+    if (relay) setD({ name: relay.name, topic: relay.topic ?? '', isUnhideable: relay.isUnhideable, isE2ee: !!relay.isE2ee });
   }, [relay?.id]);
   useEffect(() => {
     void optional(http.get<{ overwrites: Overwrite[] }>(`/beacons/${beaconId}/relays/${relayId}/overwrites`), { overwrites: [] })
@@ -370,10 +370,15 @@ function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) 
   }, [beaconId, relayId]);
 
   if (!relay) return null;
-  const dirty = d.name !== relay.name || d.topic !== (relay.topic ?? '') || d.isUnhideable !== relay.isUnhideable;
+  const dirty = d.name !== relay.name || d.topic !== (relay.topic ?? '') || d.isUnhideable !== relay.isUnhideable || d.isE2ee !== !!relay.isE2ee;
   const save = async () => {
     try {
-      const res = await http.patch<{ relay: any }>(`/beacons/${beaconId}/relays/${relayId}`, { name: d.name, topic: d.topic || null, isUnhideable: d.isUnhideable });
+      const res = await http.patch<{ relay: any }>(`/beacons/${beaconId}/relays/${relayId}`, {
+        name: d.name,
+        topic: d.topic || null,
+        isUnhideable: d.isUnhideable,
+        ...(relay.type === 'comm_link' ? { isE2ee: d.isE2ee } : {}),
+      });
       setState((s) => ({ relays: { ...s.relays, [relayId]: { ...s.relays[relayId], ...toRelay(res.relay) } } }));
       toast('Relay saved', 'success');
     } catch (err) {
@@ -426,6 +431,14 @@ function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) 
             </Field>
           </div>
           <Switch label="Core Priority Relay (unhideable)" description="Members cannot hide this relay from their relay list." checked={d.isUnhideable} onChange={(v) => setD({ ...d, isUnhideable: v })} />
+          {relay.type === 'comm_link' && (
+            <Switch
+              label="End-to-end encrypt voice and video"
+              description="Audio, video and screen share are encrypted on each device; the server relays only ciphertext. Everyone joining needs a browser that supports it."
+              checked={d.isE2ee}
+              onChange={(v) => setD({ ...d, isE2ee: v })}
+            />
+          )}
           <div className="mt-8">
             <Button
               variant="danger"
@@ -447,7 +460,7 @@ function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) 
               Delete {term('relay')}
             </Button>
           </div>
-          <SaveBar visible={dirty} onReset={() => setD({ name: relay.name, topic: relay.topic ?? '', isUnhideable: relay.isUnhideable })} onSave={() => void save()} />
+          <SaveBar visible={dirty} onReset={() => setD({ name: relay.name, topic: relay.topic ?? '', isUnhideable: relay.isUnhideable, isE2ee: !!relay.isE2ee })} onSave={() => void save()} />
         </>
       ) : (
         <div className="flex gap-6">

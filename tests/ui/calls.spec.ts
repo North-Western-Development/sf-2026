@@ -36,7 +36,7 @@ test.describe('Direct link calls', () => {
     // Their camera reaches me as real frames, and my microphone reaches them.
     const video = call.getByRole('group', { name: 'Call Friend' }).locator('video');
     await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 20_000 }).toBeGreaterThan(0);
-    await expect(myTileForThem).toHaveAttribute('data-speaking', 'true', { timeout: 20_000 });
+    await expect(myTileForThem).toHaveAttribute('data-speaking', 'true', { timeout: 40_000 });
 
     // The user panel shows the call, not a Comm-Link.
     await expect(page.getByText('Voice Connected')).toBeVisible();

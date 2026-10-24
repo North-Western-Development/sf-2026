@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
-import { BellRing, Headphones, HeadphoneOff, Mic, MicOff, MonitorUp, Phone, PhoneOff, Video, VideoOff } from 'lucide-react';
+import { BellRing, Lock, Headphones, HeadphoneOff, Mic, MicOff, MonitorUp, Phone, PhoneOff, Video, VideoOff } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Tooltip } from '@subspace/ui';
 import { useStore, type SubspaceState } from '../../data/store';
@@ -55,13 +55,19 @@ export function CallPanel({ channelKey: key }: { channelKey: ChannelKey }) {
   const ringingUsers = useStore(
     useShallow((s) => (s.calls[key]?.ringing ?? []).filter((id) => !inCall(s, key).includes(id)).map((id) => s.users[id]).filter(Boolean) as UserRef[])
   );
-  const session = useVoice(useShallow((s) => ({ mine: s.callKey === key, state: s.state, cameraOn: s.cameraOn, screenOn: s.screenOn })));
+  const session = useVoice(useShallow((s) => ({ mine: s.callKey === key, state: s.state, cameraOn: s.cameraOn, screenOn: s.screenOn, encrypted: s.encrypted })));
+  const encryptedLink = useStore((s) => key.startsWith('link:') && !!s.links[key.slice(5)]?.encryptedAt);
   const { muted, deafened } = useAudioPrefs();
   const joined = session.mine && session.state !== 'idle';
   if (!participants.length && !call && !joined) return null;
 
   return (
-    <section aria-label="Call" className="flex shrink-0 flex-col bg-void px-4 pb-4 pt-6">
+    <section aria-label="Call" data-e2ee={joined && session.encrypted ? 'true' : undefined} className="relative flex shrink-0 flex-col bg-void px-4 pb-4 pt-6">
+      {encryptedLink && (
+        <span className="absolute left-4 top-3 flex items-center gap-1 text-xs font-medium text-online">
+          <Lock className="h-3.5 w-3.5" /> End-to-end encrypted
+        </span>
+      )}
       <div className="flex min-h-[180px] flex-wrap items-center justify-center gap-3">
         {participants.map((id) => (
           <div key={id} className="w-[min(360px,40%)]">

@@ -163,6 +163,46 @@ export async function decryptTransmission(myId: string, messageId: string, autho
   });
 }
 
+/**
+ * Send a small encrypted message straight to another person's devices (not stored), e.g. a
+ * call's frame key. Each device gets its own Double Ratchet envelope via the server relay.
+ */
+export async function sendSignal(myId: string, toUserId: string, topic: string, message: unknown, onlyDevice?: string): Promise<void> {
+  const rec = await ensureDevice(myId);
+  if (!rec) throw new Error('This browser is not set up for encryption');
+  await serial(async () => {
+    const devices = (await devicesOf(toUserId, true)).filter((d) => d.id !== rec.deviceId && (!onlyDevice || d.id === onlyDevice));
+    for (const device of devices) {
+      let sessions = await getSessions(myId, device.id);
+      if (!sessions.length || sessions[0].remoteIdentityKey !== device.identityKey) {
+        const { bundle } = await http.post<{ bundle: SessionBundle }>(`/e2ee/devices/${device.id}/bundle`);
+        sessions = [await startSession(rec.keys, bundle), ...sessions];
+      }
+      const envelope = await encrypt(sessions[0], JSON.stringify({ topic, message }));
+      await putSessions(myId, device.id, sessions);
+      await http.post('/e2ee/signal', { to: toUserId, fromDevice: rec.deviceId, toDevice: device.id, envelope, topic });
+    }
+  });
+}
+
+/** Open a relayed signal meant for this device; null when it is for another device or forged. */
+export async function openSignal(myId: string, d: { from: string; fromDevice: string; toDevice: string; envelope: Envelope; topic?: string | null }) {
+  const rec = await ensureDevice(myId);
+  if (!rec || d.toDevice !== rec.deviceId) return null;
+  return serial(async () => {
+    try {
+      const out = await decrypt(rec.keys, d.fromDevice, await getSessions(myId, d.fromDevice), d.envelope);
+      await putSessions(myId, d.fromDevice, out.sessions);
+      await putDevice(rec);
+      const body = JSON.parse(decodeText(out.plaintext)) as { topic: string; message: unknown };
+      // The topic inside the ciphertext is authoritative; the relayed one is only a hint.
+      return { from: d.from, fromDevice: d.fromDevice, topic: body.topic, message: body.message };
+    } catch {
+      return null;
+    }
+  });
+}
+
 /** Remember what this device sent, under the id the server gave it. */
 export const rememberSent = (messageId: string, plain: Plain, version = '') => putPlain(version ? `${messageId}@${version}` : messageId, plain);
 

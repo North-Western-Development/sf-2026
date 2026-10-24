@@ -75,6 +75,8 @@ export interface Relay {
   position: number;
   isUnhideable: boolean;
   isHidden?: boolean;
+  /** Comm-Links: voice and video are end-to-end encrypted. */
+  isE2ee?: boolean;
   /** Decimal-string bitfield of the viewer's effective permissions. */
   myPermissions?: string;
   lastTransmissionId?: string | null;

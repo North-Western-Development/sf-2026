@@ -172,6 +172,10 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (body.isUnhideable !== undefined) updates.isUnhideable = Boolean(body.isUnhideable);
     if (body.parentId !== undefined) updates.parentId = body.parentId;
     if (body.permissionsSynced !== undefined) updates.permissionsSynced = Boolean(body.permissionsSynced);
+    if (body.isE2ee !== undefined) {
+      if (existingRelay.type !== 'comm_link') return reply.status(400).send({ error: 'Only Comm-Links carry voice and video', code: 'NOT_A_COMM_LINK' });
+      updates.isE2ee = body.isE2ee === true;
+    }
 
     const beforeAudience = await resolveRelayAudience(db, relayId);
 

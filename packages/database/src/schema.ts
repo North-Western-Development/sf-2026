@@ -164,6 +164,8 @@ export const relays = pgTable('relays', {
   lastTransmissionId: uuid('last_transmission_id'),
   lastTransmissionAt: timestamp('last_transmission_at', { withTimezone: true }),
   permissionsSynced: boolean('permissions_synced').default(true).notNull(),
+  /** Comm-Links: audio and video are end-to-end encrypted between participants. */
+  isE2ee: boolean('is_e2ee').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

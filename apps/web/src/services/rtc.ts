@@ -10,7 +10,8 @@ import {
   createLocalAudioTrack,
   createLocalVideoTrack,
   createLocalScreenTracks,
-  ConnectionState
+  ConnectionState,
+  ExternalE2EEKeyProvider,
 } from 'livekit-client';
 
 export type SpeakingCallback = (speakerIdentities: string[]) => void;
@@ -34,6 +35,7 @@ export class LiveKitRoomManager {
   private attachedAudioElements: Map<string, HTMLAudioElement> = new Map();
   private isDeafened: boolean = false;
   private isMuted: boolean = false;
+  private keyProvider: ExternalE2EEKeyProvider | null = null;
 
   private speakingListeners: Set<SpeakingCallback> = new Set();
   private connectionStateListeners: Set<ConnectionStateCallback> = new Set();
@@ -42,6 +44,16 @@ export class LiveKitRoomManager {
 
   public get currentRoom(): Room | null {
     return this.room;
+  }
+
+  /** Whether frames in the current room are end-to-end encrypted. */
+  public get isEncrypted(): boolean {
+    return !!this.keyProvider && !!this.room?.isE2EEEnabled;
+  }
+
+  /** Set (or replace) the shared frame key of an encrypted room (base64url of 32 random bytes). */
+  public async setE2EEKey(key: string): Promise<void> {
+    await this.keyProvider?.setKey(key);
   }
 
   public get isConnected(): boolean {
@@ -68,7 +80,11 @@ export class LiveKitRoomManager {
     return () => this.trackUnsubscribedListeners.delete(cb);
   }
 
-  public async connect(url: string, token: string, options?: { canSpeak?: boolean; isMuted?: boolean; isDeafened?: boolean }): Promise<Room> {
+  public async connect(
+    url: string,
+    token: string,
+    options?: { canSpeak?: boolean; isMuted?: boolean; isDeafened?: boolean; e2ee?: boolean; e2eeKey?: string }
+  ): Promise<Room> {
     if (this.room) {
       await this.disconnect();
     }
@@ -76,10 +92,20 @@ export class LiveKitRoomManager {
     this.isMuted = options?.isMuted ?? false;
     this.isDeafened = options?.isDeafened ?? false;
 
+    // End-to-end encrypted rooms: every audio/video frame is encrypted in a worker before it
+    // leaves the browser, with a key only the participants hold (set via setE2EEKey).
+    this.keyProvider = options?.e2ee ? new ExternalE2EEKeyProvider() : null;
     const room = new Room({
       adaptiveStream: true,
       dynacast: true,
+      ...(this.keyProvider
+        ? { e2ee: { keyProvider: this.keyProvider, worker: new Worker(new URL('livekit-client/e2ee-worker', import.meta.url), { type: 'module' }) } }
+        : {}),
     });
+    if (this.keyProvider) {
+      if (options?.e2eeKey) await this.keyProvider.setKey(options.e2eeKey);
+      await room.setE2EEEnabled(true);
+    }
 
     this.room = room;
 

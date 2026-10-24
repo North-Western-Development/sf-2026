@@ -56,6 +56,7 @@ export function toRelay(r: Raw): Relay {
     position: r.position ?? 0,
     isUnhideable: !!r.isUnhideable,
     isHidden: !!r.isHidden,
+    isE2ee: !!r.isE2ee,
     myPermissions: r.myPermissions,
     lastTransmissionId: r.lastTransmissionId ?? null,
   };

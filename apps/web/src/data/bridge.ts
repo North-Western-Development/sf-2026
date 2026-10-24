@@ -25,6 +25,8 @@ import {
   stashEmbeds,
 } from './store';
 import { openEncrypted } from './e2ee';
+import { openSignal } from '../lib/e2ee/client';
+import { onRoomKeySignal } from '../features/voice/roomKeys';
 import { ackChannel, applyReaction, loadBeacon, loadCalls, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 
@@ -344,6 +346,13 @@ const handlers: Record<string, (d: Raw) => void> = {
   LINK_ENCRYPTION_ENABLED(d) {
     const link = getState().links[d.linkId];
     if (link) setState((s) => ({ links: { ...s.links, [d.linkId]: { ...link, encryptedAt: d.encryptedAt } } }));
+  },
+  E2EE_SIGNAL(d) {
+    const me = getState().me;
+    if (!me) return;
+    void openSignal(me.id, d as Parameters<typeof openSignal>[1]).then((sig) => {
+      if (sig?.topic && (sig.topic.startsWith('relay:') || sig.topic.startsWith('call:'))) void onRoomKeySignal({ ...sig, topic: sig.topic });
+    });
   },
   EMAIL_VERIFIED() {
     const me = getState().me;

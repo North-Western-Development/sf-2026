@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { MessageSquare, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff, Headphones, HeadphoneOff, Volume2, Users as UsersIcon } from 'lucide-react';
+import { Lock, MessageSquare, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff, Headphones, HeadphoneOff, Volume2, Users as UsersIcon } from 'lucide-react';
 import type { Track } from 'livekit-client';
 import { ComingSoon, Tooltip } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
@@ -85,7 +85,7 @@ export function ControlButton({ label, onClick, active, danger, children }: { la
 
 export function CommLinkView({ relay }: { relay: Relay }) {
   const participants = useStore(useShallow((s) => Object.values(s.voice).filter((v) => v.relayId === relay.id).map((v) => v.transmitterId)));
-  const session = useVoice(useShallow((s) => ({ relayId: s.relayId, state: s.state, cameraOn: s.cameraOn, screenOn: s.screenOn })));
+  const session = useVoice(useShallow((s) => ({ relayId: s.relayId, state: s.state, cameraOn: s.cameraOn, screenOn: s.screenOn, encrypted: s.encrypted })));
   const { muted, deafened } = useAudioPrefs();
   const perms = useStore((s) => relayPermissions(s, relay.id));
   const canConnect = can(perms, PERMISSIONS.CONNECT_AUDIO);
@@ -105,6 +105,11 @@ export function CommLinkView({ relay }: { relay: Relay }) {
       <header className="flex h-12 shrink-0 items-center gap-2 px-4">
         <Volume2 className="h-6 w-6 text-fg-subtle" />
         <h1 className="font-semibold text-fg">{relay.name}</h1>
+        {relay.isE2ee && (
+          <span className="flex items-center gap-1 text-xs font-medium text-online" data-e2ee={joined && session.encrypted ? 'true' : undefined}>
+            <Lock className="h-3.5 w-3.5" /> End-to-end encrypted
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Tooltip content={chatOpen ? 'Hide Chat' : 'Show Chat'} placement="bottom">
             <button
