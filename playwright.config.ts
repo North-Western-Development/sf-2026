@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Browser tests drive the real UI against an isolated native stack
 // (`node scripts/native/dev.mjs --test-stack`: test database, Redis /1, web on :4173).
+const MEDIA_SPECS = ['**/voice.spec.ts', '**/calls.spec.ts', '**/e2ee-media.spec.ts'];
+
 export default defineConfig({
   testDir: 'tests/ui',
   testMatch: '**/*.spec.ts',
@@ -19,7 +21,11 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],
+  projects: [
+    { name: 'chromium', testIgnore: MEDIA_SPECS, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
+    // Real WebRTC through one local LiveKit: one media-heavy file at a time keeps timing honest.
+    { name: 'media', testMatch: MEDIA_SPECS, workers: 1, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
+  ],
   webServer: {
     command: 'node scripts/native/dev.mjs --test-stack',
     url: 'http://localhost:4173',
