@@ -14,6 +14,7 @@ import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { resolveVaultAttachments } from '../../lib/attachments.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
+import { scheduleEmbeds } from '../../lib/embeds.js';
 
 export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -133,6 +134,8 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         attachments,
       })
       .returning();
+
+    scheduleEmbeds(app, rootTransmission);
 
     // 3. Update thread with rootTransmissionId
     const [updatedThread] = await db
@@ -311,6 +314,7 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         attachments,
       })
       .returning();
+    scheduleEmbeds(app, replyTransmission);
 
     await db
       .update(archivalThreads)

@@ -279,6 +279,7 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
       : null,
     reactions: [],
     pinned: false,
+    embeds: [],
     type: replyTarget ? 'reply' : 'default',
     pending: true,
     nonce,

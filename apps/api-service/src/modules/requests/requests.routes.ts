@@ -3,6 +3,7 @@ import { eq, and, or, gt, desc, transmissionRequests, transmitters, pointToPoint
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 import { AUTHOR_FIELDS } from '../../lib/transmissions.js';
+import { scheduleEmbeds } from '../../lib/embeds.js';
 
 export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -99,6 +100,7 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       .insert(transmissions)
       .values({ p2pLinkId: link.id, transmitterId: req.senderId, content: req.initialTransmission, createdAt: req.createdAt })
       .returning();
+scheduleEmbeds(app, intro);
 
     const [author] = await db.select(AUTHOR_FIELDS).from(transmitters).where(eq(transmitters.id, req.senderId)).limit(1);
 

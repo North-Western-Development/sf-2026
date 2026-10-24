@@ -114,6 +114,14 @@ export const emptyChannel = (): ChannelMessages => ({
 const byTime = (a: Transmission, b: Transmission) =>
   a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : a.createdAt < b.createdAt ? -1 : 1;
 
+/** Previews that arrived before their transmission (e.g. while the sender's request is in flight). */
+const earlyEmbeds = new Map<string, { embeds: Transmission['embeds']; at: number }>();
+export function stashEmbeds(id: string, embeds: Transmission['embeds']) {
+  const now = Date.now();
+  for (const [k, v] of earlyEmbeds) if (now - v.at > 60_000) earlyEmbeds.delete(k);
+  earlyEmbeds.set(id, { embeds, at: now });
+}
+
 export function upsertMessages(key: ChannelKey, incoming: Transmission[], opts: Partial<ChannelMessages> = {}) {
   set((s) => {
     const ch = s.messages[key] ?? emptyChannel();
@@ -124,7 +132,13 @@ export function upsertMessages(key: ChannelKey, incoming: Transmission[], opts: 
         const pendingId = ch.ids.find((id) => byId[id]?.nonce === t.nonce && byId[id]?.pending);
         if (pendingId && pendingId !== t.id) delete byId[pendingId];
       }
-      byId[t.id] = { ...byId[t.id], ...t, pending: false, failed: false };
+      const prev = byId[t.id];
+      // Previews arrive by event and can beat a slower copy of the same transmission (the
+      // sender's own HTTP response); an empty list only wins when previews were removed.
+      const early = earlyEmbeds.get(t.id)?.embeds;
+      earlyEmbeds.delete(t.id);
+      const embeds = early ?? (prev?.embeds?.length && !t.embeds?.length && !t.suppressEmbeds && prev.content === t.content ? prev.embeds : t.embeds);
+      byId[t.id] = { ...prev, ...t, embeds, pending: false, failed: false };
     }
     const ids = Object.values(byId).sort(byTime).map((t) => t.id);
     const latest = ids.length ? byId[ids[ids.length - 1]] : null;

@@ -147,11 +147,33 @@ export interface Transmission {
   replyTo: ReplyPreview | null;
   reactions: ReactionSummary[];
   pinned: boolean;
+  /** Link previews, filled in by the server shortly after sending. */
+  embeds: Embed[];
+  /** Previews were removed by the author or a moderator. */
+  suppressEmbeds?: boolean;
   type: 'default' | 'reply' | 'system_join' | 'system_pin';
   /** Client-only: optimistic send state. */
   pending?: boolean;
   failed?: boolean;
   nonce?: string;
+}
+
+export interface EmbedImage {
+  url: string;
+  proxyUrl: string;
+  width?: number;
+  height?: number;
+}
+
+export interface Embed {
+  type: 'link' | 'image' | 'video' | 'article';
+  url: string;
+  title?: string;
+  description?: string;
+  siteName?: string;
+  color?: string;
+  thumbnail?: EmbedImage;
+  image?: EmbedImage;
 }
 
 export interface ReadState {

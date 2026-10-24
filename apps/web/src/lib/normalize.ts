@@ -140,6 +140,8 @@ export function toTransmission(t: Raw): Transmission {
     replyTo: t.replyTo ?? null,
     reactions: t.reactions ?? [],
     pinned: !!(t.pinned ?? t.isPinned),
+    embeds: Array.isArray(t.embeds) ? t.embeds : [],
+    suppressEmbeds: !!t.suppressEmbeds,
     type: t.type ?? (t.replyTo ? 'reply' : 'default'),
     nonce: t.nonce,
   };

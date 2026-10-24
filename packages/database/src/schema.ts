@@ -308,6 +308,9 @@ export const transmissions = pgTable('transmissions', {
   mentions: jsonb('mentions').$type<string[]>().default([]).notNull(),
   mentionRoles: jsonb('mention_roles').$type<string[]>().default([]).notNull(),
   mentionEveryone: boolean('mention_everyone').default(false).notNull(),
+  /** Link previews, filled in after sending (see apps/api-service/src/lib/embeds.ts). */
+  embeds: jsonb('embeds').$type<Array<Record<string, unknown>>>().default([]).notNull(),
+  suppressEmbeds: boolean('suppress_embeds').default(false).notNull(),
   type: text('type').default('default').notNull(), // 'default' | 'reply' | 'system_join' | 'system_pin'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

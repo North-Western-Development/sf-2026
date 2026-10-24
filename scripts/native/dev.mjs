@@ -28,6 +28,8 @@ const testStack = process.argv.includes('--test-stack');
 const env = loadNativeEnv({ test: testStack });
 if (testStack) {
   Object.assign(env, { API_PORT: '4001', GATEWAY_PORT: '4002', FILE_PORT: '4003', WEB_PORT: '4173', REGISTER_RATE_LIMIT: '10000' });
+  // Link-preview tests serve their fake websites on localhost.
+  env.UNFURL_ALLOW_PRIVATE_HOSTS = 'localhost';
   env.S3_PUBLIC_ENDPOINT = 'http://localhost:4173';
   // NODE_ENV=test stops the services from listening; they must serve here.
   env.NODE_ENV = 'development';

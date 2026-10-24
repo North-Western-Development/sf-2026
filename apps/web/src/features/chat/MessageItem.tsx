@@ -16,6 +16,8 @@ import { UserName } from '../common/UserName';
 import { Markdown, toPlainText } from './markdown';
 import { useMarkdownResolvers, glyphUrl } from './resolvers';
 import { EmojiPicker } from './EmojiPicker';
+import { Embeds } from './Embeds';
+import { useChatPrefs } from '../../lib/chatPrefs';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
@@ -40,12 +42,13 @@ function ReactionChip({ r, onToggle }: { r: Transmission['reactions'][number]; o
 }
 
 export function Attachments({ items }: { items: Transmission['attachments'] }) {
+  const inline = useChatPrefs((p) => p.inlineMedia);
   if (!items.length) return null;
   return (
     <div className="mt-1 flex flex-col gap-1.5">
       {items.map((a) => {
-        const isImage = a.mimeType?.startsWith('image/') || /\.(png|jpe?g|gif|webp|avif)$/i.test(a.filename);
-        const isVideo = a.mimeType?.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(a.filename);
+        const isImage = inline && (a.mimeType?.startsWith('image/') || /\.(png|jpe?g|gif|webp|avif)$/i.test(a.filename));
+        const isVideo = inline && (a.mimeType?.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(a.filename));
         if (isImage)
           return (
             <a key={a.id} href={a.url} target="_blank" rel="noreferrer noopener" className="block max-w-[400px] overflow-hidden rounded-md">
@@ -271,6 +274,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
       )}
 
       <Attachments items={m.attachments} />
+      <Embeds embeds={m.embeds} messageId={m.id} canRemove={isMine || (chType !== 'link' && chType !== 'mesh' && canManage)} />
 
       {m.failed && (
         <div className="mt-1 flex items-center gap-2 text-xs text-danger">

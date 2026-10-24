@@ -22,6 +22,7 @@ import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { beaconMembers as beaconMembersTable, subspaceMeshMembers as subspaceMeshMembersTable } from '@subspace/database';
 
 import { resolveVaultAttachments } from '../../lib/attachments.js';
+import { scheduleEmbeds } from '../../lib/embeds.js';
 const MAX_TRANSMISSION_LENGTH = 2000;
 
 export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -99,6 +100,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       .returning();
     // Keep the relay's unread marker current, as the unified send route does.
     await touchChannelLastTransmission(db, { channelType: 'relay', channelId: relayId }, newTransmission.id, newTransmission.createdAt);
+    scheduleEmbeds(app, newTransmission);
 
     const [authorProfile] = await db
       .select({
@@ -310,6 +312,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       })
       .where(eq(transmissions.id, transmissionId))
       .returning();
+    if (updated.content !== existing.content) scheduleEmbeds(app, updated);
 
     await publishGatewayEvent(
       app,

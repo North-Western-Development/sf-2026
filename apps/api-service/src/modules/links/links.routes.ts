@@ -19,6 +19,7 @@ import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js'
 import { loadChannel } from '../../lib/channels.js';
 import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { AUTHOR_FIELDS } from '../../lib/transmissions.js';
+import { scheduleEmbeds } from '../../lib/embeds.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
 
@@ -301,6 +302,7 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
       const channel = await loadChannel(db, 'link', link.id);
       if (channel) await touchChannelLastTransmission(db, channel, newTransmission.id, newTransmission.createdAt);
+      scheduleEmbeds(app, newTransmission);
 
       // Carry the author, so the recipient can name a sender it has never seen (DM list, notification).
       const [author] = await db.select(AUTHOR_FIELDS).from(transmitters).where(eq(transmitters.id, senderId)).limit(1);

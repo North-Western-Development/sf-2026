@@ -21,6 +21,7 @@ import {
   setTyping,
   upsertMessages,
   patchMessage,
+  stashEmbeds,
 } from './store';
 import { ackChannel, applyReaction, loadBeacon, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
@@ -176,6 +177,12 @@ const handlers: Record<string, (d: Raw) => void> = {
     if (!key || !d.transmission) return;
     if (getState().messages[key]?.byId[d.transmission.id]) patchMessage(key, d.transmission.id, toEditPatch(d.transmission));
     else upsertMessages(key, [toTransmission(d.transmission)]);
+  },
+  TRANSMISSION_EMBEDS_UPDATE(d) {
+    const key = eventChannel(d);
+    if (!key) return;
+    if (getState().messages[key]?.byId[d.transmissionId]) patchMessage(key, d.transmissionId, { embeds: d.embeds ?? [], suppressEmbeds: !d.embeds?.length });
+    else stashEmbeds(d.transmissionId, d.embeds ?? []);
   },
   TRANSMISSION_DELETE(d) {
     const key = eventChannel(d);

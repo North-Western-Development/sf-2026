@@ -153,6 +153,8 @@ export async function formatTransmission(
     replyTo,
     reactions,
     pinned: !!row.pinnedAt,
+    embeds: row.suppressEmbeds ? [] : (row as any).embeds || [],
+    suppressEmbeds: !!(row as any).suppressEmbeds,
     type: row.type || 'default',
   };
 }

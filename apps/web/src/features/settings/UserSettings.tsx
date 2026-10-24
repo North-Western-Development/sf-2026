@@ -14,6 +14,7 @@ import {
   Laptop,
   Link2,
   LogOut,
+  MessageSquare,
   Mic,
   Monitor,
   Palette,
@@ -36,6 +37,7 @@ import { readNotifyPrefs, writeNotifyPrefs, requestDesktopPermission, playPing }
 import { http, ApiError } from '../../lib/http';
 import { pickImage, uploadMedia } from '../../lib/media';
 import { userTag } from '../../lib/normalize';
+import { setChatPrefs, useChatPrefs } from '../../lib/chatPrefs';
 import { term, PRESENCE_LABELS } from '../../lib/strings';
 import type { DisplayNameStyle, SelfUser, CustomStatus, Presence } from '../../lib/types';
 import { closeModal, confirmAction, openModal, toast } from '../../app/ui';
@@ -1366,6 +1368,27 @@ function AppearanceTab() {
   );
 }
 
+function ChatTab() {
+  const prefs = useChatPrefs();
+  return (
+    <>
+      <SettingsSection id="display-media" title="Chat" description="How images, videos and links show in conversations.">
+        <Switch
+          label="Show images and videos inline"
+          description="Uploaded images and videos play in the conversation instead of showing as files."
+          checked={prefs.inlineMedia}
+          onChange={(v) => setChatPrefs({ inlineMedia: v })}
+        />
+        <Switch
+          label="Show embeds and preview website links pasted into chat"
+          checked={prefs.showEmbeds}
+          onChange={(v) => setChatPrefs({ showEmbeds: v })}
+        />
+      </SettingsSection>
+    </>
+  );
+}
+
 const KEYBINDS: Array<[string, string]> = [
   ['Ctrl + K', 'Quick Scan (switch beacons, relays, links)'],
   ['Alt + ↑ / ↓', 'Previous / next relay'],
@@ -1642,6 +1665,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
           heading: 'Experience',
           items: [
             { id: 'voice', icon: <Mic />, label: 'Voice & Video' },
+            { id: 'chat', icon: <MessageSquare />, label: 'Chat' },
             { id: 'appearance', icon: <Palette />, label: 'Appearance' },
             { id: 'keybinds', icon: <Keyboard />, label: 'Keybinds' },
             {
@@ -1699,6 +1723,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
       {tab === 'notifications' && <NotificationsTab />}
       {tab === 'devices' && <DevicesTab />}
       {tab === 'voice' && <VoiceTab />}
+      {tab === 'chat' && <ChatTab />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'keybinds' && <KeybindsTab />}
     </SettingsLayout>

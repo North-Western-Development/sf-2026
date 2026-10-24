@@ -27,6 +27,7 @@ import { CHANNEL_TYPES, ChannelType, loadChannel, checkChannelAccess, audienceFo
 import { formatTransmission, deriveChannel } from '../../lib/transmissions.js';
 import { parseMentions } from '../../lib/mentions.js';
 import { touchChannelLastTransmission, incrementMentionCounts } from '../../lib/read-state.js';
+import { scheduleEmbeds } from '../../lib/embeds.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
 const MAX_DISTINCT_REACTIONS = 20;
@@ -330,6 +331,8 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         { channelType: channel.channelType, channelId, transmission: formatted, nonce: body.nonce },
         audienceForChannel(channel)
       );
+      // After the create event, so clients already hold the transmission the previews belong to.
+      scheduleEmbeds(app, inserted);
 
       return reply.status(201).send({ message: 'Transmission dispatched', transmission: formatted });
     }

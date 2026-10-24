@@ -17,6 +17,7 @@ import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js'
 import { loadChannel } from '../../lib/channels.js';
 import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { AUTHOR_FIELDS, formatTransmission } from '../../lib/transmissions.js';
+import { scheduleEmbeds } from '../../lib/embeds.js';
 
 const MAX_MESH_MEMBERS = 10;
 const MAX_TRANSMISSION_LENGTH = 2000;
@@ -341,6 +342,7 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     const channel = await loadChannel(db, 'mesh', meshId);
     if (channel) await touchChannelLastTransmission(db, channel, newMsg.id, newMsg.createdAt);
+    scheduleEmbeds(app, newMsg);
 
     const formatted = await formatTransmission(db, newMsg, token.transmitterId);
 
