@@ -9,6 +9,7 @@ import {
   subspaceMeshMembers,
   affiliations,
   pointToPointLinks,
+  signalBlacklist,
 } from './schema.js';
 
 /**
@@ -258,4 +259,42 @@ export async function authorizeVoiceRelay(
   if (!relay || relay.type !== 'comm_link') return null;
   const perms = await computeRelayPermissions(db, transmitterId, relayId);
   return hasPermission(perms, PERMISSIONS.CONNECT_AUDIO) ? relay.beaconId : null;
+}
+
+/**
+ * Everyone in a direct-link or mesh call, when `transmitterId` may join it: a party to the
+ * link (and neither has blocked the other), or a member of the mesh. Otherwise null.
+ */
+export async function authorizeCall(
+  db: Db,
+  transmitterId: string,
+  channelType: string,
+  channelId: string
+): Promise<string[] | null> {
+  if (channelType === 'link') {
+    const [link] = await db.select().from(pointToPointLinks).where(eq(pointToPointLinks.id, channelId)).limit(1);
+    if (!link) return null;
+    const parties: string[] = [link.transmitter1Id, link.transmitter2Id];
+    if (!parties.includes(transmitterId)) return null;
+    const other = parties.find((p) => p !== transmitterId) ?? transmitterId;
+    const blocks = await db
+      .select({ id: signalBlacklist.id })
+      .from(signalBlacklist)
+      .where(
+        and(
+          eq(signalBlacklist.targetType, 'transmitter'),
+          or(
+            and(eq(signalBlacklist.transmitterId, transmitterId), eq(signalBlacklist.targetId, other)),
+            and(eq(signalBlacklist.transmitterId, other), eq(signalBlacklist.targetId, transmitterId))
+          )
+        )
+      )
+      .limit(1);
+    return blocks.length ? null : parties;
+  }
+  if (channelType === 'mesh') {
+    const members = await resolveMeshAudience(db, channelId);
+    return members.includes(transmitterId) ? members : null;
+  }
+  return null;
 }

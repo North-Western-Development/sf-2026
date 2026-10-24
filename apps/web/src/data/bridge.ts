@@ -2,6 +2,7 @@
 import { gateway } from '../services/gateway';
 import {
   toBeacon,
+  toCall,
   toClearance,
   toEditPatch,
   toMember,
@@ -11,7 +12,7 @@ import {
   toUserRef,
   resolveName,
 } from '../lib/normalize';
-import { channelKey, type ChannelKey, type ChannelType, type NotificationSetting, type Presence } from '../lib/types';
+import { channelKey, type ChannelKey, type ChannelType, type NotificationSetting, type Presence, type VoiceState } from '../lib/types';
 import {
   getState,
   rememberUsers,
@@ -23,7 +24,7 @@ import {
   patchMessage,
   stashEmbeds,
 } from './store';
-import { ackChannel, applyReaction, loadBeacon, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
+import { ackChannel, applyReaction, loadBeacon, loadCalls, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 
 type Raw = Record<string, any>;
@@ -66,6 +67,23 @@ function titleFor(key: ChannelKey, authorName: string): string {
   return authorName;
 }
 
+/** A gateway voice state: in a Comm-Link relay, in a direct-link or mesh call, or null (left). */
+function toVoiceState(v: Raw): VoiceState | null {
+  const callKey = v.call_id && (v.call_type === 'link' || v.call_type === 'mesh') ? channelKey(v.call_type, v.call_id) : null;
+  if (!v.relay_id && !callKey) return null;
+  return {
+    transmitterId: v.transmitter_id,
+    username: v.username,
+    relayId: v.relay_id ?? null,
+    beaconId: v.beacon_id ?? null,
+    callKey,
+    isMuted: !!v.is_muted,
+    isDeafened: !!v.is_deafened,
+    isSpeaking: !!v.is_speaking,
+  };
+}
+
+
 function onTransmissionCreate(d: Raw) {
   const key = eventChannel(d);
   if (!key || !d.transmission) return;
@@ -104,7 +122,8 @@ function onTransmissionCreate(d: Raw) {
 
   const relay = key.startsWith('relay:') ? s.relays[key.slice(6)] : undefined;
   const member = relay ? s.members[relay.beaconId]?.[t.author.id] : undefined;
-  maybeNotify(key, t, titleFor(key, resolveName(t.author, member)), () => void Promise.resolve(linkLoad).then(() => navigate(pathFor(key))));
+  // Calls ring through the incoming-call prompt instead of a message notification.
+  if (t.type !== 'system_call') maybeNotify(key, t, titleFor(key, resolveName(t.author, member)), () => void Promise.resolve(linkLoad).then(() => navigate(pathFor(key))));
 }
 
 const handlers: Record<string, (d: Raw) => void> = {
@@ -114,6 +133,7 @@ const handlers: Record<string, (d: Raw) => void> = {
     void syncReadStates().catch(() => {});
     void refreshRelationships().catch(() => {});
     void refreshBeacons().catch(() => {});
+    void loadCalls().catch(() => {});
     const { messages, relayIdsByBeacon } = getState();
     for (const beaconId of Object.keys(relayIdsByBeacon)) void loadBeacon(beaconId).catch(() => {});
     for (const key of Object.keys(messages) as ChannelKey[]) if (messages[key].loaded) void loadMessages(key);
@@ -127,17 +147,10 @@ const handlers: Record<string, (d: Raw) => void> = {
     handlers.VOICE_STATES_REPLACE(d);
   },
   VOICE_STATES_REPLACE(d) {
-    const voice: Record<string, any> = {};
+    const voice: Record<string, VoiceState> = {};
     for (const v of d.voice_states ?? []) {
-      voice[v.transmitter_id] = {
-        transmitterId: v.transmitter_id,
-        username: v.username,
-        relayId: v.relay_id,
-        beaconId: v.beacon_id,
-        isMuted: !!v.is_muted,
-        isDeafened: !!v.is_deafened,
-        isSpeaking: !!v.is_speaking,
-      };
+      const state = toVoiceState(v);
+      if (state) voice[v.transmitter_id] = state;
     }
     setState({ voice });
   },
@@ -154,18 +167,26 @@ const handlers: Record<string, (d: Raw) => void> = {
   VOICE_STATE_UPDATE(d) {
     setState((s) => {
       const voice = { ...s.voice };
-      if (d.relay_id) {
-        voice[d.transmitter_id] = {
-          transmitterId: d.transmitter_id,
-          username: d.username,
-          relayId: d.relay_id,
-          beaconId: d.beacon_id,
-          isMuted: !!d.is_muted,
-          isDeafened: !!d.is_deafened,
-          isSpeaking: !!d.is_speaking,
-        };
-      } else delete voice[d.transmitter_id];
+      const state = toVoiceState(d);
+      if (state) voice[d.transmitter_id] = state;
+      else delete voice[d.transmitter_id];
       return { voice };
+    });
+  },
+  CALL_CREATE(d) {
+    const key = eventChannel(d);
+    if (key) setState((s) => ({ calls: { ...s.calls, [key]: toCall(d) } }));
+  },
+  CALL_UPDATE(d) {
+    handlers.CALL_CREATE(d);
+  },
+  CALL_DELETE(d) {
+    const key = eventChannel(d);
+    if (!key) return;
+    setState((s) => {
+      const calls = { ...s.calls };
+      delete calls[key];
+      return { calls };
     });
   },
 

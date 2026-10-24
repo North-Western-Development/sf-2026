@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { CornerUpLeft, Pencil, SmilePlus, MoreHorizontal, Pin, AlertCircle, FileText, Download, Forward, MessageSquarePlus } from 'lucide-react';
+import { CornerUpLeft, Pencil, SmilePlus, MoreHorizontal, Pin, AlertCircle, FileText, Download, Forward, MessageSquarePlus, Phone, PhoneMissed } from 'lucide-react';
 import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { useStore } from '../../data/store';
 import { explicitlyMentionsMe } from '../../data/notifications';
@@ -20,6 +20,23 @@ import { Embeds } from './Embeds';
 import { useChatPrefs } from '../../lib/chatPrefs';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
+
+/** A call transmission's content: when it started, and once over, when it ended and who joined. */
+function parseCallContent(content: string): { startedAt?: string; endedAt?: string; joined?: string[] } {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+function callDuration(start: string, end: string): string {
+  const minutes = Math.round((Date.parse(end) - Date.parse(start)) / 60_000);
+  if (minutes < 1) return 'a few seconds';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'}`;
+}
 
 function ReactionChip({ r, onToggle }: { r: Transmission['reactions'][number]; onToggle: () => void }) {
   const custom = r.emoji.startsWith('custom:');
@@ -177,6 +194,26 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
     items.push({ separator: true }, { label: 'Copy Transmission ID', onClick: () => void navigator.clipboard?.writeText(m.id) });
     return items;
   };
+
+  if (m.type === 'system_call') {
+    const info = parseCallContent(m.content);
+    const missed = !!info.endedAt && !isMine && !!me && !info.joined?.includes(me.id);
+    const Icon = missed ? PhoneMissed : Phone;
+    return (
+      <div id={`msg-${m.id}`} role="note" className="flex items-center gap-4 py-1 pl-4 pr-12 text-sm text-fg-muted">
+        <Icon className={clsx('ml-3 h-4 w-4', missed ? 'text-danger' : 'text-online')} />
+        <span>
+          {missed ? 'You missed a call from ' : null}
+          <button className="font-semibold text-fg hover:underline" onClick={openProfile}>
+            <UserName user={m.author} styled={false} />
+          </button>
+          {missed ? '' : ' started a call'}
+          {info.endedAt ? ` that lasted ${callDuration(info.startedAt ?? m.createdAt, info.endedAt)}.` : '.'}{' '}
+          <span className="text-xs text-fg-subtle">{formatMessageTime(m.createdAt)}</span>
+        </span>
+      </div>
+    );
+  }
 
   if (m.type === 'system_pin') {
     return (

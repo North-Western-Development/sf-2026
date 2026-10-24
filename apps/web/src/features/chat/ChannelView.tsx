@@ -146,9 +146,11 @@ export interface ChannelViewProps {
   actions?: React.ReactNode;
   /** Right-hand panel override (DM profile panel); defaults to the beacon member list. */
   aside?: React.ReactNode;
+  /** Full-width area under the header (the DM call view). */
+  banner?: React.ReactNode;
 }
 
-export function ChannelView({ channelKey: key, beaconId, icon, title, topic, placeholder, welcome, actions, aside }: ChannelViewProps) {
+export function ChannelView({ channelKey: key, beaconId, icon, title, topic, placeholder, welcome, actions, aside, banner }: ChannelViewProps) {
   const memberListOpen = useUi((s) => s.memberListOpen);
   const [pinsAnchor, setPinsAnchor] = useState<DOMRect | null>(null);
   const resolvers = useMarkdownResolvers(beaconId);
@@ -210,6 +212,7 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
           </ComingSoon>
         </div>
       </header>
+      {banner}
 
       <div className="flex min-h-0 flex-1">
         <section className="relative flex min-w-0 flex-1 flex-col">

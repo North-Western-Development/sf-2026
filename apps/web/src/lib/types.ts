@@ -152,7 +152,7 @@ export interface Transmission {
   embeds: Embed[];
   /** Previews were removed by the author or a moderator. */
   suppressEmbeds?: boolean;
-  type: 'default' | 'reply' | 'system_join' | 'system_pin';
+  type: 'default' | 'reply' | 'system_join' | 'system_pin' | 'system_call';
   /** Client-only: optimistic send state. */
   pending?: boolean;
   failed?: boolean;
@@ -249,9 +249,20 @@ export interface Cluster {
 export interface VoiceState {
   transmitterId: string;
   username: string;
-  relayId: string;
-  beaconId: string;
+  /** Set for a Comm-Link relay. */
+  relayId: string | null;
+  beaconId: string | null;
+  /** Set for a direct-link or mesh call. */
+  callKey: ChannelKey | null;
   isMuted: boolean;
   isDeafened: boolean;
   isSpeaking: boolean;
+}
+
+/** A call in a direct link or mesh: who started it and who is still being rung. */
+export interface CallInfo {
+  messageId: string;
+  startedBy: string;
+  startedAt: string;
+  ringing: string[];
 }

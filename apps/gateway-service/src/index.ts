@@ -8,6 +8,10 @@ import {
   resolvePresencePeers,
   resolveTransmitterBeaconIds,
   authorizeVoiceRelay,
+  authorizeCall,
+  transmissions,
+  eq,
+  and,
 } from '@subspace/database';
 import { Redis } from 'ioredis';
 
@@ -38,6 +42,8 @@ export interface Session {
   isAuthenticated: boolean;
   isAlive: boolean;
   voiceRelayId?: string | null;
+  /** Direct-link or mesh call this session is connected to, with everyone in that conversation. */
+  voiceCall?: { type: string; id: string; audience: string[] } | null;
   isMuted?: boolean;
   isDeafened?: boolean;
   isSpeaking?: boolean;
@@ -56,6 +62,10 @@ export interface GatewayResolver {
   getBeaconIds(transmitterId: string): Promise<string[]>;
   /** Returns the relay's beacon id when the transmitter may join its voice room. */
   authorizeVoice(transmitterId: string, relayId: string): Promise<string | null>;
+  /** Everyone in the conversation when the transmitter may join its call, otherwise null. */
+  authorizeCall(transmitterId: string, channelType: string, channelId: string): Promise<string[] | null>;
+  /** Record how a call ended on its "started a call" transmission. */
+  finishCall(messageId: string, content: string): Promise<void>;
 }
 
 export function createDatabaseResolver(databaseUrl = process.env.DATABASE_URL): GatewayResolver {
@@ -65,6 +75,8 @@ export function createDatabaseResolver(databaseUrl = process.env.DATABASE_URL): 
       getPresencePeers: async () => [],
       getBeaconIds: async () => [],
       authorizeVoice: async () => null,
+      authorizeCall: async () => null,
+      finishCall: async () => {},
     };
   }
   const { db } = createDatabaseClient(databaseUrl);
@@ -77,14 +89,23 @@ export function createDatabaseResolver(databaseUrl = process.env.DATABASE_URL): 
     getPresencePeers: (id) => safe(() => resolvePresencePeers(db, id), []),
     getBeaconIds: (id) => safe(() => resolveTransmitterBeaconIds(db, id), []),
     authorizeVoice: (id, relayId) => safe(() => authorizeVoiceRelay(db, id, relayId), null),
+    authorizeCall: (id, type, channelId) => safe(() => authorizeCall(db, id, type, channelId), null),
+    finishCall: (messageId, content) =>
+      safe(async () => {
+        await db.update(transmissions).set({ content }).where(and(eq(transmissions.id, messageId), eq(transmissions.type, 'system_call')));
+      }, undefined),
   };
 }
 
 interface VoiceState {
   transmitterId: string;
   username: string;
-  relayId: string;
-  beaconId: string;
+  relayId: string | null;
+  beaconId: string | null;
+  callType: string | null;
+  callId: string | null;
+  /** For calls: the conversation members allowed to see this state. */
+  audience: string[];
   isMuted: boolean;
   isDeafened: boolean;
   isSpeaking: boolean;
@@ -135,35 +156,83 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     }
   }
 
-  function deliverVoice(event: {
+  type VoiceEvent = {
     transmitter_id: string;
     username: string;
     relay_id: string | null;
     beacon_id: string | null;
+    call_type?: string | null;
+    call_id?: string | null;
+    call_participants?: string[];
     is_muted: boolean;
     is_deafened: boolean;
     is_speaking: boolean;
-  }) {
-    const previous = voiceStates.get(event.transmitter_id);
-    if (event.relay_id && event.beacon_id) {
-      voiceStates.set(event.transmitter_id, {
-        transmitterId: event.transmitter_id,
-        username: event.username,
-        relayId: event.relay_id,
-        beaconId: event.beacon_id,
-        isMuted: event.is_muted,
-        isDeafened: event.is_deafened,
-        isSpeaking: event.is_speaking,
-      });
-    } else {
-      voiceStates.delete(event.transmitter_id);
-    }
-    // Leaving a room must reach members of the beacon that room belonged to.
-    const beaconId = event.beacon_id ?? previous?.beaconId;
-    if (!beaconId) return;
-    const payload = { ...event, beacon_id: beaconId };
+  };
+
+  /** Who may see a voice state: the relay's beacon members, or the call's conversation members. */
+  const sendVoiceTo = (scope: { beaconId: string | null; audience: string[] }, payload: unknown) => {
+    const audience = new Set(scope.audience);
     for (const [ws, sess] of authedSessions()) {
-      if (sess.beaconIds.has(beaconId)) dispatch(ws, 'VOICE_STATE_UPDATE', payload);
+      const sees = scope.beaconId ? sess.beaconIds.has(scope.beaconId) : audience.has(sess.transmitterId!);
+      if (sees) dispatch(ws, 'VOICE_STATE_UPDATE', payload);
+    }
+  };
+
+  function deliverVoice(event: VoiceEvent) {
+    const previous = voiceStates.get(event.transmitter_id);
+    const inRelay = !!(event.relay_id && event.beacon_id);
+    const inCall = !inRelay && !!(event.call_id && event.call_type);
+    const next: VoiceState | null =
+      inRelay || inCall
+        ? {
+            transmitterId: event.transmitter_id,
+            username: event.username,
+            relayId: inRelay ? event.relay_id : null,
+            beaconId: inRelay ? event.beacon_id : null,
+            callType: inCall ? event.call_type! : null,
+            callId: inCall ? event.call_id! : null,
+            audience: inCall ? event.call_participants ?? [] : [],
+            isMuted: event.is_muted,
+            isDeafened: event.is_deafened,
+            isSpeaking: event.is_speaking,
+          }
+        : null;
+    if (next) voiceStates.set(event.transmitter_id, next);
+    else voiceStates.delete(event.transmitter_id);
+
+    // Leaving a room must reach whoever could see that room, and nobody else learns where
+    // the transmitter went next.
+    const sameRoom = previous && next && previous.relayId === next.relayId && previous.callId === next.callId;
+    if (previous && !sameRoom) {
+      sendVoiceTo(previous, { ...event, relay_id: null, call_id: null, call_type: null, call_participants: undefined, beacon_id: previous.beaconId });
+    }
+    if (next) sendVoiceTo(next, { ...event, call_participants: undefined });
+  }
+
+  /** Whether anyone (on any instance) is still connected to a call. */
+  const callOccupied = (type: string, id: string) => [...voiceStates.values()].some((v) => v.callType === type && v.callId === id);
+
+  /**
+   * The last person left a call: close the record, note the duration and who joined on the
+   * "started a call" transmission, and tell the conversation. Redis DEL picks one instance.
+   */
+  async function endCall(type: string, id: string) {
+    if (!redisReady()) return;
+    const key = `call:${type}:${id}`;
+    const raw = await redisPub!.get(key).catch(() => null);
+    if (!raw || (await redisPub!.del(key).catch(() => 0)) !== 1) return;
+    const joined = await redisPub!.smembers(`${key}:joined`).catch(() => [] as string[]);
+    await redisPub!.del(`${key}:joined`).catch(() => {});
+    const call = JSON.parse(raw) as { messageId: string; startedAt: string; participants: string[] };
+    const content = JSON.stringify({ startedAt: call.startedAt, endedAt: new Date().toISOString(), joined });
+    await resolver.finishCall(call.messageId, content);
+    for (const event of [
+      { type: 'TRANSMISSION_UPDATE', channelType: type, channelId: id, transmission: { id: call.messageId, content, type: 'system_call' } },
+      { type: 'CALL_DELETE', channelType: type, channelId: id },
+    ]) {
+      const withAudience = { ...event, audience: call.participants };
+      deliverDispatch(withAudience);
+      publish(CHANNELS.dispatch, withAudience);
     }
   }
 
@@ -187,12 +256,14 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
   function voiceSnapshot(sess: Session) {
     // Same snake_case shape as VOICE_STATE_UPDATE events.
     return [...voiceStates.values()]
-      .filter((v) => sess.beaconIds.has(v.beaconId))
+      .filter((v) => (v.beaconId ? sess.beaconIds.has(v.beaconId) : v.audience.includes(sess.transmitterId!)))
       .map((v) => ({
         transmitter_id: v.transmitterId,
         username: v.username,
         relay_id: v.relayId,
         beacon_id: v.beaconId,
+        call_type: v.callType,
+        call_id: v.callId,
         is_muted: v.isMuted,
         is_deafened: v.isDeafened,
         is_speaking: v.isSpeaking,
@@ -260,11 +331,16 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     relayId: string | null,
     beaconId: string | null
   ) {
+    const call = relayId ? null : sess.voiceCall ?? null;
+    const previous = voiceStates.get(sess.transmitterId!);
     const event = {
       transmitter_id: sess.transmitterId!,
       username: sess.username || 'Transmitter',
       relay_id: relayId,
       beacon_id: beaconId,
+      call_type: call?.type ?? null,
+      call_id: call?.id ?? null,
+      call_participants: call?.audience,
       is_muted: !!sess.isMuted,
       is_deafened: !!sess.isDeafened,
       is_speaking: !!sess.isSpeaking,
@@ -272,6 +348,10 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     };
     deliverVoice(event);
     publish(CHANNELS.voice, event);
+    // Left a call (hung up, switched rooms, or the socket closed): end it if that emptied it.
+    if (previous?.callType && previous.callId && !(call && call.id === previous.callId) && !callOccupied(previous.callType, previous.callId)) {
+      endCall(previous.callType, previous.callId).catch((err) => console.warn('[Gateway] Ending call failed:', err?.message));
+    }
   }
 
   // ---- Redis wiring ----
@@ -403,8 +483,9 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       }
 
       if (payload.op === GATEWAY_OPCODES.VOICE_STATE_UPDATE) {
-        const { relay_id, is_muted, is_deafened, is_speaking } = payload.d || {};
+        const { relay_id, call_type, call_id, is_muted, is_deafened, is_speaking } = payload.d || {};
         let beaconId: string | null = null;
+        let call: Session['voiceCall'] = null;
         if (relay_id) {
           if (typeof relay_id !== 'string') return;
           beaconId = await resolver.authorizeVoice(session.transmitterId!, relay_id);
@@ -412,7 +493,16 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
             dispatch(ws, 'VOICE_STATE_REJECTED', { relay_id, reason: 'FORBIDDEN' });
             return;
           }
+        } else if (call_id) {
+          if (typeof call_id !== 'string' || (call_type !== 'link' && call_type !== 'mesh')) return;
+          const audience = await resolver.authorizeCall(session.transmitterId!, call_type, call_id);
+          if (!audience) {
+            dispatch(ws, 'VOICE_STATE_REJECTED', { call_id, reason: 'FORBIDDEN' });
+            return;
+          }
+          call = { type: call_type, id: call_id, audience };
         }
+        session.voiceCall = call;
         session.voiceRelayId = relay_id || null;
         session.isMuted = !!is_muted;
         session.isDeafened = !!is_deafened;
@@ -436,8 +526,9 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       clearTimeout(authTimeout);
       if (!session?.transmitterId || !session.isAuthenticated) return;
 
-      if (session.voiceRelayId) {
+      if (session.voiceRelayId || session.voiceCall) {
         session.isMuted = session.isDeafened = session.isSpeaking = false;
+        session.voiceCall = null;
         broadcastVoiceStateUpdate(session, null, null);
       }
       // Only go offline when this was the transmitter's last session on this instance.

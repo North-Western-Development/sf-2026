@@ -16,6 +16,10 @@ describe('Gateway & Ghost Mode Presence Suite', () => {
     getBeaconIds: async (id) => (id === 'outsider' ? [] : ['beacon-1']),
     authorizeVoice: async (id, relayId) =>
       relayId === 'voice-1' && id !== 'outsider' ? 'beacon-1' : null,
+    // dm-1 is a direct link between a and b; c shares their beacon but not the link.
+    authorizeCall: async (id, type, callId) =>
+      type === 'link' && callId === 'dm-1' && ['transmitter-a', 'transmitter-b'].includes(id) ? ['transmitter-a', 'transmitter-b'] : null,
+    finishCall: async () => {},
   };
 
   beforeAll(async () => {
@@ -220,6 +224,32 @@ describe('Gateway & Ghost Mode Presence Suite', () => {
     expect(bVoice.map((m) => m.d.transmitter_id)).toEqual(['transmitter-a']);
     expect(outsider.messages.some((m) => m.t === 'VOICE_STATE_UPDATE')).toBe(false);
     [a, b, outsider].forEach((c) => c.ws.close());
+  });
+
+  it('keeps call voice states inside the conversation, even from beacon-mates', async () => {
+    const a = await connect('transmitter-a');
+    const b = await connect('transmitter-b');
+    const c = await connect('transmitter-c');
+    const outsider = await connect('outsider');
+
+    outsider.ws.send(JSON.stringify({ op: GATEWAY_OPCODES.VOICE_STATE_UPDATE, d: { call_type: 'link', call_id: 'dm-1' } }));
+    a.ws.send(JSON.stringify({ op: GATEWAY_OPCODES.VOICE_STATE_UPDATE, d: { call_type: 'link', call_id: 'dm-1' } }));
+    await settle();
+    expect(outsider.messages.some((m) => m.t === 'VOICE_STATE_REJECTED')).toBe(true);
+    const bCall = b.messages.filter((m) => m.t === 'VOICE_STATE_UPDATE');
+    expect(bCall.map((m) => [m.d.transmitter_id, m.d.call_id, m.d.call_participants])).toEqual([['transmitter-a', 'dm-1', undefined]]);
+    expect(c.messages.some((m) => m.t === 'VOICE_STATE_UPDATE')).toBe(false);
+
+    // Moving from the call to a beacon relay: b hears a left, c hears a arrive, and c never
+    // learns which conversation a was in.
+    a.ws.send(JSON.stringify({ op: GATEWAY_OPCODES.VOICE_STATE_UPDATE, d: { relay_id: 'voice-1' } }));
+    await settle();
+    const bLeave = b.messages.filter((m) => m.t === 'VOICE_STATE_UPDATE').at(-1);
+    expect(bLeave?.d).toMatchObject({ transmitter_id: 'transmitter-a', call_id: null });
+    const cVoice = c.messages.filter((m) => m.t === 'VOICE_STATE_UPDATE');
+    expect(cVoice).toHaveLength(1);
+    expect(cVoice[0].d).toMatchObject({ relay_id: 'voice-1', call_id: null });
+    [a, b, c, outsider].forEach((x) => x.ws.close());
   });
 
   it('delivers dispatch events only to the attached audience and drops audience-less events', async () => {

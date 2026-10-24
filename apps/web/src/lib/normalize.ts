@@ -1,6 +1,7 @@
 // Map API payloads (legacy and contract shapes) into client domain types.
 import type {
   Beacon,
+  CallInfo,
   ChannelType,
   Clearance,
   Cluster,
@@ -214,3 +215,5 @@ export function resolveName(user: UserRef, member?: { nickname: string | null } 
 }
 
 export const userTag = (u: Pick<UserRef, 'username' | 'discriminator'>) => `${u.username}#${u.discriminator}`;
+
+export const toCall = (c: Raw): CallInfo => ({ messageId: c.messageId, startedBy: c.startedBy, startedAt: c.startedAt, ringing: c.ringing ?? [] });

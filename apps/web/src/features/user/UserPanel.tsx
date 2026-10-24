@@ -104,25 +104,32 @@ export function UserPanel() {
 /** "Comm-Link Connected" block stacked above the user row while in voice (Discord's RTC panel). */
 function VoiceStrip() {
   const navigate = useNavigate();
-  const v = useVoice(useShallow((s) => ({ relayId: s.relayId, beaconId: s.beaconId, state: s.state, cameraOn: s.cameraOn, screenOn: s.screenOn })));
+  const v = useVoice(useShallow((s) => ({ relayId: s.relayId, beaconId: s.beaconId, callKey: s.callKey, state: s.state, cameraOn: s.cameraOn, screenOn: s.screenOn })));
   const relayName = useStore((s) => (v.relayId ? s.relays[v.relayId]?.name : undefined));
   const beaconName = useStore((s) => (v.beaconId ? s.beacons[v.beaconId]?.name : undefined));
-  if (!v.relayId) return null;
+  const callName = useStore((s) => {
+    if (!v.callKey) return undefined;
+    const id = v.callKey.slice(v.callKey.indexOf(':') + 1);
+    const peer = s.links[id]?.recipient;
+    return peer ? `@${peer.displayName || peer.username}` : s.meshes[id]?.name || 'Subspace Mesh';
+  });
+  if (!v.relayId && !v.callKey) return null;
   const connected = v.state === 'connected';
+  const target = v.callKey ? `/channels/@me/${v.callKey.slice(v.callKey.indexOf(':') + 1)}` : `/channels/${v.beaconId}/${v.relayId}`;
   return (
     <div className="border-b border-line px-2 pb-2 pt-1.5">
       <div className="flex items-center gap-1">
         <button
           type="button"
-          onClick={() => navigate(`/channels/${v.beaconId}/${v.relayId}`)}
+          onClick={() => navigate(target)}
           className="min-w-0 flex-1 rounded-md px-1 py-0.5 text-left hover:bg-hover"
         >
           <span className={clsx('block text-sm font-semibold leading-tight', connected ? 'text-online' : 'text-warning')}>
-            {connected ? 'Comm-Link Connected' : v.state === 'reconnecting' ? 'Reconnecting...' : 'Connecting...'}
+            {connected ? (v.callKey ? 'Voice Connected' : 'Comm-Link Connected') : v.state === 'reconnecting' ? 'Reconnecting...' : 'Connecting...'}
           </span>
           <span className="block truncate text-xs leading-tight text-fg-subtle">
-            {relayName ?? 'Comm-Link'}
-            {beaconName ? ` / ${beaconName}` : ''}
+            {v.callKey ? callName : relayName ?? 'Comm-Link'}
+            {!v.callKey && beaconName ? ` / ${beaconName}` : ''}
           </span>
         </button>
         <PanelButton label="Disconnect" onClick={() => void leaveVoice()}>

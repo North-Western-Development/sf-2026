@@ -17,6 +17,7 @@ import { ModalHost } from './ModalHost';
 import { ProfilePopoutHost } from '../features/profile/ProfilePopout';
 import { Toasts } from './Toasts';
 import { NoticeBar } from './NoticeBar';
+import { IncomingCall } from '../features/voice/DmCall';
 import { PixelStar } from '../features/auth/PixelStar';
 import { lastRelay } from './ui';
 import { useGlobalShortcuts } from './shortcuts';
@@ -78,6 +79,7 @@ function Layout({ sidebar }: { sidebar: React.ReactNode }) {
           <Outlet />
         </main>
       </div>
+      <IncomingCall />
       <ModalHost />
       <ProfilePopoutHost />
       <Toasts />

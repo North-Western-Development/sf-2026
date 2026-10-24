@@ -1,6 +1,5 @@
 import { Navigate, useParams } from 'react-router';
-import { AtSign, Phone, Users, Video } from 'lucide-react';
-import { ComingSoon } from '@subspace/ui';
+import { AtSign, Users } from 'lucide-react';
 import { useStore } from '../../data/store';
 import { channelKey, type UserRef } from '../../lib/types';
 import { userTag } from '../../lib/normalize';
@@ -9,6 +8,7 @@ import { ChannelView } from './ChannelView';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { openModal } from '../../app/ui';
+import { CallButtons, CallPanel } from '../voice/DmCall';
 
 function DmProfilePanel({ user }: { user: UserRef }) {
   const status = useStore((s) => s.presence[user.id]?.customStatus?.text);
@@ -39,16 +39,6 @@ export function DirectRoute() {
   const link = useStore((s) => s.links[dmId]);
   const mesh = useStore((s) => s.meshes[dmId]);
 
-  const callActions = (
-    <>
-      <ComingSoon label="Voice Call" placement="bottom">
-        <span className="flex h-8 w-8 items-center justify-center text-fg-muted"><Phone className="h-5 w-5" /></span>
-      </ComingSoon>
-      <ComingSoon label="Video Call" placement="bottom">
-        <span className="flex h-8 w-8 items-center justify-center text-fg-muted"><Video className="h-5 w-5" /></span>
-      </ComingSoon>
-    </>
-  );
 
   if (link) {
     const u = link.recipient;
@@ -60,7 +50,8 @@ export function DirectRoute() {
         icon={<AtSign className="h-6 w-6" />}
         title={name}
         placeholder={`Transmit to @${name}`}
-        actions={callActions}
+        actions={<CallButtons channelKey={channelKey('link', link.id)} />}
+        banner={<CallPanel channelKey={channelKey('link', link.id)} />}
         aside={<DmProfilePanel user={u} />}
         welcome={
           <div className="mx-4 mb-4 mt-16">
@@ -85,7 +76,8 @@ export function DirectRoute() {
         icon={<Users className="h-6 w-6" />}
         title={name}
         placeholder={`Transmit to ${name}`}
-        actions={callActions}
+        actions={<CallButtons channelKey={channelKey('mesh', mesh.id)} />}
+        banner={<CallPanel channelKey={channelKey('mesh', mesh.id)} />}
         aside={
           <aside aria-label="Members" className="w-60 shrink-0 overflow-y-auto bg-raised px-2 pb-4">
             <h3 className="px-2 pb-1 pt-6 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Members — {mesh.members.length}</h3>

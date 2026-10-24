@@ -1,6 +1,7 @@
 import { http, optional, ApiError } from '../lib/http';
 import {
   toBeacon,
+  toCall,
   toClearance,
   toCluster,
   toEditPatch,
@@ -15,6 +16,7 @@ import {
 import {
   channelKey,
   parseChannelKey,
+  type CallInfo,
   type ChannelKey,
   type ChannelType,
   type NotificationSetting,
@@ -153,6 +155,18 @@ export async function bootstrap(): Promise<void> {
     notificationSettings,
     ready: true,
   });
+  void loadCalls().catch(() => {});
+}
+
+/** Active calls in this user's direct links and meshes (so a call in progress shows after a reload). */
+export async function loadCalls(): Promise<void> {
+  const s = getState();
+  const keys = [...Object.keys(s.links).map((id) => `link:${id}`), ...Object.keys(s.meshes).map((id) => `mesh:${id}`)];
+  if (!keys.length) return;
+  const res = await http.get<{ calls: Raw[] }>(`/calls?channels=${encodeURIComponent(keys.slice(0, 200).join(','))}`);
+  const calls: Record<ChannelKey, CallInfo> = {};
+  for (const c of res.calls) calls[channelKey(c.channelType, c.channelId)] = toCall(c);
+  setState({ calls });
 }
 
 const beaconLoads = new Map<string, Promise<void>>();

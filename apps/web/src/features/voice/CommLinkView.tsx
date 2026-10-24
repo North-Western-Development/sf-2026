@@ -30,9 +30,9 @@ function VideoSurface({ track, mirrored }: { track: Track; mirrored?: boolean })
   return <video ref={ref} autoPlay playsInline muted className={clsx('h-full w-full object-contain', mirrored && '-scale-x-100')} />;
 }
 
-function Tile({ userId, beaconId }: { userId: string; beaconId: string }) {
+export function Tile({ userId, beaconId }: { userId: string; beaconId?: string }) {
   const user = useStore((s) => s.users[userId]);
-  const member = useStore((s) => s.members[beaconId]?.[userId]);
+  const member = useStore((s) => (beaconId ? s.members[beaconId]?.[userId] : undefined));
   const vs = useStore((s) => s.voice[userId]);
   const speaking = useVoice((s) => s.speaking.includes(userId));
   const tracks = useVoice((s) => s.tracks[userId]);
@@ -64,7 +64,7 @@ function Tile({ userId, beaconId }: { userId: string; beaconId: string }) {
   );
 }
 
-function ControlButton({ label, onClick, active, danger, children }: { label: string; onClick: () => void; active?: boolean; danger?: boolean; children: React.ReactNode }) {
+export function ControlButton({ label, onClick, active, danger, children }: { label: string; onClick: () => void; active?: boolean; danger?: boolean; children: React.ReactNode }) {
   return (
     <Tooltip content={label}>
       <button

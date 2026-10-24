@@ -201,13 +201,15 @@ class SubspaceGatewayClient {
     }
   }
 
-  public updateVoiceState(relayId: string | null, isMuted = false, isDeafened = false, isSpeaking = false) {
+  /** Where this client is connected: a Comm-Link relay id, a direct-link or mesh call, or nothing. */
+  public updateVoiceState(room: string | { callType: 'link' | 'mesh'; callId: string } | null, isMuted = false, isDeafened = false, isSpeaking = false) {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      const target = typeof room === 'string' ? { relay_id: room } : room ? { call_type: room.callType, call_id: room.callId } : { relay_id: null };
       this.ws.send(
         JSON.stringify({
           op: 4, // VOICE_STATE_UPDATE
           d: {
-            relay_id: relayId,
+            ...target,
             is_muted: isMuted,
             is_deafened: isDeafened,
             is_speaking: isSpeaking,

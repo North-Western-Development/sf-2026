@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   Beacon,
+  CallInfo,
   ChannelActivity,
   ChannelKey,
   Clearance,
@@ -61,6 +62,8 @@ export interface SubspaceState {
   /** channelKey -> userId -> expiry epoch ms */
   typing: Record<ChannelKey, Record<string, number>>;
   voice: Record<string, VoiceState>;
+  /** Active direct-link and mesh calls. */
+  calls: Record<ChannelKey, CallInfo>;
   gatewayStatus: 'connecting' | 'ready' | 'reconnecting' | 'offline';
   /** Channel currently on screen (drives auto-ack and notification suppression). */
   activeChannel: ChannelKey | null;
@@ -88,6 +91,7 @@ const initial: SubspaceState = {
   notificationSettings: {},
   typing: {},
   voice: {},
+  calls: {},
   gatewayStatus: 'connecting',
   activeChannel: null,
 };

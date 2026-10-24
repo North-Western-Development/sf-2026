@@ -149,6 +149,9 @@ export async function buildApp() {
   const { meshRoutes } = await import('./modules/meshes/meshes.routes.js');
   await app.register(meshRoutes, { prefix: '/api/v1/meshes' });
 
+  const { callRoutes } = await import('./modules/calls/calls.routes.js');
+  await app.register(callRoutes, { prefix: '/api/v1/calls' });
+
   const { affiliationRoutes } = await import('./modules/affiliations/affiliations.routes.js');
   await app.register(affiliationRoutes, { prefix: '/api/v1/affiliations' });
 
