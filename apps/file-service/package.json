@@ -11,15 +11,16 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@fastify/cors": "^10.0.2",
-    "@fastify/helmet": "^13.0.1",
     "@aws-sdk/client-s3": "^3.758.0",
     "@aws-sdk/s3-request-presigner": "^3.758.0",
+    "@fastify/cors": "^10.0.2",
+    "@fastify/helmet": "^13.0.1",
     "@subspace/constants": "workspace:*",
     "@subspace/crypto": "workspace:*",
     "@subspace/database": "workspace:*",
     "dotenv": "^16.4.7",
-    "fastify": "^5.2.1"
+    "fastify": "^5.2.1",
+    "ioredis": "^5.11.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",

@@ -1,5 +1,6 @@
 import { extractAuthToken } from './routes/vault.routes.js';
 import Fastify from 'fastify';
+import { Redis } from 'ioredis';
 import cors from '@fastify/cors';
 import dotenv from 'dotenv';
 import { TERMINOLOGY } from '@subspace/constants';
@@ -41,10 +42,31 @@ export async function buildFileApp() {
 
   // Secure by default: every route needs a valid access token before validation or the
   // handler runs. Routes that must work signed-out opt out with `config: { public: true }`.
+  // Device sessions live in the API's Redis; a signed-out device loses vault access at once too.
+  let redis: Redis | null = new Redis(process.env.REDIS_URL || 'redis://redis:6379', {
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+    connectTimeout: 2000,
+    enableOfflineQueue: false,
+  });
+  redis.on('error', (err) => app.log.warn({ err: err.message }, '[File Service] Redis error'));
+  await redis.connect().catch((err) => {
+    app.log.warn({ err: err.message }, '[File Service] Redis unavailable; session revocation is not checked');
+    redis = null;
+  });
+  app.addHook('onClose', async () => {
+    await redis?.quit().catch(() => {});
+  });
+
   app.addHook('onRequest', async (request, reply) => {
     const config = request.routeOptions.config as { public?: boolean } | undefined;
     if (!request.routeOptions.url || config?.public) return;
-    if (!extractAuthToken(request)) return reply.status(401).send({ error: 'Authentication required' });
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    if (token.sid && redis?.status === 'ready') {
+      const alive = await redis.hexists(`sessions:${token.transmitterId}`, token.sid).catch(() => 0);
+      if (!alive) return reply.status(401).send({ error: 'Session has been signed out', code: 'SESSION_REVOKED' });
+    }
   });
 
   await app.register(cors, {

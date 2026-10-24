@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../../apps/api-service/src/index.js';
+import { buildFileApp } from '../../apps/file-service/src/index.js';
 import { hashPassword } from '@subspace/crypto';
 import { transmitters, beacons, affiliations, eq, or } from '@subspace/database';
 
@@ -128,8 +129,16 @@ describe('Account: devices, email, username, disable and delete', () => {
       if (!db) return;
       const gone = await session('devices');
       const goneId = (await app.inject({ method: 'GET', url: '/api/v1/auth/sessions', headers: as(gone.accessToken) })).json().sessions.find((s: any) => s.current).id;
+      const files = await buildFileApp();
+      await files.ready();
+      expect((await files.inject({ method: 'GET', url: '/api/v1/vault/quota', headers: as(gone.accessToken) })).statusCode).toBe(200);
       await app.inject({ method: 'POST', url: '/api/v1/auth/logout', payload: { refreshToken: gone.refreshToken } });
       expect((await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: as(gone.accessToken) })).statusCode).toBe(401);
+      // The file service honours the sign-out as well, not just the API.
+      const vault = await files.inject({ method: 'GET', url: '/api/v1/vault/quota', headers: as(gone.accessToken) });
+      expect(vault.statusCode).toBe(401);
+      expect(vault.json().code).toBe('SESSION_REVOKED');
+      await files.close();
 
       const keep = await session('devices');
       await session('devices');
