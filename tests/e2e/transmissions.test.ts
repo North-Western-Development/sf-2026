@@ -241,6 +241,13 @@ describe('Text Relays, Transmissions & Direct Messaging E2E Suite', () => {
     });
     expect(dmRes.statusCode).toBe(201);
     expect(JSON.parse(dmRes.payload).linkId).toBeDefined();
+    // The DM carries its author (the same object goes out on the gateway), so a recipient can
+    // name a sender it has never seen; private fields never ride along.
+    const author = JSON.parse(dmRes.payload).transmission.author;
+    expect(author.id).toBe(userAId);
+    expect(author.username).toBeTruthy();
+    expect(author.email).toBeUndefined();
+    expect(author.passwordHash).toBeUndefined();
   });
 
   it('manages Affiliation Requests with greeting notes', async () => {

@@ -41,6 +41,9 @@ function Tile({ userId, beaconId }: { userId: string; beaconId: string }) {
   const video = tracks?.screen ?? tracks?.camera ?? null;
   return (
     <div
+      role="group"
+      aria-label={name}
+      data-speaking={speaking && !vs?.isMuted ? 'true' : undefined}
       className={clsx(
         'relative flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-raised',
         speaking && !vs?.isMuted ? 'ring-2 ring-online' : 'ring-1 ring-line'

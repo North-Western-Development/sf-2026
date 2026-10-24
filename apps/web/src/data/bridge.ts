@@ -22,7 +22,7 @@ import {
   upsertMessages,
   patchMessage,
 } from './store';
-import { ackChannel, applyReaction, loadBeacon, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshRelationships, signOut } from './actions';
+import { ackChannel, applyReaction, loadBeacon, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 
 type Raw = Record<string, any>;
@@ -73,8 +73,9 @@ function onTransmissionCreate(d: Raw) {
   const s = getState();
   const me = s.me;
 
-  // Unknown DM/mesh (first message from someone): refresh lists lazily.
-  if (key.startsWith('link:') && !s.links[key.slice(5)]) void import('./actions').then((a) => a.bootstrap()).catch(() => {});
+  // First message on a DM this client has not seen: load it, so its list entry (and a click on
+  // the notification) can open it.
+  const linkLoad = key.startsWith('link:') && !s.links[key.slice(5)] ? refreshLinks().catch(() => {}) : null;
 
   if (s.messages[key]?.loaded) upsertMessages(key, [t]);
   else
@@ -102,7 +103,7 @@ function onTransmissionCreate(d: Raw) {
 
   const relay = key.startsWith('relay:') ? s.relays[key.slice(6)] : undefined;
   const member = relay ? s.members[relay.beaconId]?.[t.author.id] : undefined;
-  maybeNotify(key, t, titleFor(key, resolveName(t.author, member)), () => navigate(pathFor(key)));
+  maybeNotify(key, t, titleFor(key, resolveName(t.author, member)), () => void Promise.resolve(linkLoad).then(() => navigate(pathFor(key))));
 }
 
 const handlers: Record<string, (d: Raw) => void> = {

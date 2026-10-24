@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, and, or, gt, desc, transmissionRequests, transmitters, pointToPointLinks, transmissions } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
+import { AUTHOR_FIELDS } from '../../lib/transmissions.js';
 
 export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -99,11 +100,13 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       .values({ p2pLinkId: link.id, transmitterId: req.senderId, content: req.initialTransmission, createdAt: req.createdAt })
       .returning();
 
+    const [author] = await db.select(AUTHOR_FIELDS).from(transmitters).where(eq(transmitters.id, req.senderId)).limit(1);
+
     await publishSessionRefresh(app, [req.senderId, req.recipientId]);
     await publishGatewayEvent(
       app,
       'DIRECT_TRANSMISSION_CREATE',
-      { link_id: link.id, channelType: 'link', channelId: link.id, sender_id: req.senderId, recipient_id: req.recipientId, transmission: intro },
+      { link_id: link.id, channelType: 'link', channelId: link.id, sender_id: req.senderId, recipient_id: req.recipientId, transmission: { ...intro, author: author ?? null } },
       { transmitterIds: [req.senderId, req.recipientId] }
     );
 

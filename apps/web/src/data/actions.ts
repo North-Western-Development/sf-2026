@@ -70,6 +70,30 @@ export async function refreshBeacons(): Promise<void> {
   setState({ beacons: Object.fromEntries(beacons.map((b) => [b.id, b])), beaconOrder: beacons.map((b) => b.id) });
 }
 
+let linksLoad: Promise<void> | null = null;
+/**
+ * Re-read the DM list, e.g. when a first message arrives on a link this client has never seen.
+ * Only links change; unread markers received live are kept.
+ */
+export function refreshLinks(): Promise<void> {
+  linksLoad ??= http
+    .get<{ links: Raw[] }>('/links')
+    .then((res) => {
+      const meId = getState().me?.id ?? '';
+      const links = res.links.map((l) => toLink(l, meId));
+      rememberUsers(links.map((l) => l.recipient));
+      setState((s) => {
+        const activity = { ...s.activity };
+        for (const l of links) activity[channelKey('link', l.id)] ??= { lastId: l.lastTransmissionId, lastAt: l.lastTransmissionAt };
+        return { links: Object.fromEntries(links.map((l) => [l.id, l])), activity };
+      });
+    })
+    .finally(() => {
+      linksLoad = null;
+    });
+  return linksLoad;
+}
+
 /** Re-read unread markers and mention counts, e.g. after the gateway (re)connects. */
 export async function syncReadStates(): Promise<void> {
   const res = await http.get<Raw>('/read-states');

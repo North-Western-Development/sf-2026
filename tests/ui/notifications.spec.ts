@@ -81,3 +81,65 @@ test.describe('Mentions, unreads and ping markers', () => {
     await expect(page.getByRole('menuitem', { name: 'Unmute Beacon' })).toBeVisible();
   });
 });
+
+test.describe('Desktop notifications', () => {
+  /** Records notifications instead of showing them, and lets the test put the tab in the background. */
+  async function fakeDesktop(page: import('@playwright/test').Page) {
+    await page.addInitScript(() => {
+      const w = window as any;
+      w.__notes = [];
+      w.__hidden = false;
+      class FakeNotification {
+        static permission = 'granted';
+        static requestPermission = async () => 'granted';
+        onclick: (() => void) | null = null;
+        constructor(public title: string, public options: any) {
+          w.__notes.push(this);
+        }
+        close() {}
+      }
+      w.Notification = FakeNotification;
+      Object.defineProperty(document, 'visibilityState', { get: () => (w.__hidden ? 'hidden' : 'visible') });
+      Object.defineProperty(document, 'hidden', { get: () => w.__hidden });
+    });
+  }
+  const notes = (page: import('@playwright/test').Page) =>
+    page.evaluate(() => (window as any).__notes.map((n: any) => ({ title: n.title, body: n.options?.body })));
+
+  test('a DM while the app is in the background shows a notification that opens the DM', async ({ page, me }) => {
+    const pal = await register('pal', 'Pal Pilot');
+    await me.api.befriend(pal);
+    await fakeDesktop(page);
+    await signIn(page, me);
+    await expect(page.getByRole('img', { name: 'Online' }).first()).toBeVisible();
+
+    await page.evaluate(() => ((window as any).__hidden = true));
+    await pal.api.openDm(me, 'are you on the bridge?');
+    await expect.poll(() => notes(page)).toEqual([expect.objectContaining({ title: expect.stringContaining('Pal Pilot'), body: 'are you on the bridge?' })]);
+
+    // Clicking it brings the conversation up.
+    await page.evaluate(() => {
+      (window as any).__hidden = false;
+      (window as any).__notes[0].onclick();
+    });
+    await expect(page).toHaveURL(/\/channels\/@me\/.+/);
+    await expect(page.getByRole('article').filter({ hasText: 'are you on the bridge?' })).toBeVisible();
+  });
+
+  test('Do Not Disturb and a visible, focused conversation stay quiet', async ({ page, me }) => {
+    const pal = await register('pal', 'Quiet Pal');
+    await me.api.befriend(pal);
+    await fakeDesktop(page);
+    await signIn(page, me);
+    await expect(page.getByRole('img', { name: 'Online' }).first()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Set status' }).click();
+    await page.getByRole('menuitem', { name: /Do Not Disturb/ }).click();
+    await page.evaluate(() => ((window as any).__hidden = true));
+    await pal.api.openDm(me, 'ping during dnd');
+    // The DM itself still arrives; only the notification is held back.
+    await expect(page.getByRole('link', { name: /Quiet Pal/ }).first()).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(await notes(page)).toEqual([]);
+  });
+});

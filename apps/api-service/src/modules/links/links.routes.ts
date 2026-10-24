@@ -302,16 +302,19 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       const channel = await loadChannel(db, 'link', link.id);
       if (channel) await touchChannelLastTransmission(db, channel, newTransmission.id, newTransmission.createdAt);
 
+      // Carry the author, so the recipient can name a sender it has never seen (DM list, notification).
+      const [author] = await db.select(AUTHOR_FIELDS).from(transmitters).where(eq(transmitters.id, senderId)).limit(1);
+      const transmission = { ...newTransmission, author: author ?? null };
       await publishGatewayEvent(
         app,
         'DIRECT_TRANSMISSION_CREATE',
-        { link_id: link.id, recipient_id: targetId, sender_id: senderId, transmission: newTransmission },
+        { link_id: link.id, recipient_id: targetId, sender_id: senderId, transmission },
         { transmitterIds: [senderId, targetId] }
       );
 
       return reply.status(201).send({
         message: 'Point-to-Point transmission dispatched',
-        transmission: newTransmission,
+        transmission,
         linkId: link.id,
       });
     }
