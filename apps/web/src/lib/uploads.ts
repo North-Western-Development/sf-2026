@@ -5,14 +5,14 @@ const DEFAULT_NOTICE =
   'Files uploaded to the Subspace Vault can be opened by anyone who has the link, and by instance staff. Do not upload sensitive or private data.';
 
 /**
- * Upload a file to the Subspace Vault. The first upload requires accepting the
- * Quarantine Disclaimer; that prompt is shown in the standard dialog, then the upload
- * is retried. Resolves null if the user declines.
+ * Run a vault write that may need the first-upload Quarantine Disclaimer. If the server asks
+ * for it, show it in the standard dialog, record acceptance and retry once. Resolves null if
+ * the user dismisses the dialog.
  */
-export function uploadToVault(file: File): Promise<VaultFile | null> {
-  return api.uploadVaultFile(file).catch((err: Error & { code?: string; disclaimerNotice?: string }) => {
+export function withUploadDisclaimer<T>(run: () => Promise<T>): Promise<T | null> {
+  return run().catch((err: Error & { code?: string; disclaimerNotice?: string }) => {
     if (err.code !== 'DISCLAIMER_REQUIRED') throw err;
-    return new Promise<VaultFile | null>((resolve, reject) => {
+    return new Promise<T | null>((resolve, reject) => {
       let accepted = false;
       confirmAction({
         title: 'Before you upload',
@@ -21,7 +21,7 @@ export function uploadToVault(file: File): Promise<VaultFile | null> {
         onConfirm: async () => {
           accepted = true;
           await api.acceptUploadDisclaimer();
-          api.uploadVaultFile(file).then(resolve, reject);
+          run().then(resolve, reject);
         },
       });
       // Resolve null if the dialog is dismissed without accepting.
@@ -36,3 +36,6 @@ export function uploadToVault(file: File): Promise<VaultFile | null> {
     });
   });
 }
+
+/** Upload a file to the Subspace Vault (see withUploadDisclaimer). */
+export const uploadToVault = (file: File): Promise<VaultFile | null> => withUploadDisclaimer(() => api.uploadVaultFile(file));

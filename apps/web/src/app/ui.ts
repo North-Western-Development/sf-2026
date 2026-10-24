@@ -15,6 +15,7 @@ export type ModalState =
   | { kind: 'prompt'; title: string; label: string; initial?: string; maxLength?: number; confirmLabel?: string; onSubmit: (value: string) => Promise<void> | void }
   | { kind: 'quickScan' }
   | { kind: 'vault' }
+  | { kind: 'drivePicker'; onPick: (file: { id: string; filename: string }) => void }
   | { kind: 'console' }
   | { kind: 'report'; targetType: 'transmission' | 'transmitter' | 'beacon'; targetId: string; context?: Record<string, unknown> };
 

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Redis } from 'ioredis';
+import { startMockDrives } from '../support/mock-drives';
 
 // Native ESM import of the shared .mjs env loader (Playwright compiles this file to CommonJS).
 const importEsm = new Function('url', 'return import(url)') as (url: string) => Promise<any>;
@@ -32,4 +33,11 @@ export default async function globalSetup() {
   } finally {
     redis.disconnect();
   }
+
+  // Mock Google Drive / OneDrive / Dropbox for the vault drive tests (DRIVE_MOCK_ORIGIN in the test stack).
+  const drives = await startMockDrives(4195).catch((err) => {
+    if (err.code === 'EADDRINUSE') return null; // another run's mock is already serving
+    throw err;
+  });
+  return async () => drives?.close();
 }

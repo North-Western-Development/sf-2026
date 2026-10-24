@@ -9,6 +9,8 @@ import { ProfileModal } from '../features/profile/ProfilePopout';
 import { UserSettings } from '../features/settings/UserSettings';
 import { BeaconSettings } from '../features/settings/BeaconSettings';
 import { VaultModal } from '../features/vault/VaultModal';
+import { DriveBrowser } from '../features/vault/DriveBrowser';
+import { Modal } from '@subspace/ui';
 import { ConsoleModal } from '../features/console/ConsoleModal';
 import { ReportModal } from '../features/modals/ReportModal';
 
@@ -59,6 +61,21 @@ export function ModalHost() {
     case 'vault':
       content = <VaultModal onClose={closeModal} />;
       break;
+    case 'drivePicker': {
+      const { onPick } = modal;
+      content = (
+        <Modal isOpen onClose={closeModal} title="Attach from Cloud Drive" description="The file is copied into your vault, then attached." maxWidth="2xl">
+          <DriveBrowser
+            actionLabel="Attach"
+            onImported={(file) => {
+              onPick(file);
+              closeModal();
+            }}
+          />
+        </Modal>
+      );
+      break;
+    }
     case 'console':
       content = <ConsoleModal staffRank={staffRank} />;
       break;

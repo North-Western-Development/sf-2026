@@ -30,6 +30,12 @@ if (testStack) {
   Object.assign(env, { API_PORT: '4001', GATEWAY_PORT: '4002', FILE_PORT: '4003', WEB_PORT: '4173', REGISTER_RATE_LIMIT: '10000' });
   // Link-preview tests serve their fake websites on localhost.
   env.UNFURL_ALLOW_PRIVATE_HOSTS = 'localhost';
+  // Cloud drive tests talk to the mock providers Playwright starts (tests/support/mock-drives.ts).
+  env.DRIVE_MOCK_ORIGIN = 'http://127.0.0.1:4195';
+  for (const [id, secret] of [['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], ['ONEDRIVE_CLIENT_ID', 'ONEDRIVE_CLIENT_SECRET'], ['DROPBOX_APP_KEY', 'DROPBOX_APP_SECRET']]) {
+    env[id] ||= 'ui-test-client';
+    env[secret] ||= 'ui-test-secret';
+  }
   env.S3_PUBLIC_ENDPOINT = 'http://localhost:4173';
   // NODE_ENV=test stops the services from listening; they must serve here.
   env.NODE_ENV = 'development';

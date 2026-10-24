@@ -6,8 +6,17 @@ import { getCloudIntegrations } from '../integrations/index.js';
 import crypto from 'crypto';
 
 const JWT_SECRET = getJwtSecret();
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB per file default
-const DEFAULT_USER_QUOTA_BYTES = 500 * 1024 * 1024; // 500MB personal quota
+export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB per file default
+export const DEFAULT_USER_QUOTA_BYTES = 500 * 1024 * 1024; // 500MB personal quota
+
+/** Bytes a transmitter already stores in the vault. */
+export async function vaultBytesUsed(db: any, transmitterId: string): Promise<number> {
+  const [row] = await db
+    .select({ totalUsed: sql<string>`COALESCE(SUM(${vaultFiles.sizeBytes}), 0)` })
+    .from(vaultFiles)
+    .where(eq(vaultFiles.transmitterId, transmitterId));
+  return Number(row?.totalUsed || 0);
+}
 
 export function extractAuthToken(request: FastifyRequest): TokenPayload | null {
   const authHeader = request.headers.authorization;
@@ -148,15 +157,35 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (!storageKey || !filename || !mimeType || !sizeBytes) {
       return reply.status(400).send({ error: 'storageKey, filename, mimeType, and sizeBytes are required' });
     }
+    // Only objects issued to this caller by /upload-ticket, recorded once, at their real size.
+    if (typeof storageKey !== 'string' || !storageKey.startsWith(`vaults/${token.transmitterId}/`) || storageKey.includes('..')) {
+      return reply.status(403).send({ error: 'That upload does not belong to you', code: 'FOREIGN_STORAGE_KEY' });
+    }
+    const [already] = await db.select({ id: vaultFiles.id }).from(vaultFiles).where(eq(vaultFiles.storageKey, storageKey)).limit(1);
+    if (already) return reply.status(409).send({ error: 'File already recorded', code: 'ALREADY_RECORDED' });
+    let head: { sizeBytes: number; contentType: string | undefined };
+    try {
+      head = await s3.headObject(storageKey);
+    } catch {
+      return reply.status(400).send({ error: 'Upload to the ticketed URL before recording the file', code: 'NOT_UPLOADED' });
+    }
+    if (head.sizeBytes <= 0 || head.sizeBytes > MAX_FILE_SIZE_BYTES) {
+      await s3.deleteObject(storageKey).catch(() => {});
+      return reply.status(400).send({ error: 'Uploaded file is empty or too large', code: 'FILE_TOO_LARGE' });
+    }
+    if ((await vaultBytesUsed(db, token.transmitterId)) + head.sizeBytes > DEFAULT_USER_QUOTA_BYTES) {
+      await s3.deleteObject(storageKey).catch(() => {});
+      return reply.status(403).send({ error: 'Subspace Vault storage quota exceeded', code: 'STORAGE_QUOTA_EXCEEDED' });
+    }
 
     const [recordedFile] = await db
       .insert(vaultFiles)
       .values({
         transmitterId: token.transmitterId,
         storageKey,
-        filename: filename.trim(),
-        mimeType,
-        sizeBytes: BigInt(sizeBytes),
+        filename: String(filename).trim().slice(0, 255),
+        mimeType: head.contentType || mimeType,
+        sizeBytes: BigInt(head.sizeBytes),
       })
       .returning();
 

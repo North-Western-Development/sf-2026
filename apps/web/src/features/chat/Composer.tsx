@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { AtSign, CirclePlus, Gift, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
+import { AtSign, CirclePlus, Cloud, Gift, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
 import { ComingSoon, Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore, getState } from '../../data/store';
 import { notifyTyping, sendMessage } from '../../data/actions';
 import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
 import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types';
 import { resolveName } from '../../lib/normalize';
-import { useUi, toast } from '../../app/ui';
+import { useUi, toast, openModal } from '../../app/ui';
 import { uploadToVault } from '../../lib/uploads';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
@@ -393,6 +393,11 @@ export function Composer({
             onClick={(e) =>
               openContextMenu({ clientX: e.clientX, clientY: e.clientY - 8 }, [
                 { label: 'Upload a File', icon: <FileUp className="h-4 w-4" />, onClick: () => fileInput.current?.click() },
+                {
+                  label: 'Attach from Cloud Drive',
+                  icon: <Cloud className="h-4 w-4" />,
+                  onClick: () => openModal({ kind: 'drivePicker', onPick: (f) => setAttachmentIds((a) => [...a, { id: f.id, name: f.filename }]) }),
+                },
                 { label: 'Create Thread', disabled: true, sublabel: 'Coming soon' },
                 { label: 'Use Apps', disabled: true, sublabel: 'Coming soon' },
               ])

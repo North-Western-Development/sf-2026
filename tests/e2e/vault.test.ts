@@ -13,6 +13,7 @@ describe('Subspace Vault (Storage) & Cloud Integrations E2E Suite', () => {
   const testUserId = '77777777-7777-7777-7777-777777777777';
   let userToken: string;
   let issuedStorageKey: string;
+  let issuedUploadUrl: string;
   let recordedFileId: string;
 
   beforeAll(async () => {
@@ -94,6 +95,7 @@ describe('Subspace Vault (Storage) & Cloud Integrations E2E Suite', () => {
     expect(ticketBody.presignedUploadUrl).toBeDefined();
     expect(ticketBody.storageKey).toContain('vaults/');
     issuedStorageKey = ticketBody.storageKey;
+    issuedUploadUrl = ticketBody.presignedUploadUrl;
   });
 
   it('rejects uploads exceeding maximum file size limit (50MB)', async () => {
@@ -113,7 +115,28 @@ describe('Subspace Vault (Storage) & Cloud Integrations E2E Suite', () => {
     expect(JSON.parse(res.payload).code).toBe('FILE_TOO_LARGE');
   });
 
+  it('refuses to record objects that were not uploaded or belong to someone else', async () => {
+    const record = (storageKey: string) =>
+      fileApp.inject({
+        method: 'POST',
+        url: '/api/v1/vault/files',
+        headers: { authorization: `Bearer ${userToken}` },
+        payload: { storageKey, filename: 'x.png', mimeType: 'image/png', sizeBytes: 10 },
+      });
+    const foreign = await record('vaults/00000000-0000-4000-8000-000000000001/abc_secret.pdf');
+    expect(foreign.statusCode).toBe(403);
+    expect(foreign.json().code).toBe('FOREIGN_STORAGE_KEY');
+    expect((await record(`vaults/${testUserId}/../other/x`)).statusCode).toBe(403);
+    const missing = await record(issuedStorageKey);
+    expect(missing.statusCode).toBe(400);
+    expect(missing.json().code).toBe('NOT_UPLOADED');
+  });
+
   it('records uploaded file metadata, lists files with download URLs, and tracks quota', async () => {
+    // Store the bytes under the ticketed key (the browser PUTs to the presigned URL, which
+    // points at the web origin and is not served in this suite).
+    expect(issuedUploadUrl).toContain(encodeURIComponent(issuedStorageKey).replace(/%2F/g, '/'));
+    await (fileApp as any).s3.putObject(issuedStorageKey, Buffer.alloc(1024 * 50), 'image/png');
     // Record file
     const recordRes = await fileApp.inject({
       method: 'POST',
@@ -123,7 +146,8 @@ describe('Subspace Vault (Storage) & Cloud Integrations E2E Suite', () => {
         storageKey: issuedStorageKey,
         filename: 'star_chart.png',
         mimeType: 'image/png',
-        sizeBytes: 1024 * 50,
+        // A lie about the size is ignored: the stored object's size counts.
+        sizeBytes: 1,
       },
     });
 

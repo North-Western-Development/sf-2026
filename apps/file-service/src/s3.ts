@@ -131,6 +131,13 @@ export class SubspaceS3Storage {
   }
 
   /**
+   * Store an object from the server side (cloud drive imports).
+   */
+  async putObject(storageKey: string, body: Buffer, contentType: string, bucket: string = this.bucket): Promise<void> {
+    await this.client.send(new PutObjectCommand({ Bucket: bucket, Key: storageKey, Body: body, ContentType: contentType }));
+  }
+
+  /**
    * Remove an object from storage
    */
   async deleteObject(storageKey: string, bucket: string = this.bucket): Promise<void> {

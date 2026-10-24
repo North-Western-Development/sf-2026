@@ -358,6 +358,22 @@ export const vaultFiles = pgTable('vault_files', {
 });
 
 /**
+ * Cloud drive connections (Google Drive, OneDrive, Dropbox) for importing into the vault.
+ * Tokens are AES-256-GCM encrypted by the file service; never stored or returned in clear.
+ */
+export const driveConnections = pgTable('drive_connections', {
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  provider: text('provider').notNull(), // 'google' | 'onedrive' | 'dropbox'
+  accountLabel: text('account_label'),
+  accessToken: text('access_token').notNull(),
+  refreshToken: text('refresh_token'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.transmitterId, table.provider] }),
+]);
+
+/**
  * Incident Reports (Incident Flare)
  */
 export const incidentReports = pgTable('incident_reports', {

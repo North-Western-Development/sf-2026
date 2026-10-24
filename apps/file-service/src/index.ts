@@ -10,6 +10,7 @@ import { requireSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from './s3.js';
 import { vaultRoutes } from './routes/vault.routes.js';
 import { mediaRoutes } from './routes/media.routes.js';
+import { driveRoutes } from './routes/drives.routes.js';
 
 // Package-local .env first, then the repo-root .env (native runs); existing env always wins.
 dotenv.config({ path: ['.env', '../../.env'] });
@@ -90,6 +91,7 @@ export async function buildFileApp() {
 
   // Register Vault routes
   await app.register(vaultRoutes, { prefix: '/api/v1/vault' });
+  await app.register(driveRoutes, { prefix: '/api/v1/vault/drives' });
 
   // Register public-read media upload routes (section 7)
   await app.register(mediaRoutes, { prefix: '/api/v1/media' });
