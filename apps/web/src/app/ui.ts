@@ -45,6 +45,17 @@ interface UiState {
   toasts: Toast[];
   replyingTo: Record<string, { messageId: string; ping: boolean } | undefined>;
   editing: { key: string; messageId: string } | null;
+  /** Open search panel: scope is a beacon id or 'dms'. */
+  search: SearchState | null;
+  /** A message to scroll to once its channel is showing. */
+  jumpTarget: { key: string; messageId: string } | null;
+}
+
+export interface SearchState {
+  scope: string;
+  query: string;
+  sort: 'newest' | 'oldest';
+  page: number;
 }
 
 const persisted = (() => {
@@ -65,6 +76,8 @@ export const useUi = create<UiState>()(() => ({
   toasts: [],
   replyingTo: {},
   editing: null,
+  search: null,
+  jumpTarget: null,
 }));
 
 useUi.subscribe((s) => {

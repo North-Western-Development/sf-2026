@@ -39,7 +39,7 @@ function ReactionChip({ r, onToggle }: { r: Transmission['reactions'][number]; o
   );
 }
 
-function Attachments({ items }: { items: Transmission['attachments'] }) {
+export function Attachments({ items }: { items: Transmission['attachments'] }) {
   if (!items.length) return null;
   return (
     <div className="mt-1 flex flex-col gap-1.5">

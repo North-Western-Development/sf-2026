@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { useStore } from '../../data/store';
-import { ackChannel, loadMessages } from '../../data/actions';
+import { ackChannel, loadMessages, loadUntil } from '../../data/actions';
+import { toast, useUi } from '../../app/ui';
 import type { ChannelKey, Transmission } from '../../lib/types';
 import { formatDayDivider, GROUP_WINDOW_MS, isSameDay } from '../../lib/time';
 import { MessageItem } from './MessageItem';
@@ -107,6 +108,24 @@ export function MessageList({
     el.classList.add('bg-brand-soft');
     setTimeout(() => el.classList.remove('bg-brand-soft'), 1600);
   };
+
+  // Jump requested from search results: page back until the message is loaded, then scroll to it.
+  const jumpTarget = useUi((s) => (s.jumpTarget?.key === key ? s.jumpTarget.messageId : null));
+  useEffect(() => {
+    if (!jumpTarget) return;
+    let cancelled = false;
+    atBottom.current = false;
+    void loadUntil(key, jumpTarget).then((found) => {
+      if (cancelled) return;
+      useUi.setState({ jumpTarget: null });
+      if (!found) return toast('That transmission is no longer available.', 'error');
+      requestAnimationFrame(() => jumpTo(jumpTarget));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTarget, key]);
 
   const firstUnreadIndex = unreadMarker
     ? messages.findIndex((m) => m.author.id !== meId && (!unreadMarker.lastReadAt || m.createdAt > unreadMarker.lastReadAt))

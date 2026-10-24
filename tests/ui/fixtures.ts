@@ -44,6 +44,7 @@ export class Api {
   get = <T = any>(path: string) => this.call<T>('GET', path);
   post = <T = any>(path: string, data: unknown = {}) => this.call<T>('POST', path, data);
   patch = <T = any>(path: string, data: unknown) => this.call<T>('PATCH', path, data);
+  put = <T = any>(path: string, data: unknown) => this.call<T>('PUT', path, data);
   delete = <T = any>(path: string) => this.call<T>('DELETE', path);
 
   async createBeacon(name = 'Test Beacon') {

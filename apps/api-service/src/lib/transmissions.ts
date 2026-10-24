@@ -1,5 +1,6 @@
 import {
   eq,
+  and,
   inArray,
   transmissions,
   transmitters,
@@ -117,9 +118,9 @@ export async function formatTransmission(
     const [memberRow] = await db
       .select()
       .from(beaconMembers)
-      .where(eq(beaconMembers.transmitterId, row.transmitterId))
+      .where(and(eq(beaconMembers.transmitterId, row.transmitterId), eq(beaconMembers.beaconId, ctx.beaconId)))
       .limit(1);
-    if (memberRow && memberRow.beaconId === ctx.beaconId) {
+    if (memberRow) {
       const beaconClearances = await db.select().from(clearances).where(eq(clearances.beaconId, ctx.beaconId));
       member = {
         nickname: memberRow.nickname,

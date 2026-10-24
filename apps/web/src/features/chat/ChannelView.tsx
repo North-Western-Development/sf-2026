@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { Bell, BellOff, Pin, Users, Search, Inbox, CircleHelp, Hash } from 'lucide-react';
+import { Bell, BellOff, Pin, Users, Inbox, CircleHelp, Hash } from 'lucide-react';
 import { ComingSoon, Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { setState, useStore } from '../../data/store';
 import { loadPins } from '../../data/actions';
 import { effectiveNotification, isMuted, settingFor } from '../../data/notifications';
 import { muteDurations, setNotificationSetting } from '../../data/notificationActions';
 import { parseChannelKey, type ChannelKey, type NotificationLevel, type Transmission } from '../../lib/types';
-import { useUi, openModal } from '../../app/ui';
+import { useUi } from '../../app/ui';
+import { SearchBar, SearchResults } from '../search/Search';
 import { formatMessageTime } from '../../lib/time';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
@@ -163,6 +164,8 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
     useUi.setState((u) => ({ replyingTo: { ...u.replyingTo, [key]: { messageId, ping: msg?.author.id !== s.me?.id } } }));
   };
 
+  const searchScope = beaconId ?? 'dms';
+  const search = useUi((s) => (s.search?.scope === searchScope ? s.search : null));
   const showAside = memberListOpen && (aside !== undefined || !!beaconId);
 
   return (
@@ -194,13 +197,7 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
               <Users className="h-5 w-5" />
             </HeaderButton>
           )}
-          <button
-            type="button"
-            onClick={() => openModal({ kind: 'quickScan' })}
-            className="flex h-6 w-36 items-center justify-between rounded-sm bg-void px-1.5 text-xs text-fg-subtle"
-          >
-            Search <Search className="h-3.5 w-3.5" />
-          </button>
+          <SearchBar scope={searchScope} />
           <ComingSoon label="Inbox" placement="bottom">
             <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
               <Inbox className="h-5 w-5" />
@@ -220,7 +217,7 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
           <Composer channelKey={key} beaconId={beaconId} placeholder={placeholder} />
           <TypingIndicator channelKey={key} beaconId={beaconId} />
         </section>
-        {showAside && (aside ?? (beaconId ? <MemberList beaconId={beaconId} /> : null))}
+        {search ? <SearchResults search={search} /> : showAside && (aside ?? (beaconId ? <MemberList beaconId={beaconId} /> : null))}
       </div>
 
       {pinsAnchor && <PinsPopover channelKey={key} beaconId={beaconId} anchor={pinsAnchor} onClose={() => setPinsAnchor(null)} />}

@@ -227,6 +227,24 @@ export async function loadMessages(key: ChannelKey, opts: { before?: string } = 
   }
 }
 
+/** Page back through history until `messageId` is loaded (for jumping to search results). */
+export async function loadUntil(key: ChannelKey, messageId: string, maxPages = 20): Promise<boolean> {
+  let waits = 0;
+  for (let i = 0; i <= maxPages; i++) {
+    const ch = getState().messages[key];
+    if (ch?.byId[messageId]) return true;
+    if (ch?.loaded && !ch.hasMoreBefore) return false;
+    if (ch?.loading && waits++ < 200) {
+      await new Promise((r) => setTimeout(r, 50));
+      i--;
+      continue;
+    }
+    const first = ch?.ids.find((id) => !ch.byId[id]?.pending);
+    await loadMessages(key, ch?.loaded && first ? { before: first } : {});
+  }
+  return !!getState().messages[key]?.byId[messageId];
+}
+
 const parseChannelFields = (key: ChannelKey) => {
   const { type, id } = parseChannelKey(key);
   return { channelType: type, channelId: id };
