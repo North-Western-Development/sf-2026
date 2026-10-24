@@ -51,6 +51,9 @@ export const transmitters = pgTable('transmitters', {
     colors: string[];
   }>(),
   profileVisibility: text('profile_visibility').default('everyone').notNull(), // 'everyone' | 'beacons' | 'friends'
+  // Self-service account removal: disabled accounts reactivate on sign-in; deleted ones are anonymised.
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [

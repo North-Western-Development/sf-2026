@@ -213,8 +213,8 @@ class SubspaceApiClient {
   }
 
   /** identifier: username#0000, email, or a username that is unique on this instance. */
-  public async login(identifier: string, password: string): Promise<LoginResult> {
-    const data = await this.postJson(`${API_BASE}/auth/login`, { username: identifier, password });
+  public async login(identifier: string, password: string, opts: { reactivate?: boolean } = {}): Promise<LoginResult> {
+    const data = await this.postJson(`${API_BASE}/auth/login`, { username: identifier, password, ...(opts.reactivate ? { reactivate: true } : {}) });
     if (data.requires2FA) return { kind: '2fa', challengeToken: data.tempToken };
     this.setSession(data);
     return { kind: 'session', transmitter: data.transmitter, requiresRulesAgreement: !!data.requiresRulesAgreement };

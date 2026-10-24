@@ -32,6 +32,8 @@ const PRESENCE_HASH_KEY = 'presence';
 export interface Session {
   transmitterId?: string;
   username?: string;
+  /** Device session id from the access token; revoking it closes this socket. */
+  sid?: string;
   presence: PresenceState;
   isAuthenticated: boolean;
   isAlive: boolean;
@@ -218,6 +220,18 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     }
   }
 
+  /** A device was signed out (or the account disabled/deleted): tell its sockets, then close them. */
+  function revokeSockets(event: { transmitter_id?: string; session_ids?: string[]; all?: boolean; keep?: string | null }) {
+    const ids = new Set(event.session_ids ?? []);
+    for (const [ws, sess] of authedSessions()) {
+      if (sess.transmitterId !== event.transmitter_id) continue;
+      const hit = event.all ? sess.sid !== event.keep || !sess.sid : !!sess.sid && ids.has(sess.sid);
+      if (!hit) continue;
+      dispatch(ws, 'SESSION_REVOKED', {});
+      ws.close(4005, 'Session signed out');
+    }
+  }
+
   // ---- Publishing (local delivery first, Redis for other instances) ----
 
   function publish(channel: string, event: Record<string, unknown>) {
@@ -291,6 +305,7 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
             if (channel === CHANNELS.presence) deliverPresence(event);
             else if (channel === CHANNELS.voice) deliverVoice(event);
             else if (channel === CHANNELS.dispatch) deliverDispatch(event);
+            else if (channel === CHANNELS.session && event.type === 'SESSION_REVOKE') revokeSockets(event);
             else if (channel === CHANNELS.session && Array.isArray(event.transmitter_ids)) {
               refreshSessions(event.transmitter_ids).catch(() => {});
             }
@@ -361,6 +376,7 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
         clearTimeout(authTimeout);
         session.transmitterId = decoded.transmitterId;
         session.username = decoded.username;
+        session.sid = decoded.sid;
         const requested = payload.d?.presence as PresenceState;
         session.presence = Object.values(PRESENCE_STATES).includes(requested)
           ? requested

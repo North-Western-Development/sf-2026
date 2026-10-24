@@ -15,15 +15,18 @@ import {
   Link2,
   LogOut,
   Mic,
+  Monitor,
   Palette,
   Pencil,
   Rocket,
   Shield,
   ShieldCheck,
+  Smartphone,
   Smile,
   Sparkles,
   User,
   UserPen,
+  X,
 } from 'lucide-react';
 import { useStore, setState } from '../../data/store';
 import { signOut, setMyPresence, loadBeacon } from '../../data/actions';
@@ -151,41 +154,214 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** "Current Password" field for dialogs that change sensitive account details. */
+function CurrentPassword({ value, onChange, error, autoFocus }: { value: string; onChange: (v: string) => void; error: string | null; autoFocus?: boolean }) {
+  return (
+    <Input
+      label="Current Password"
+      type="password"
+      autoComplete="current-password"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      error={error ?? undefined}
+      autoFocus={autoFocus}
+      required
+    />
+  );
+}
+
+/** Runs a password-gated request: a wrong password shows under the field, anything else is a toast. */
+async function withPassword(run: () => Promise<void>, setPasswordError: (e: string | null) => void, setBusy: (b: boolean) => void) {
+  setBusy(true);
+  try {
+    await run();
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'PASSWORD_INCORRECT') setPasswordError('Password does not match.');
+    else toast((err as Error).message, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+function usePasswordField() {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const onChange = (v: string) => {
+    setPassword(v);
+    setError(null);
+  };
+  return { password, error, setError, onChange };
+}
+
 function UsernameDialog({ me, onClose }: { me: SelfUser; onClose: () => void }) {
   const [username, setUsername] = useState(me.username);
+  const pw = usePasswordField();
   const [busy, setBusy] = useState(false);
   const changed = username !== me.username;
   const error = changed && !USERNAME_RE.test(username) ? 'Use 2-32 characters: a-z, 0-9, _ and . (no leading, trailing or double dots).' : undefined;
 
-  const submit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!changed || error) return;
-    setBusy(true);
-    try {
-      const res = await http.patch<{ transmitter: Partial<SelfUser> }>('/users/@me/profile', { username });
-      setState((s) => ({ me: s.me ? { ...s.me, ...res.transmitter } : s.me }));
-      toast(`You are now ${res.transmitter.username ?? username}#${res.transmitter.discriminator ?? me.discriminator}`, 'success');
-      onClose();
-    } catch (err) {
-      toast((err as Error).message, 'error');
-    } finally {
-      setBusy(false);
-    }
+    void withPassword(
+      async () => {
+        const res = await http.patch<{ transmitter: Partial<SelfUser> }>('/users/@me/profile', { username, password: pw.password });
+        setState((s) => ({ me: s.me ? { ...s.me, ...res.transmitter } : s.me }));
+        toast(`You are now ${res.transmitter.username ?? username}#${res.transmitter.discriminator ?? me.discriminator}`, 'success');
+        onClose();
+      },
+      pw.setError,
+      setBusy
+    );
   };
 
   return (
-    <Modal isOpen onClose={onClose} title="Change your username" description="Changing your username gives you a new random #tag." maxWidth="md">
-      <form onSubmit={submit}>
+    <Modal isOpen onClose={onClose} title="Change your username" description="Enter a new username and your existing password." maxWidth="md">
+      <form onSubmit={submit} className="space-y-4">
         <Input label="Username" value={username} maxLength={32} onChange={(e) => setUsername(e.target.value.toLowerCase())} error={error} autoFocus />
-        <p className="mt-2 text-sm text-fg-muted">
-          Current tag: <span className="font-medium text-fg">{userTag(me)}</span>
+        <CurrentPassword value={pw.password} onChange={pw.onChange} error={pw.error} />
+        <p className="text-sm text-fg-muted">
+          Current tag: <span className="font-medium text-fg">{userTag(me)}</span>. A new username gets a new random #tag.
         </p>
         <DialogFooter>
           <Button variant="link" className="text-fg" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" isLoading={busy} disabled={!changed || !!error}>
+          <Button type="submit" isLoading={busy} disabled={!changed || !!error || !pw.password}>
             Done
+          </Button>
+        </DialogFooter>
+      </form>
+    </Modal>
+  );
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function EmailDialog({ me, onClose }: { me: SelfUser; onClose: () => void }) {
+  const [email, setEmail] = useState('');
+  const pw = usePasswordField();
+  const [busy, setBusy] = useState(false);
+  const valid = EMAIL_RE.test(email.trim());
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    void withPassword(
+      async () => {
+        const res = await http.patch<{ transmitter: Partial<SelfUser> }>('/auth/me/email', { email: email.trim(), password: pw.password });
+        setState((s) => ({ me: s.me ? { ...s.me, ...res.transmitter } : s.me }));
+        toast('Email updated.', 'success');
+        onClose();
+      },
+      pw.setError,
+      setBusy
+    );
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title="Enter an email address" description="Enter a new email address and your existing password." maxWidth="md">
+      <form onSubmit={submit} className="space-y-4">
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          placeholder={me.email}
+          onChange={(e) => setEmail(e.target.value)}
+          error={email && !valid ? 'Enter a valid email address.' : undefined}
+          autoFocus
+          required
+        />
+        <CurrentPassword value={pw.password} onChange={pw.onChange} error={pw.error} />
+        <DialogFooter>
+          <Button variant="link" className="text-fg" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={busy} disabled={!valid || !pw.password}>
+            Done
+          </Button>
+        </DialogFooter>
+      </form>
+    </Modal>
+  );
+}
+
+const REMOVAL_COPY = {
+  disable: {
+    title: 'Disable Account',
+    body: 'Are you sure that you want to disable your account? This will immediately log you out and make your account inaccessible to anyone. You can restore it by signing in again.',
+    path: '/auth/me/disable',
+  },
+  delete: {
+    title: 'Delete Account',
+    body: 'Are you sure that you want to delete your account? This will immediately log you out of your account and you will not be able to log in again.',
+    path: '/auth/me/delete',
+  },
+} as const;
+
+function AccountRemovalDialog({ mode, onClose }: { mode: 'disable' | 'delete'; onClose: () => void }) {
+  const copy = REMOVAL_COPY[mode];
+  const pw = usePasswordField();
+  const [owned, setOwned] = useState<Array<{ id: string; name: string }> | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void withPassword(
+      async () => {
+        try {
+          await http.post(copy.path, { password: pw.password });
+        } catch (err) {
+          // Like Discord: owned beacons have to be handed over (or deleted) first.
+          if (err instanceof ApiError && err.code === 'OWNS_BEACONS') {
+            const beacons = useStore.getState().beacons;
+            const mine = useStore.getState().me?.id;
+            setOwned(useStore.getState().beaconOrder.map((id) => beacons[id]).filter((b) => b && b.ownerId === mine));
+            return;
+          }
+          throw err;
+        }
+        closeModal();
+        await signOut();
+      },
+      pw.setError,
+      setBusy
+    );
+  };
+
+  if (owned) {
+    return (
+      <Modal isOpen onClose={onClose} title={`You Own ${term('beacon', true)}!`} maxWidth="md">
+        <p className="text-sm text-fg-muted">
+          In order to delete your account you must first transfer ownership of every {term('beacon').toLowerCase()} that you own, or delete them, in {term('beacon')}{' '}
+          Settings.
+        </p>
+        {owned.length > 0 && (
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-fg">
+            {owned.map((b) => (
+              <li key={b.id}>{b.name}</li>
+            ))}
+          </ul>
+        )}
+        <DialogFooter>
+          <Button onClick={onClose}>Okay</Button>
+        </DialogFooter>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title={copy.title} maxWidth="md">
+      <form onSubmit={submit} className="space-y-4">
+        <p className="rounded-md bg-warning/10 px-3 py-2.5 text-sm text-fg">{copy.body}</p>
+        <CurrentPassword value={pw.password} onChange={pw.onChange} error={pw.error} autoFocus />
+        <DialogFooter>
+          <Button variant="link" className="text-fg" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="danger" isLoading={busy} disabled={!pw.password}>
+            {copy.title}
           </Button>
         </DialogFooter>
       </form>
@@ -322,7 +498,7 @@ function MfaDialog({ enabled, onClose }: { enabled: boolean; onClose: () => void
 
 function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
   const [revealEmail, setRevealEmail] = useState(false);
-  const [dialog, setDialog] = useState<null | 'password' | 'username' | 'mfa'>(null);
+  const [dialog, setDialog] = useState<null | 'password' | 'username' | 'email' | 'mfa' | 'disable' | 'delete'>(null);
   const maskedEmail = me.email ? me.email.replace(/^(.*)(@.*)$/, (_, a: string, b: string) => '*'.repeat(a.length) + b) : '';
   const close = () => setDialog(null);
 
@@ -345,11 +521,7 @@ function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
               </button>
             </>
           }
-          action={
-            <ComingSoon label="Changing email">
-              <RowButton>Edit</RowButton>
-            </ComingSoon>
-          }
+          action={<RowButton onClick={() => setDialog('email')}>Edit</RowButton>}
         />
         <PlaceholderRow soon="Phone numbers" label="Phone Number" value={<span className="text-fg-subtle">Not added</span>} action={<RowButton>Add</RowButton>} />
       </SettingsSection>
@@ -358,7 +530,7 @@ function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
         <SettingsRow label="Password" action={<RowButton onClick={() => setDialog('password')}>Edit</RowButton>} />
         <SettingsRow label="Multi-Factor Authentication" value={me.is2faEnabled ? 'Enabled' : <span className="text-fg-subtle">Off</span>} onClick={() => setDialog('mfa')} />
         <PlaceholderRow soon="Security keys" label="Security Keys" value={<span className="text-fg-subtle">None</span>} />
-        <PlaceholderRow soon="Device management" label="Logged-in Devices" value={<span className="text-fg-subtle">This device</span>} />
+        <SettingsRow label="Logged-in Devices" description="See where you're signed in and sign out of other devices." onClick={() => go('devices')} />
       </SettingsSection>
 
       <SettingsSection id="account-status" title="Account Status">
@@ -373,18 +545,18 @@ function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
           <p className="text-[15px] font-semibold text-fg">Account Removal</p>
           <p className="mt-0.5 text-sm text-fg-muted">Disabling your account means you can recover it at any time after taking this action.</p>
           <div className="mt-3 flex gap-3">
-            <ComingSoon label="Disabling accounts">
-              <RowButton danger>Disable Account</RowButton>
-            </ComingSoon>
-            <ComingSoon label="Deleting accounts">
-              <RowButton>Delete Account</RowButton>
-            </ComingSoon>
+            <RowButton danger onClick={() => setDialog('disable')}>
+              Disable Account
+            </RowButton>
+            <RowButton onClick={() => setDialog('delete')}>Delete Account</RowButton>
           </div>
         </div>
       </SettingsSection>
 
       {dialog === 'password' && <PasswordDialog onClose={close} />}
       {dialog === 'username' && <UsernameDialog me={me} onClose={close} />}
+      {dialog === 'email' && <EmailDialog me={me} onClose={close} />}
+      {(dialog === 'disable' || dialog === 'delete') && <AccountRemovalDialog mode={dialog} onClose={close} />}
       {dialog === 'mfa' && <MfaDialog enabled={!!me.is2faEnabled} onClose={close} />}
     </>
   );
@@ -1222,6 +1394,168 @@ function KeybindsTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Devices
+// ---------------------------------------------------------------------------
+
+interface DeviceSession {
+  id: string;
+  createdAt: string;
+  lastActiveAt: string;
+  userAgent: string;
+  ip: string;
+  current: boolean;
+}
+
+/** "WINDOWS · CHROME" style label from a user agent, as Discord's Devices page shows. */
+function describeDevice(ua: string): { label: string; mobile: boolean } {
+  const os = /iPhone|iPad|iOS/.test(ua)
+    ? 'iOS'
+    : /Android/.test(ua)
+      ? 'Android'
+      : /Windows/.test(ua)
+        ? 'Windows'
+        : /Mac OS X|Macintosh/.test(ua)
+          ? 'macOS'
+          : /CrOS/.test(ua)
+            ? 'ChromeOS'
+            : /Linux/.test(ua)
+              ? 'Linux'
+              : 'Unknown OS';
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\/|Opera/.test(ua)
+      ? 'Opera'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Chrome\/|CriOS/.test(ua)
+          ? 'Chrome'
+          : /Safari\//.test(ua)
+            ? 'Safari'
+            : 'Browser';
+  return { label: `${os} · ${browser}`, mobile: /Mobi|iPhone|Android/.test(ua) };
+}
+
+function sinceLabel(iso: string) {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function DeviceRow({ session, onLogout }: { session: DeviceSession; onLogout?: () => void }) {
+  const { label, mobile } = describeDevice(session.userAgent);
+  const Icon = mobile ? Smartphone : Monitor;
+  return (
+    <li className="flex items-center gap-4 py-4" aria-label={label}>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-active text-fg">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-fg">{label}</p>
+        <p className="mt-0.5 truncate text-sm text-fg-muted">
+          {session.ip || 'Unknown location'} · {session.current ? 'Current session' : `Active ${sinceLabel(session.lastActiveAt)}`}
+        </p>
+      </div>
+      {onLogout && (
+        <button
+          type="button"
+          onClick={onLogout}
+          aria-label={`Log out ${label}`}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-fg-muted hover:bg-active hover:text-fg"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </li>
+  );
+}
+
+function DevicesTab() {
+  const [sessions, setSessions] = useState<DeviceSession[] | null>(null);
+  const load = () =>
+    http
+      .get<{ sessions: DeviceSession[] }>('/auth/sessions')
+      .then((r) => setSessions(r.sessions))
+      .catch((err) => toast((err as Error).message, 'error'));
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const current = sessions?.find((s) => s.current);
+  const others = sessions?.filter((s) => !s.current) ?? [];
+
+  const logOut = (s: DeviceSession) =>
+    confirmAction({
+      title: 'Log out device?',
+      body: `${describeDevice(s.userAgent).label} will need to sign in again.`,
+      confirmLabel: 'Log Out',
+      danger: true,
+      onConfirm: async () => {
+        await http.delete(`/auth/sessions/${s.id}`).catch(() => {});
+        await load();
+      },
+    });
+
+  const logOutAll = () =>
+    confirmAction({
+      title: 'Log out all known devices?',
+      body: "You'll have to log back in on all logged out devices.",
+      confirmLabel: 'Log Out',
+      danger: true,
+      onConfirm: async () => {
+        await http.delete('/auth/sessions');
+        toast('Logged out of all other devices.', 'success');
+        await load();
+      },
+    });
+
+  return (
+    <>
+      <SettingsSection
+        id="devices"
+        title="Devices"
+        description={
+          <>
+            Here are all the devices that are currently logged in with your account. You can log out of each one individually or all other devices.
+            <br />
+            If you see an entry you don't recognize, log out of that device and change your password immediately.
+          </>
+        }
+      >
+        {sessions === null ? (
+          <p className="text-sm text-fg-muted">Loading devices…</p>
+        ) : (
+          <>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Current Device</h3>
+            <ul aria-label="Current device" className="divide-y divide-line">
+              {current ? <DeviceRow session={current} /> : <li className="py-4 text-sm text-fg-muted">This device</li>}
+            </ul>
+            <h3 className="mt-6 text-xs font-semibold uppercase tracking-wide text-fg-muted">Other Devices</h3>
+            {others.length === 0 ? (
+              <p className="py-4 text-sm text-fg-muted">You're not signed in anywhere else.</p>
+            ) : (
+              <ul aria-label="Other devices" className="divide-y divide-line">
+                {others.map((s) => (
+                  <DeviceRow key={s.id} session={s} onLogout={() => logOut(s)} />
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </SettingsSection>
+      <SettingsSection id="logout-all" title="Log out of all known devices" description="You'll have to log back in on all logged out devices.">
+        <RowButton danger onClick={logOutAll} disabled={others.length === 0}>
+          Log out all known devices
+        </RowButton>
+      </SettingsSection>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 export function UserSettings({ tab: initialTab }: { tab?: string }) {
   const me = useStore((s) => s.me);
@@ -1265,12 +1599,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
             { id: 'status', icon: <Smile />, label: 'Status' },
             { id: 'privacy', icon: <Shield />, label: 'Data & Privacy' },
             { id: 'notifications', icon: <Bell />, label: 'Notifications' },
-            {
-              id: 'devices',
-              icon: <Laptop />,
-              label: 'Devices',
-              comingSoon: true,
-            },
+            { id: 'devices', icon: <Laptop />, label: 'Devices' },
             {
               id: 'connections',
               icon: <Link2 />,
@@ -1359,6 +1688,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
       {tab === 'status' && <StatusTab me={me} />}
       {tab === 'privacy' && <PrivacyTab me={me as any} />}
       {tab === 'notifications' && <NotificationsTab />}
+      {tab === 'devices' && <DevicesTab />}
       {tab === 'voice' && <VoiceTab />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'keybinds' && <KeybindsTab />}

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../../apps/api-service/src/index.js';
-import { signAccessToken } from '@subspace/crypto';
+import { signAccessToken, hashPassword } from '@subspace/crypto';
 import { transmitters, affiliations, signalBlacklist, eq } from '@subspace/database';
 
 describe('Parity Section 9: Profiles E2E Suite', () => {
@@ -14,6 +14,7 @@ describe('Parity Section 9: Profiles E2E Suite', () => {
   const strangerId = 'e0000000-0000-0000-0000-000000000004';
   const blockedId = 'e0000000-0000-0000-0000-000000000005';
 
+  const STRANGER_PASSWORD = 'StrangerPassword1';
   let everyoneToken: string, friendsOnlyToken: string, friendToken: string, strangerToken: string, blockedToken: string;
 
   beforeAll(async () => {
@@ -23,11 +24,12 @@ describe('Parity Section 9: Profiles E2E Suite', () => {
 
     const db = (app as any).db;
     if (db) {
+      const strangerHash = await hashPassword(STRANGER_PASSWORD);
       const users = [
         { id: everyoneId, username: 'profile_everyone', email: 'p_everyone@subspace.net', passwordHash: 'hash', displayName: 'Everyone Vis' },
         { id: friendsOnlyId, username: 'profile_friendsonly', email: 'p_friendsonly@subspace.net', passwordHash: 'hash', displayName: 'Friends Only Vis', profileVisibility: 'friends' },
         { id: friendId, username: 'profile_friend', email: 'p_friend@subspace.net', passwordHash: 'hash', displayName: 'A Friend' },
-        { id: strangerId, username: 'profile_stranger', email: 'p_stranger@subspace.net', passwordHash: 'hash', displayName: 'A Stranger' },
+        { id: strangerId, username: 'profile_stranger', email: 'p_stranger@subspace.net', passwordHash: strangerHash, displayName: 'A Stranger' },
         { id: blockedId, username: 'profile_blocked', email: 'p_blocked@subspace.net', passwordHash: 'hash', displayName: 'Blocked User' },
       ];
       for (const u of users) {
@@ -79,7 +81,7 @@ describe('Parity Section 9: Profiles E2E Suite', () => {
       method: 'PATCH',
       url: '/api/v1/users/@me/profile',
       headers: { authorization: `Bearer ${strangerToken}` },
-      payload: { username: 'valid_username.2' },
+      payload: { username: 'valid_username.2', password: STRANGER_PASSWORD },
     });
     expect(validRes.statusCode).toBe(200);
     expect(validRes.json().transmitter.username).toBe('valid_username.2');

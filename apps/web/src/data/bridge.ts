@@ -22,7 +22,7 @@ import {
   upsertMessages,
   patchMessage,
 } from './store';
-import { ackChannel, applyReaction, loadBeacon, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshRelationships } from './actions';
+import { ackChannel, applyReaction, loadBeacon, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 
 type Raw = Record<string, any>;
@@ -304,6 +304,10 @@ const handlers: Record<string, (d: Raw) => void> = {
     rememberUsers([u]);
     const me = getState().me;
     if (me && u.id === me.id) setState({ me: { ...me, ...(d.user ?? d) } });
+  },
+  /** This device was signed out from another one (Devices settings, password change, account removal). */
+  SESSION_REVOKED() {
+    void signOut();
   },
   RELATIONSHIP_ADD(d) {
     void refreshRelationships().catch(() => {});

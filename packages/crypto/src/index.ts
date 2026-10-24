@@ -104,6 +104,8 @@ export interface TokenPayload {
   transmitterId: string;
   username: string;
   staffRank: number;
+  /** Device session this token belongs to; revoking the session invalidates the token. */
+  sid?: string;
 }
 
 /**
@@ -113,8 +115,8 @@ export interface TokenPayload {
 export type TokenType = 'access' | 'refresh' | '2fa_challenge';
 
 export function signAccessToken(payload: TokenPayload, secret: string, expiresIn: jwt.SignOptions['expiresIn'] = '15m'): string {
-  const { transmitterId, username, staffRank } = payload;
-  return jwt.sign({ transmitterId, username, staffRank, typ: 'access' }, secret, { expiresIn });
+  const { transmitterId, username, staffRank, sid } = payload;
+  return jwt.sign({ transmitterId, username, staffRank, ...(sid ? { sid } : {}), typ: 'access' }, secret, { expiresIn });
 }
 
 export function signRefreshToken(

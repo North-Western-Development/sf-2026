@@ -26,6 +26,7 @@ import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { validateMediaUrl } from '../../lib/media.js';
 import { serializeTransmitter } from '../../lib/serialize.js';
+import { confirmPassword } from '../../lib/confirm-password.js';
 
 const MAX_BIO_LENGTH = 190;
 const MAX_PRONOUNS_LENGTH = 40;
@@ -90,6 +91,9 @@ export async function applyProfileUpdate(
       };
     }
     if (newUsername !== user.username) {
+      // Like Discord, a username change asks for the current password.
+      const check = await confirmPassword(db, transmitterId, body.password);
+      if (check.fail) return check.fail;
       const newDisc = await allocateDiscriminator(db, newUsername);
       if (!newDisc) {
         return {

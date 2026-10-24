@@ -32,10 +32,18 @@ export async function buildApp() {
   // handler runs. Routes that must work signed-out opt out with `config: { public: true }`.
   // Imported here, like the route modules, so the JWT secret is read after dotenv runs.
   const { extractAuthToken } = await import('./middleware/hierarchy.js');
+  const { sessionExists } = await import('./lib/sessions.js');
   app.addHook('onRequest', async (request, reply) => {
     const config = request.routeOptions.config as { public?: boolean } | undefined;
     if (!request.routeOptions.url || config?.public) return;
-    if (!extractAuthToken(request)) return reply.status(401).send({ error: 'Authentication required' });
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    // A signed-out device (Logged-in Devices, password change, account removal) loses access at once.
+    const redis = (app as any).redis;
+    if (token.sid && redis) {
+      const alive = await sessionExists(redis, token.transmitterId, token.sid).catch(() => false);
+      if (!alive) return reply.status(401).send({ error: 'Session has been signed out', code: 'SESSION_REVOKED' });
+    }
   });
 
   await app.register(cors, {

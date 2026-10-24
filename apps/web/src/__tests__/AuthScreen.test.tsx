@@ -25,7 +25,7 @@ describe('AuthScreen', () => {
     await userEvent.type(screen.getByLabelText(/^password/i), 'hunter22!');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    expect(apiMock.login).toHaveBeenCalledWith('kira#0427', 'hunter22!');
+    expect(apiMock.login).toHaveBeenCalledWith('kira#0427', 'hunter22!', { reactivate: false });
     expect(onAuthenticated).toHaveBeenCalledWith(session);
   });
 

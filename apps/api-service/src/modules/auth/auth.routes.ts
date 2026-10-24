@@ -1,8 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { eq, and, transmitters, transmitterPasskeys } from '@subspace/database';
+import { eq, and, or, transmitters, transmitterPasskeys, beacons, beaconMembers, affiliations } from '@subspace/database';
 import { SUBSPACE_DIRECTIVES, isValidUsername } from '@subspace/constants';
 import { checkRateLimit } from '../../lib/rate-limit.js';
+import { createSession, touchSession, listSessions, revokeSessions } from '../../lib/sessions.js';
+import { publishSessionRefresh } from '../../lib/events.js';
+import { confirmPassword } from '../../lib/confirm-password.js';
 import {
   hashPassword,
   verifyPassword,
@@ -38,18 +41,20 @@ export { serializeTransmitter } from '../../lib/serialize.js';
 import { serializeTransmitter } from '../../lib/serialize.js';
 
 /**
- * Issue an access + refresh pair. Refresh tokens are single-use: their jti is stored in
- * Redis and consumed on /refresh, and removed on /logout.
+ * Issue an access + refresh pair for a device session (a new one unless `sid` is given).
+ * Refresh tokens are single-use: their jti is stored in Redis (with the session id) and
+ * consumed on /refresh, and removed on /logout.
  */
-async function issueSession(redis: any, user: any) {
+async function issueSession(redis: any, user: any, request?: any, sid?: string) {
+  const sessionId = sid ?? (await createSession(redis, user.id, request));
   const jti = randomBytes(16).toString('hex');
   const accessToken = signAccessToken(
-    { transmitterId: user.id, username: user.username, staffRank: user.staffRank },
+    { transmitterId: user.id, username: user.username, staffRank: user.staffRank, sid: sessionId },
     JWT_SECRET
   );
   const refreshToken = signRefreshToken(user.id, JWT_SECRET, '30d', jti, user.tokenVersion || 0);
   if (redis) {
-    await redis.set(`refresh:${jti}`, user.id, 'EX', REFRESH_TTL_SECONDS).catch(() => {});
+    await redis.set(`refresh:${jti}`, `${user.id}:${sessionId}`, 'EX', REFRESH_TTL_SECONDS).catch(() => {});
   }
   return {
     accessToken,
@@ -99,6 +104,8 @@ async function allocateDiscriminator(db: any, username: string): Promise<string 
   }
   return untaken.length > 0 ? untaken[Math.floor(Math.random() * untaken.length)] : null;
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // The isolated UI-test stack raises this (every browser test registers fresh accounts). Never honoured in production.
 const REGISTER_LIMIT = process.env.NODE_ENV !== 'production' && Number(process.env.REGISTER_RATE_LIMIT) > 0 ? Number(process.env.REGISTER_RATE_LIMIT) : 5;
@@ -169,7 +176,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     return reply.status(201).send({
       message: 'Transmitter registered successfully',
-      ...(await issueSession(redis, newTransmitter)),
+      ...(await issueSession(redis, newTransmitter, request)),
     });
   });
 
@@ -233,7 +240,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       user = users[0];
     }
 
-    if (!user) {
+    if (!user || user.deletedAt) {
       return reply.status(401).send({ error: 'Invalid credentials' });
     }
 
@@ -251,6 +258,15 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       });
     }
 
+    // A disabled account comes back when its owner signs in and confirms.
+    if (user.disabledAt) {
+      if (body.reactivate !== true) {
+        return reply.status(403).send({ error: 'This account is disabled', code: 'ACCOUNT_DISABLED' });
+      }
+      await db.update(transmitters).set({ disabledAt: null, updatedAt: new Date() }).where(eq(transmitters.id, user.id));
+      user.disabledAt = null;
+    }
+
     // Check if 2FA is active
     if (user.is2faEnabled) {
       return reply.send({
@@ -261,7 +277,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     return reply.send({
       message: 'Transmitter authenticated',
-      ...(await issueSession(redis, user)),
+      ...(await issueSession(redis, user, request)),
     });
   });
 
@@ -401,7 +417,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     return reply.send({
       message: '2FA verification verified',
-      ...(await issueSession(redis, user)),
+      ...(await issueSession(redis, user, request)),
     });
   });
 
@@ -420,15 +436,22 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
 
+    let sid: string | undefined;
     if (redis) {
-      const owner = await redis.getdel(`refresh:${payload.jti}`).catch(() => null);
+      const stored: string | null = await redis.getdel(`refresh:${payload.jti}`).catch(() => null);
+      const [owner, storedSid] = (stored ?? '').split(':');
       if (owner !== payload.transmitterId) {
         return reply.status(401).send({ error: 'Refresh token revoked or already used' });
       }
+      // The device was signed out from another session.
+      if (storedSid && !(await touchSession(redis, owner, storedSid, request))) {
+        return reply.status(401).send({ error: 'Session has been signed out', code: 'SESSION_REVOKED' });
+      }
+      sid = storedSid || undefined;
     }
 
     const [user] = await db.select().from(transmitters).where(eq(transmitters.id, payload.transmitterId)).limit(1);
-    if (!user) return reply.status(401).send({ error: 'Transmitter not found' });
+    if (!user || user.disabledAt || user.deletedAt) return reply.status(401).send({ error: 'Transmitter not found' });
     if (user.isBanned) {
       return reply.status(403).send({ error: 'Transmitter account has been suspended', code: 'TRANSMITTER_SUSPENDED' });
     }
@@ -438,7 +461,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(401).send({ error: 'Refresh token revoked or already used' });
     }
 
-    return reply.send(await issueSession(redis, user));
+    return reply.send(await issueSession(redis, user, request, sid));
   });
 
   /**
@@ -451,7 +474,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       typeof refreshToken === 'string'
         ? verifyTypedToken<{ transmitterId: string }>(refreshToken, JWT_SECRET, 'refresh')
         : null;
-    if (payload?.jti && redis) await redis.del(`refresh:${payload.jti}`).catch(() => {});
+    if (payload?.jti && redis) {
+      const stored: string | null = await redis.getdel(`refresh:${payload.jti}`).catch(() => null);
+      const [owner, sid] = (stored ?? '').split(':');
+      if (owner === payload.transmitterId && sid) await revokeSessions(app, owner, { ids: [sid] }).catch(() => {});
+    }
     return reply.status(204).send();
   });
 
@@ -568,10 +595,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         .set({ passwordHash: newHash, tokenVersion: newTokenVersion, updatedAt: new Date() })
         .where(eq(transmitters.id, user.id))
         .returning();
+      await revokeSessions(app, user.id, { keep: payload.sid });
 
       return reply.send({
         message: 'Password changed; other sessions have been signed out',
-        ...(await issueSession(redis, updated)),
+        ...(await issueSession(redis, updated, request, payload.sid)),
       });
     }
   );
@@ -625,5 +653,138 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const { applyProfileUpdate } = await import('../profiles/profiles.routes.js');
     const result = await applyProfileUpdate(app, db, payload.transmitterId, request.body || {});
     return reply.status(result.status).send(result.body);
+  });
+
+  /**
+   * GET /api/v1/auth/sessions
+   * Logged-in devices, most recently active first; `current` marks the caller's own.
+   */
+  app.get('/sessions', async (request, reply) => {
+    const payload = extractPayload(request)!;
+    const sessions = await listSessions(redis, payload.transmitterId);
+    return reply.send({ sessions: sessions.map((s) => ({ ...s, current: s.id === payload.sid })) });
+  });
+
+  /**
+   * DELETE /api/v1/auth/sessions/:id
+   * Sign out one device.
+   */
+  app.delete('/sessions/:id', async (request, reply) => {
+    const payload = extractPayload(request)!;
+    const { id } = request.params as { id: string };
+    const revoked = await revokeSessions(app, payload.transmitterId, { ids: [id] });
+    if (revoked.length === 0) return reply.status(404).send({ error: 'Session not found' });
+    return reply.status(204).send();
+  });
+
+  /**
+   * DELETE /api/v1/auth/sessions
+   * Sign out every device except this one.
+   */
+  app.delete('/sessions', async (request, reply) => {
+    const payload = extractPayload(request)!;
+    const revoked = await revokeSessions(app, payload.transmitterId, { keep: payload.sid });
+    return reply.send({ revoked: revoked.length });
+  });
+
+  /**
+   * PATCH /api/v1/auth/me/email
+   * Change the sign-in email; requires the current password.
+   */
+  app.patch('/me/email', async (request, reply) => {
+    const payload = extractPayload(request)!;
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const { email, password } = (request.body as any) || {};
+    if (typeof email !== 'string' || email.length > 254 || !EMAIL_RE.test(email.trim())) {
+      return reply.status(400).send({ error: 'Enter a valid email address', code: 'INVALID_EMAIL' });
+    }
+    const check = await confirmPassword(db, payload.transmitterId, password);
+    if (check.fail) return reply.status(check.fail.status).send(check.fail.body);
+
+    const clean = email.trim().toLowerCase();
+    if (clean !== check.user.email) {
+      const [taken] = await db.select({ id: transmitters.id }).from(transmitters).where(eq(transmitters.email, clean)).limit(1);
+      if (taken) return reply.status(409).send({ error: 'Email address already in use', code: 'EMAIL_TAKEN' });
+    }
+    const [updated] = await db
+      .update(transmitters)
+      .set({ email: clean, updatedAt: new Date() })
+      .where(eq(transmitters.id, check.user.id))
+      .returning();
+    return reply.send({ transmitter: serializeTransmitter(updated) });
+  });
+
+  /**
+   * POST /api/v1/auth/me/disable
+   * Disable the account: every device is signed out; signing in again offers to reactivate it.
+   */
+  app.post('/me/disable', async (request, reply) => {
+    const payload = extractPayload(request)!;
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const check = await confirmPassword(db, payload.transmitterId, (request.body as any)?.password);
+    if (check.fail) return reply.status(check.fail.status).send(check.fail.body);
+
+    await db.update(transmitters).set({ disabledAt: new Date(), updatedAt: new Date() }).where(eq(transmitters.id, check.user.id));
+    await revokeSessions(app, check.user.id);
+    return reply.status(204).send();
+  });
+
+  /**
+   * POST /api/v1/auth/me/delete
+   * Permanently delete the account. Like Discord, owned beacons must be transferred or deleted
+   * first. Transmissions stay, attributed to "Deleted User"; everything identifying is wiped.
+   */
+  app.post('/me/delete', async (request, reply) => {
+    const payload = extractPayload(request)!;
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const check = await confirmPassword(db, payload.transmitterId, (request.body as any)?.password);
+    if (check.fail) return reply.status(check.fail.status).send(check.fail.body);
+    const user = check.user;
+
+    const owned = await db.select({ id: beacons.id, name: beacons.name }).from(beacons).where(eq(beacons.ownerId, user.id));
+    if (owned.length > 0) {
+      return reply.status(400).send({
+        error: 'Transfer or delete the beacons you own before deleting your account',
+        code: 'OWNS_BEACONS',
+        beacons: owned,
+      });
+    }
+
+    const mine = or(eq(affiliations.transmitterId, user.id), eq(affiliations.targetId, user.id));
+    const peers = await db.select({ a: affiliations.transmitterId, b: affiliations.targetId }).from(affiliations).where(mine);
+    await db.delete(affiliations).where(mine);
+    await db.delete(beaconMembers).where(eq(beaconMembers.transmitterId, user.id));
+    await db.delete(transmitterPasskeys).where(eq(transmitterPasskeys.transmitterId, user.id));
+
+    const discriminator = (await allocateDiscriminator(db, 'deleted_user')) ?? user.discriminator;
+    await db
+      .update(transmitters)
+      .set({
+        username: 'deleted_user',
+        discriminator,
+        email: `deleted+${user.id}@deleted.invalid`,
+        passwordHash: await hashPassword(randomBytes(32).toString('hex')),
+        displayName: 'Deleted User',
+        avatarUrl: null,
+        bannerUrl: null,
+        bio: null,
+        pronouns: null,
+        customStatus: null,
+        displayNameStyle: null,
+        themePrimary: null,
+        themeAccent: null,
+        totpSecret: null,
+        is2faEnabled: false,
+        backupCodes: [],
+        tokenVersion: (user.tokenVersion || 0) + 1,
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(transmitters.id, user.id));
+
+    await revokeSessions(app, user.id);
+    const others = peers.flatMap((p: { a: string; b: string }) => [p.a, p.b]).filter((id: string) => id !== user.id);
+    if (others.length) await publishSessionRefresh(app, others);
+    return reply.status(204).send();
   });
 };

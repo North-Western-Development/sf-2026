@@ -59,19 +59,38 @@ function LoginForm({ onResult, onRegister }: { onResult: (r: LoginResult) => voi
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [disabled, setDisabled] = useState(false);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const signIn = async (reactivate = false) => {
     setError(null);
     setBusy(true);
     try {
-      onResult(await api.login(identifier.trim(), password));
+      onResult(await api.login(identifier.trim(), password, { reactivate }));
     } catch (err) {
-      setError(describeError(err));
+      if ((err as { code?: string }).code === 'ACCOUNT_DISABLED') setDisabled(true);
+      else setError(describeError(err));
     } finally {
       setBusy(false);
     }
   };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void signIn();
+  };
+
+  if (disabled) {
+    return (
+      <div>
+        <AuthHeading title="Account Disabled" subtitle="You disabled this account. Restore it to pick up right where you left off." />
+        <Button size="lg" fullWidth isLoading={busy} onClick={() => void signIn(true)}>
+          Restore Account
+        </Button>
+        <Button variant="link" className="mt-4" onClick={() => setDisabled(false)}>
+          Back to sign in
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={submit} noValidate>
