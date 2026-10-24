@@ -6,7 +6,7 @@ import { ChannelView } from './ChannelView';
 import { RelayIcon } from '../sidebar/BeaconSidebar';
 import { CommLinkView } from '../voice/CommLinkView';
 import { ForumView } from '../forum/ForumView';
-import { VisualGalleryView } from '../../VisualGalleryView';
+import { GalleryView } from '../gallery/GalleryView';
 
 export function RelayRoute() {
   const { beaconId = '', relayId = '' } = useParams();
@@ -22,7 +22,7 @@ export function RelayRoute() {
 
   if (relay.type === 'comm_link') return <CommLinkView relay={relay} />;
   if (relay.type === 'archival') return <ForumView relay={relay} key={relay.id} />;
-  if (relay.type === 'visual') return <VisualGalleryView relayId={relay.id} relayName={relay.name} key={relay.id} />;
+  if (relay.type === 'visual') return <GalleryView relay={relay} key={relay.id} />;
 
   return (
     <ChannelView

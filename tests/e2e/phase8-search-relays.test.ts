@@ -296,6 +296,17 @@ describe('Phase 8: Archival, Visual Relays & Subspace Search E2E Suite', () => {
       expect(gal.count).toBe(1);
       expect(gal.gallery[0].caption).toBe('High-resolution capture of Horsehead Nebula');
       expect(gal.gallery[0].attachment.filename).toBe('horsehead.png');
+      // Videos and images are told apart by type; the author carries a #tag.
+      expect(gal.gallery[0].attachment.mimeType).toBe('image/png');
+      expect(gal.gallery[0].author.discriminator).toMatch(/^\d{4}$/);
+      expect(typeof gal.canManage).toBe('boolean');
+
+      // The post also moves the relay's unread pointer, like any other transmission.
+      const db = (app as any).db;
+      if (db) {
+        const [row] = await db.select().from(relays).where(eq(relays.id, visualRelayId));
+        expect(row.lastTransmissionId).toBe(res.json().transmission.id);
+      }
     });
   });
 

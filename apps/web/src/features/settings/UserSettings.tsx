@@ -20,6 +20,7 @@ import {
   Pencil,
   Rocket,
   Shield,
+  ShieldAlert,
   ShieldCheck,
   Smartphone,
   Smile,
@@ -37,7 +38,7 @@ import { pickImage, uploadMedia } from '../../lib/media';
 import { userTag } from '../../lib/normalize';
 import { term, PRESENCE_LABELS } from '../../lib/strings';
 import type { DisplayNameStyle, SelfUser, CustomStatus, Presence } from '../../lib/types';
-import { closeModal, confirmAction, toast } from '../../app/ui';
+import { closeModal, confirmAction, openModal, toast } from '../../app/ui';
 import {
   ComingSoon,
   Field,
@@ -1663,6 +1664,14 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
             },
           ],
         },
+        ...((me.staffRank ?? 0) > 0
+          ? [
+              {
+                heading: 'Instance Staff',
+                items: [{ id: 'console', icon: <ShieldAlert />, label: 'Command Console', onClick: () => openModal({ kind: 'console' }) }],
+              },
+            ]
+          : []),
         {
           items: [
             {

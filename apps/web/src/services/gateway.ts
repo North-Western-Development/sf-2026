@@ -62,13 +62,17 @@ class SubspaceGatewayClient {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/gateway`;
 
-    this.ws = new WebSocket(wsUrl);
+    const socket = new WebSocket(wsUrl);
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    // Handlers ignore a socket that has since been replaced or closed by disconnect().
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       this.isConnecting = false;
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       try {
         const payload = JSON.parse(event.data);
         this.handlePayload(payload);
@@ -77,7 +81,8 @@ class SubspaceGatewayClient {
       }
     };
 
-    this.ws.onclose = () => {
+    socket.onclose = () => {
+      if (this.ws !== socket) return;
       this.isConnecting = false;
       this.stopHeartbeat();
       this.ws = null;
@@ -92,8 +97,8 @@ class SubspaceGatewayClient {
       this.reconnectTimer = setTimeout(() => this.connect(), delay);
     };
 
-    this.ws.onerror = () => {
-      this.ws?.close();
+    socket.onerror = () => {
+      socket.close();
     };
   }
 
@@ -103,9 +108,13 @@ class SubspaceGatewayClient {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     this.stopHeartbeat();
-    this.ws?.close();
+    const socket = this.ws;
     this.ws = null;
+    // A socket closed while still connecting must not block the next connect().
+    this.isConnecting = false;
+    socket?.close();
     this.cachedVoiceStates.clear();
+    this.emitStatus('offline');
   }
 
   private handlePayload(payload: any) {

@@ -8,9 +8,9 @@ import { NotificationSettingsModal } from '../features/modals/NotificationSettin
 import { ProfileModal } from '../features/profile/ProfilePopout';
 import { UserSettings } from '../features/settings/UserSettings';
 import { BeaconSettings } from '../features/settings/BeaconSettings';
-import { SubspaceVaultModal } from '../SubspaceVaultModal';
-import { CommandConsoleModal } from '../CommandConsoleModal';
-import { IncidentFlareModal } from '../IncidentFlareModal';
+import { VaultModal } from '../features/vault/VaultModal';
+import { ConsoleModal } from '../features/console/ConsoleModal';
+import { ReportModal } from '../features/modals/ReportModal';
 
 /** Renders the active modal (single slot) and any confirm/prompt dialog stacked above it. */
 export function ModalHost() {
@@ -57,14 +57,14 @@ export function ModalHost() {
       content = <QuickScanModal />;
       break;
     case 'vault':
-      content = <SubspaceVaultModal isOpen onClose={closeModal} />;
+      content = <VaultModal onClose={closeModal} />;
       break;
     case 'console':
-      content = <CommandConsoleModal isOpen onClose={closeModal} staffRank={staffRank} />;
+      content = <ConsoleModal staffRank={staffRank} />;
       break;
     case 'report': {
       const label = modal.targetType === 'transmitter' ? users[modal.targetId]?.username ?? 'Transmitter' : modal.targetType === 'beacon' ? 'Beacon' : 'Transmission';
-      content = <IncidentFlareModal isOpen onClose={closeModal} targetType={modal.targetType} targetId={modal.targetId} targetLabel={label} />;
+      content = <ReportModal onClose={closeModal} targetType={modal.targetType} targetId={modal.targetId} targetLabel={label} />;
       break;
     }
     default:

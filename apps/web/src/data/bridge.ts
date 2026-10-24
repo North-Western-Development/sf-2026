@@ -117,9 +117,10 @@ const handlers: Record<string, (d: Raw) => void> = {
     for (const key of Object.keys(messages) as ChannelKey[]) if (messages[key].loaded) void loadMessages(key);
   },
   RELATIONSHIPS_REFRESH(d) {
-    const me = getState().me;
+    // READY can beat the REST load that fills in `me`, so prefer the id the gateway sends.
+    const meId = d.transmitter?.id ?? getState().me?.id;
     // Snapshots carry status only; keep custom statuses already received (or set by me since boot).
-    if (me && d.presence) setPresence(me.id, { status: d.presence });
+    if (meId && d.presence) setPresence(meId, { status: d.presence });
     for (const p of d.presences ?? []) setPresence(p.transmitter_id, { status: p.presence, ...(p.custom_status !== undefined ? { customStatus: p.custom_status } : {}) });
     handlers.VOICE_STATES_REPLACE(d);
   },

@@ -8,6 +8,8 @@ import {
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { resolveVaultAttachments } from '../../lib/attachments.js';
+import { publishGatewayEvent } from '../../lib/events.js';
+import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 
 export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -80,6 +82,10 @@ export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.SEND_TRANSMISSIONS)) {
       return reply.status(403).send({ error: 'Transmitter lacks SEND_TRANSMISSIONS clearance' });
     }
+    // Every visual post is an upload.
+    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.ATTACH_FILES)) {
+      return reply.status(403).send({ error: 'Transmitter lacks ATTACH_FILES clearance' });
+    }
 
     const body = request.body as any;
     const { content, attachmentIds } = body || {};
@@ -110,6 +116,20 @@ export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         attachments,
       })
       .returning();
+    await touchChannelLastTransmission(db, { channelType: 'relay', channelId: targetRelay.id }, newTransmission.id, newTransmission.createdAt);
+
+    const [author] = await db
+      .select({ id: transmitters.id, username: transmitters.username, discriminator: transmitters.discriminator, displayName: transmitters.displayName, avatarUrl: transmitters.avatarUrl })
+      .from(transmitters)
+      .where(eq(transmitters.id, token.transmitterId))
+      .limit(1);
+    // Live gallery updates and unread markers for everyone who can see the relay.
+    await publishGatewayEvent(
+      app,
+      'TRANSMISSION_CREATE',
+      { relay_id: targetRelay.id, beacon_id: targetRelay.beaconId, transmission: { ...newTransmission, author: author || null } },
+      { relayId: targetRelay.id }
+    );
 
     return reply.status(201).send({
       message: 'Visual artifact posted',
@@ -125,7 +145,7 @@ export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     const ctx = await resolveRelayContext(request, reply);
     if (!ctx) return;
 
-    const { targetRelay } = ctx;
+    const { targetRelay, actorContext } = ctx;
 
     const records = await db
       .select({
@@ -133,6 +153,7 @@ export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         author: {
           id: transmitters.id,
           username: transmitters.username,
+          discriminator: transmitters.discriminator,
           displayName: transmitters.displayName,
           avatarUrl: transmitters.avatarUrl,
         },
@@ -146,7 +167,7 @@ export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     const galleryItems: Array<{
       transmissionId: string;
       caption: string;
-      attachment: { id: string; url: string; filename: string; size: number };
+      attachment: { id: string; url: string; filename: string; size: number; mimeType?: string };
       author: any;
       createdAt: Date;
     }> = [];
@@ -166,6 +187,8 @@ export const visualRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
     return reply.send({
       relayId: targetRelay.id,
+      // Lets the client offer Delete on others' posts, as the transmission delete route allows.
+      canManage: hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_TRANSMISSIONS),
       count: galleryItems.length,
       gallery: galleryItems,
     });

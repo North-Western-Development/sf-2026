@@ -1,5 +1,9 @@
 import { test as base, expect, request as playwrightRequest, type APIRequestContext, type Browser, type Page } from '@playwright/test';
 
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
 export const BASE_URL = 'http://localhost:4173';
 export const PASSWORD = 'ui-test-password-1';
 
@@ -82,6 +86,26 @@ export async function register(prefix = 'pilot', displayName?: string): Promise<
   if (!res.ok()) throw new Error(`register ${username} -> ${res.status()} ${await res.text()}`);
   const body = await res.json();
   return { accessToken: body.accessToken, refreshToken: body.refreshToken, transmitter: { ...body.transmitter, email: `${username}@ui-test.subspace` }, api: new Api(ctx, body.accessToken) };
+}
+
+const importEsm = new Function('url', 'return import(url)') as (url: string) => Promise<any>;
+
+/**
+ * Make a test account instance staff. There is deliberately no API for granting the first
+ * staff rank, so this writes the test database directly (and refuses any other database).
+ */
+export async function promoteToStaff(session: Session, rank = 3) {
+  const { loadNativeEnv } = await importEsm(pathToFileURL(path.resolve(__dirname, '../../scripts/native/env.mjs')).href);
+  const { DATABASE_URL } = loadNativeEnv({ test: true });
+  if (!/_test(\?|$)/.test(DATABASE_URL)) throw new Error('Refusing to promote outside the test database');
+  const { Client } = createRequire(path.resolve(__dirname, '../../packages/database/package.json'))('pg');
+  const client = new Client({ connectionString: DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query('UPDATE transmitters SET staff_rank = $1 WHERE id = $2', [rank, session.transmitter.id]);
+  } finally {
+    await client.end();
+  }
 }
 
 /** Put the session in localStorage before the app boots, exactly as a real sign-in leaves it. */
