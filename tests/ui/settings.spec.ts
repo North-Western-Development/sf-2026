@@ -66,7 +66,7 @@ test.describe('User settings', () => {
     await dialog.getByRole('button', { name: 'Done' }).click();
     await expect(dialog.getByText(/Password does not match/)).toBeVisible();
     // A wrong password must not end the session.
-    await expect(page.getByRole('button', { name: 'Sign in' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(0);
     await expect(dialog).toBeVisible();
   });
 

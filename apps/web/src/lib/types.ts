@@ -48,6 +48,7 @@ export interface SelfUser extends UserRef {
   themeAccent?: string | null;
   customStatus?: CustomStatus | null;
   is2faEnabled?: boolean;
+  isEmailVerified?: boolean;
   createdAt?: string;
 }
 

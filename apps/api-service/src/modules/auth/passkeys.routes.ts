@@ -6,6 +6,7 @@ import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { confirmPassword } from '../../lib/confirm-password.js';
 import { checkRateLimit } from '../../lib/rate-limit.js';
 import { issueSession } from './auth.routes.js';
+import { trustedOrigin } from '../../lib/origin.js';
 
 const RP_NAME = process.env.RP_NAME || 'Subspace Frequency';
 const CHALLENGE_TTL_SECONDS = 300;
@@ -16,20 +17,8 @@ const MAX_PASSKEYS = 10;
  * (WEBAUTHN_ORIGINS, else PUBLIC_ORIGIN); development also accepts any localhost origin.
  */
 export function relyingParty(request: FastifyRequest): { origin: string; rpID: string } | null {
-  const origin = String(request.headers.origin || '');
-  let url: URL;
-  try {
-    url = new URL(origin);
-  } catch {
-    return null;
-  }
-  const allowed = (process.env.WEBAUTHN_ORIGINS || process.env.PUBLIC_ORIGIN || '')
-    .split(',')
-    .map((o) => o.trim().replace(/\/$/, ''))
-    .filter(Boolean);
-  const local = ['localhost', '127.0.0.1'].includes(url.hostname) || url.hostname.endsWith('.localhost');
-  if (!allowed.includes(url.origin) && !(process.env.NODE_ENV !== 'production' && local)) return null;
-  return { origin: url.origin, rpID: process.env.RP_ID || url.hostname };
+  const url = trustedOrigin(request);
+  return url ? { origin: url.origin, rpID: process.env.RP_ID || url.hostname } : null;
 }
 
 const publicPasskey = (p: any) => ({

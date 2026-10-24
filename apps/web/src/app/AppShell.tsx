@@ -16,6 +16,7 @@ import { InviteRoute } from '../features/invite/InviteRoute';
 import { ModalHost } from './ModalHost';
 import { ProfilePopoutHost } from '../features/profile/ProfilePopout';
 import { Toasts } from './Toasts';
+import { NoticeBar } from './NoticeBar';
 import { PixelStar } from '../features/auth/PixelStar';
 import { lastRelay } from './ui';
 import { useGlobalShortcuts } from './shortcuts';
@@ -60,20 +61,23 @@ function Boot({ children }: { children: React.ReactNode }) {
 function Layout({ sidebar }: { sidebar: React.ReactNode }) {
   useGlobalShortcuts();
   return (
-    <div className="flex h-full w-full overflow-hidden bg-void text-fg">
-      {/* Rail + sidebar share one column so the user island can span both (Discord layout). */}
-      <div className="relative flex w-[312px] shrink-0 flex-col">
-        <div className="flex min-h-0 flex-1">
-          <BeaconRail />
-          <aside className="flex w-60 shrink-0 flex-col overflow-hidden rounded-tl-xl bg-raised">
-            <div className="min-h-0 flex-1">{sidebar}</div>
-          </aside>
+    <div className="flex h-full w-full flex-col overflow-hidden bg-void text-fg">
+      <NoticeBar />
+      <div className="flex min-h-0 w-full flex-1">
+        {/* Rail + sidebar share one column so the user island can span both (Discord layout). */}
+        <div className="relative flex w-[312px] shrink-0 flex-col">
+          <div className="flex min-h-0 flex-1">
+            <BeaconRail />
+            <aside className="flex w-60 shrink-0 flex-col overflow-hidden rounded-tl-xl bg-raised">
+              <div className="min-h-0 flex-1">{sidebar}</div>
+            </aside>
+          </div>
+          <UserPanel />
         </div>
-        <UserPanel />
+        <main className="flex min-w-0 flex-1 flex-col bg-base">
+          <Outlet />
+        </main>
       </div>
-      <main className="flex min-w-0 flex-1 flex-col bg-base">
-        <Outlet />
-      </main>
       <ModalHost />
       <ProfilePopoutHost />
       <Toasts />

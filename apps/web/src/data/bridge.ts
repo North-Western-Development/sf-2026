@@ -314,6 +314,10 @@ const handlers: Record<string, (d: Raw) => void> = {
     const me = getState().me;
     if (me && u.id === me.id) setState({ me: { ...me, ...(d.user ?? d) } });
   },
+  EMAIL_VERIFIED() {
+    const me = getState().me;
+    if (me) setState({ me: { ...me, isEmailVerified: true } });
+  },
   /** This device was signed out from another one (Devices settings, password change, account removal). */
   SESSION_REVOKED() {
     void signOut();

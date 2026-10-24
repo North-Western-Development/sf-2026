@@ -27,7 +27,7 @@ test.describe('Messaging', () => {
     await signIn(page, me, `/channels/${beacon.id}/${relay.id}`);
     const composer = page.getByRole('textbox', { name: /^Transmit to #/ });
 
-    await composer.fill('**bold** *italic* ~~gone~~ __under__ `inline()` ||secret|| https://example.com');
+    await composer.fill('**bold** *italic* ~~gone~~ __under__ `inline()` ||secret|| https://example.invalid');
     await composer.press('Enter');
     const msg = page.getByRole('article').last();
     await expect(msg.locator('strong', { hasText: 'bold' })).toBeVisible();
@@ -35,7 +35,7 @@ test.describe('Messaging', () => {
     await expect(msg.locator('s', { hasText: 'gone' })).toBeVisible();
     await expect(msg.locator('u', { hasText: 'under' })).toBeVisible();
     await expect(msg.locator('code', { hasText: 'inline()' })).toBeVisible();
-    await expect(msg.getByRole('link', { name: 'https://example.com' })).toHaveAttribute('rel', /noopener/);
+    await expect(msg.getByRole('link', { name: 'https://example.invalid' })).toHaveAttribute('rel', /noopener/);
 
     const spoiler = msg.getByRole('button', { name: 'Spoiler, activate to reveal' });
     await expect(spoiler).toBeVisible();

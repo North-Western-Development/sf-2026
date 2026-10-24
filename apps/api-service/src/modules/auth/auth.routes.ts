@@ -4,8 +4,10 @@ import { eq, and, or, transmitters, transmitterPasskeys, beacons, beaconMembers,
 import { SUBSPACE_DIRECTIVES, isValidUsername } from '@subspace/constants';
 import { checkRateLimit } from '../../lib/rate-limit.js';
 import { createSession, touchSession, listSessions, revokeSessions } from '../../lib/sessions.js';
-import { publishSessionRefresh } from '../../lib/events.js';
+import { publishSessionRefresh, publishGatewayEvent } from '../../lib/events.js';
 import { confirmPassword } from '../../lib/confirm-password.js';
+import { sendVerificationEmail, sendEmailChangedNotice, verifyEmailToken } from '../../lib/email-verification.js';
+import { emailVerificationEnabled } from '../../lib/mailer.js';
 import {
   hashPassword,
   verifyPassword,
@@ -165,10 +167,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         email: email.trim().toLowerCase(),
         passwordHash,
         displayName: displayName?.trim() || username.trim(),
-        isEmailVerified: true, // Default to true if SMTP toggle is off
+        isEmailVerified: !emailVerificationEnabled(),
         lastAgreedRulesVersion: acceptDirectives === true ? CURRENT_RULES_VERSION : 0,
       })
       .returning();
+    if (!newTransmitter.isEmailVerified) await sendVerificationEmail(app, newTransmitter, request);
 
     return reply.status(201).send({
       message: 'Transmitter registered successfully',
@@ -707,7 +710,54 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       .set({ email: clean, updatedAt: new Date() })
       .where(eq(transmitters.id, check.user.id))
       .returning();
+    if (clean !== check.user.email) {
+      await sendVerificationEmail(app, updated, request);
+      await sendEmailChangedNotice(app, check.user.email, updated);
+      const [fresh] = await db.select().from(transmitters).where(eq(transmitters.id, updated.id)).limit(1);
+      return reply.send({ transmitter: serializeTransmitter(fresh) });
+    }
     return reply.send({ transmitter: serializeTransmitter(updated) });
+  });
+
+  /**
+   * POST /api/v1/auth/verify-email  { token }
+   * Opened from the link in the verification email; works signed in or out.
+   */
+  app.post(
+    '/verify-email',
+    {
+      config: { public: true, rateLimit: { max: 20, timeWindow: '1 minute' } },
+      schema: { body: { type: 'object', required: ['token'], properties: { token: { type: 'string', maxLength: 200 } } } },
+    },
+    async (request, reply) => {
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+      const result = await verifyEmailToken(db, (request.body as { token: string }).token);
+      if (!result.ok) {
+        return reply.status(400).send({
+          error: result.code === 'TOKEN_EXPIRED' ? 'This link has expired. Send a new one from Subspace.' : 'This link is invalid or was already used.',
+          code: result.code,
+        });
+      }
+      // Other open tabs drop their "verify your email" notice.
+      await publishGatewayEvent(app, 'EMAIL_VERIFIED', {}, { transmitterIds: [result.userId] });
+      return reply.send({ verified: true });
+    }
+  );
+
+  /**
+   * POST /api/v1/auth/verify-email/resend
+   */
+  app.post('/verify-email/resend', async (request, reply) => {
+    const payload = extractPayload(request)!;
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    if (!(await checkRateLimit(redis, `rl:verify-resend:${payload.transmitterId}`, 3, 600))) {
+      return reply.status(429).send({ error: 'You can resend a few times every ten minutes. Check your spam folder too.', code: 'RATE_LIMITED' });
+    }
+    const [user] = await db.select().from(transmitters).where(eq(transmitters.id, payload.transmitterId)).limit(1);
+    if (!user) return reply.status(404).send({ error: 'Transmitter not found' });
+    if (user.isEmailVerified) return reply.status(409).send({ error: 'Your email is already verified', code: 'ALREADY_VERIFIED' });
+    await sendVerificationEmail(app, user, request);
+    return reply.status(202).send({ sent: true });
   });
 
   /**

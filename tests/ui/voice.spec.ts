@@ -21,13 +21,13 @@ test.describe('Comm-Links (voice and video)', () => {
     await theirs.context().grantPermissions(['microphone', 'camera']);
 
     await page.getByRole('button', { name: /^Join / }).click();
-    await expect(page.getByRole('button', { name: 'Disconnect' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('main').getByRole('button', { name: 'Disconnect' })).toBeVisible({ timeout: 20_000 });
     // The other pilot sees who is in the Comm-Link before joining.
     const myTileForThem = theirs.getByRole('group', { name: me.transmitter.displayName });
     await expect(myTileForThem).toBeVisible();
 
     await theirs.getByRole('button', { name: /^Join / }).click();
-    await expect(theirs.getByRole('button', { name: 'Disconnect' })).toBeVisible({ timeout: 20_000 });
+    await expect(theirs.getByRole('main').getByRole('button', { name: 'Disconnect' })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole('group', { name: 'Crew Member' })).toBeVisible();
 
     // Audio reaches the SFU: LiveKit reports my fake microphone as speaking to the other pilot.
@@ -40,17 +40,17 @@ test.describe('Comm-Links (voice and video)', () => {
     await expect(myTileForThem.getByLabel('Muted')).toHaveCount(0);
 
     // Camera: the other pilot receives real frames.
-    await page.getByRole('button', { name: 'Turn On Camera' }).click();
+    await page.getByRole('main').getByRole('button', { name: 'Turn On Camera' }).click();
     const video = myTileForThem.locator('video');
     await expect(video).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 20_000 }).toBeGreaterThan(0);
-    await page.getByRole('button', { name: 'Turn Off Camera' }).click();
+    await page.getByRole('main').getByRole('button', { name: 'Turn Off Camera' }).click();
     await expect(video).toHaveCount(0);
 
     // Leaving removes the tile for everyone.
-    await page.getByRole('button', { name: 'Disconnect' }).click();
+    await page.getByRole('main').getByRole('button', { name: 'Disconnect' }).click();
     await expect(myTileForThem).toHaveCount(0);
-    await theirs.getByRole('button', { name: 'Disconnect' }).click();
+    await theirs.getByRole('main').getByRole('button', { name: 'Disconnect' }).click();
     await theirs.context().close();
   });
 });

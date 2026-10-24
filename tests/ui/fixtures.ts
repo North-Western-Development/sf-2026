@@ -78,7 +78,11 @@ export class Api {
   }
 }
 
-export async function register(prefix = 'pilot', displayName?: string): Promise<Session> {
+/**
+ * A fresh account. Accounts start with their email verified, like an established user; pass
+ * `{ verified: false }` to keep the "verify your email" state.
+ */
+export async function register(prefix = 'pilot', displayName?: string, { verified = true } = {}): Promise<Session> {
   const ctx = await playwrightRequest.newContext({ baseURL: BASE_URL });
   const username = uniqueName(prefix);
   const res = await ctx.post('/api/v1/auth/register', {
@@ -86,6 +90,10 @@ export async function register(prefix = 'pilot', displayName?: string): Promise<
   });
   if (!res.ok()) throw new Error(`register ${username} -> ${res.status()} ${await res.text()}`);
   const body = await res.json();
+  if (verified) {
+    await (await testDb()).query('UPDATE transmitters SET is_email_verified = true, email_verification_code = NULL WHERE id = $1', [body.transmitter.id]);
+    body.transmitter.isEmailVerified = true;
+  }
   return { accessToken: body.accessToken, refreshToken: body.refreshToken, transmitter: { ...body.transmitter, email: `${username}@ui-test.subspace` }, api: new Api(ctx, body.accessToken) };
 }
 
@@ -96,18 +104,23 @@ const importEsm = new Function('url', 'return import(url)') as (url: string) => 
  * staff rank, so this writes the test database directly (and refuses any other database).
  */
 export async function promoteToStaff(session: Session, rank = 3) {
-  const { loadNativeEnv } = await importEsm(pathToFileURL(path.resolve(__dirname, '../../scripts/native/env.mjs')).href);
-  const { DATABASE_URL } = loadNativeEnv({ test: true });
-  if (!/_test(\?|$)/.test(DATABASE_URL)) throw new Error('Refusing to promote outside the test database');
-  const { Client } = createRequire(path.resolve(__dirname, '../../packages/database/package.json'))('pg');
-  const client = new Client({ connectionString: DATABASE_URL });
-  await client.connect();
-  try {
-    await client.query('UPDATE transmitters SET staff_rank = $1 WHERE id = $2', [rank, session.transmitter.id]);
-  } finally {
-    await client.end();
-  }
+  await (await testDb()).query('UPDATE transmitters SET staff_rank = $1 WHERE id = $2', [rank, session.transmitter.id]);
 }
+
+let pool: Promise<{ query: (sql: string, params?: unknown[]) => Promise<unknown> }> | null = null;
+/** A connection to the test database for arranging state no API offers. Refuses any other database. */
+function testDb() {
+  pool ??= (async () => {
+    const { loadNativeEnv } = await importEsm(pathToFileURL(path.resolve(__dirname, '../../scripts/native/env.mjs')).href);
+    const { DATABASE_URL } = loadNativeEnv({ test: true });
+    if (!/_test(\?|$)/.test(DATABASE_URL)) throw new Error('Refusing to write outside the test database');
+    const { Pool } = createRequire(path.resolve(__dirname, '../../packages/database/package.json'))('pg');
+    return new Pool({ connectionString: DATABASE_URL, max: 2 });
+  })();
+  return pool;
+}
+
+export { UI_MAIL_DIR as MAIL_DIR, waitForMailFile } from '../support/mail-sink';
 
 /** Put the session in localStorage before the app boots, exactly as a real sign-in leaves it. */
 export async function signIn(page: Page, session: Session, path = '/channels/@me', { shell = !path.startsWith('/invite/') } = {}) {

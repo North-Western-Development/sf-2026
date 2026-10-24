@@ -32,6 +32,8 @@ if (testStack) {
   env.UNFURL_ALLOW_PRIVATE_HOSTS = 'localhost';
   // Cloud drive tests talk to the mock providers Playwright starts (tests/support/mock-drives.ts).
   env.DRIVE_MOCK_ORIGIN = 'http://127.0.0.1:4195';
+  // Email goes to the SMTP sink Playwright starts (tests/support/mail-sink.ts).
+  Object.assign(env, { SMTP_HOST: '127.0.0.1', SMTP_PORT: '4196', SMTP_SECURE: 'false', SMTP_INSECURE: 'true', SMTP_USER: '' });
   for (const [id, secret] of [['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], ['ONEDRIVE_CLIENT_ID', 'ONEDRIVE_CLIENT_SECRET'], ['DROPBOX_APP_KEY', 'DROPBOX_APP_SECRET']]) {
     env[id] ||= 'ui-test-client';
     env[secret] ||= 'ui-test-secret';

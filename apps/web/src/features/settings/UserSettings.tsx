@@ -674,6 +674,9 @@ function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
               <button type="button" className="text-brand-sky hover:underline" onClick={() => setRevealEmail((v) => !v)}>
                 {revealEmail ? 'Hide' : 'Reveal'}
               </button>
+              {me.isEmailVerified === false && (
+                <span className="ml-2 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning">Unverified</span>
+              )}
             </>
           }
           action={<RowButton onClick={() => setDialog('email')}>Edit</RowButton>}

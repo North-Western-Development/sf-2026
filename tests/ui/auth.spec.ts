@@ -34,7 +34,7 @@ test.describe('Authentication', () => {
     await page.goto('/');
     await page.getByLabel(/^Email or tag/).fill(`${pilot.transmitter.username}#${pilot.transmitter.discriminator}`);
     await page.getByLabel(/^Password/).fill(PASSWORD);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Beacons' })).toBeVisible();
 
     // The session survives a reload.
@@ -44,9 +44,9 @@ test.describe('Authentication', () => {
     await page.getByRole('button', { name: 'User Settings' }).click();
     await page.getByRole('button', { name: 'Log Out' }).click();
     await page.getByRole('dialog', { name: 'Log Out' }).getByRole('button', { name: 'Log Out' }).click();
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
   });
 
   test('rejects a wrong password without revealing which part was wrong', async ({ page }) => {
@@ -54,7 +54,7 @@ test.describe('Authentication', () => {
     await page.goto('/');
     await page.getByLabel(/^Email or tag/).fill(pilot.transmitter.email);
     await page.getByLabel(/^Password/).fill('definitely-wrong');
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Beacons' })).toHaveCount(0);
   });

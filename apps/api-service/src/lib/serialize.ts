@@ -20,6 +20,7 @@ export function serializeTransmitter(user: any) {
     customStatus: user.customStatus ?? null,
     profileVisibility: user.profileVisibility || 'everyone',
     is2faEnabled: Boolean(user.is2faEnabled),
+    isEmailVerified: Boolean(user.isEmailVerified),
     createdAt: user.createdAt,
   };
 }

@@ -19,6 +19,7 @@ const PUBLIC: Record<string, string> = {
   'POST /api/v1/auth/logout': 'idempotent; revokes the refresh token in the body',
   'POST /api/v1/auth/passkeys/login/options': 'passwordless sign-in starts signed out; only issues a challenge',
   'POST /api/v1/auth/passkeys/login/verify': 'passwordless sign-in; authenticated by the passkey signature over the challenge',
+  'POST /api/v1/auth/verify-email': 'opened from the emailed link, possibly signed out; authenticated by the single-use token',
   'GET /api/v1/auth/directives': 'platform rules shown on the sign-up page',
   'GET /api/v1/invites/:code': 'invite preview for signed-out visitors',
   'GET /api/v1/system/info': 'instance name and terminology, no user data',

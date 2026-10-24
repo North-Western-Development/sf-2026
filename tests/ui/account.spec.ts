@@ -18,7 +18,7 @@ async function secondDevice(me: Session, userAgent: string): Promise<Session> {
 async function signInWithPassword(page: Page, me: Session) {
   await page.getByLabel('Email or tag').fill(me.transmitter.email);
   await page.getByLabel('Password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
 
 test.describe('Account settings', () => {
@@ -40,7 +40,7 @@ test.describe('Account settings', () => {
     await expect(settings.getByText("You're not signed in anywhere else.")).toBeVisible();
 
     // The phone is dropped by the gateway and lands on the sign-in screen without reloading.
-    await expect(other.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(other.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
     await otherContext.close();
 
     // This device is unaffected.
@@ -96,7 +96,7 @@ test.describe('Account settings', () => {
     await dialog.getByLabel(/^Current Password/).fill(PASSWORD);
     await dialog.getByRole('button', { name: 'Disable Account' }).click();
 
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
     await signInWithPassword(page, me);
     await expect(page.getByRole('heading', { name: 'Account Disabled' })).toBeVisible();
     await page.getByRole('button', { name: 'Restore Account' }).click();
@@ -126,7 +126,7 @@ test.describe('Account settings', () => {
     await dialog.getByLabel(/^Current Password/).fill(PASSWORD);
     await dialog.getByRole('button', { name: 'Delete Account' }).click();
 
-    await expect(fresh.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(fresh.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
     await signInWithPassword(fresh, leaver);
     await expect(fresh.getByRole('alert')).toHaveText(/credentials do not match/);
     await expect(fresh.getByRole('navigation', { name: 'Beacons' })).toHaveCount(0);

@@ -1,7 +1,9 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Redis } from 'ioredis';
+import fs from 'node:fs';
 import { startMockDrives } from '../support/mock-drives';
+import { startMailSink, UI_MAIL_DIR as MAIL_DIR } from '../support/mail-sink';
 
 // Native ESM import of the shared .mjs env loader (Playwright compiles this file to CommonJS).
 const importEsm = new Function('url', 'return import(url)') as (url: string) => Promise<any>;
@@ -39,5 +41,14 @@ export default async function globalSetup() {
     if (err.code === 'EADDRINUSE') return null; // another run's mock is already serving
     throw err;
   });
-  return async () => drives?.close();
+  // SMTP sink for email tests (SMTP_HOST/PORT in the test stack); messages land in MAIL_DIR.
+  fs.rmSync(MAIL_DIR, { recursive: true, force: true });
+  const mail = await startMailSink(4196, MAIL_DIR).catch((err) => {
+    if (err.code === 'EADDRINUSE') return null;
+    throw err;
+  });
+  return async () => {
+    await drives?.close();
+    await mail?.close();
+  };
 }
