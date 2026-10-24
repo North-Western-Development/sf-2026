@@ -1,0 +1,32 @@
+{
+  "name": "@subspace/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Subspace Frequency mobile app (Expo): a native shell around a Subspace instance",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bundle": "expo export --platform android --output-dir dist"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "57.0.20",
+    "expo-constants": "~57.0.17",
+    "expo-haptics": "~57.0.2",
+    "expo-notifications": "~57.0.17",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-webview": "13.16.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}

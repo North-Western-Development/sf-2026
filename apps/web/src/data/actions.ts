@@ -38,6 +38,7 @@ import {
 import { api } from '../services/api';
 import { encryptFor, isEncryptedChannel, openEncrypted, rememberSent } from './e2ee';
 import { ensureDevice, forgetDevice } from '../lib/e2ee/client';
+import { registerPushToken, unregisterPushToken } from '../lib/native';
 import { toast } from '../app/ui';
 import { gateway } from '../services/gateway';
 
@@ -161,6 +162,7 @@ export async function bootstrap(): Promise<void> {
   void loadCalls().catch(() => {});
   // Set up this browser for end-to-end encryption in the background.
   void ensureDevice(me.id);
+  registerPushToken();
 }
 
 /** Active calls in this user's direct links and meshes (so a call in progress shows after a reload). */
@@ -598,6 +600,7 @@ async function bootstrapLinks() {
 }
 
 export async function signOut() {
+  await unregisterPushToken();
   gateway.disconnect();
   forgetDevice();
   await api.logout();

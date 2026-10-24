@@ -7,6 +7,7 @@ import { publishGatewayEvent } from '../../lib/events.js';
 import { formatTransmission } from '../../lib/transmissions.js';
 import { loadChannel } from '../../lib/channels.js';
 import { touchChannelLastTransmission } from '../../lib/read-state.js';
+import { queuePush } from '../../lib/push.js';
 
 const LIVEKIT_API_KEY = requireSecret('LIVEKIT_API_KEY', 'subspace_api_key');
 const LIVEKIT_API_SECRET = requireSecret('LIVEKIT_API_SECRET', 'subspace_secret_key_frequency');
@@ -136,6 +137,9 @@ export const callRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     };
     await writeCall(call, UNANSWERED_TTL_SECONDS);
     await announce('CALL_CREATE', call);
+    queuePush(app, call.ringing, { title: 'Incoming call', body: `${formatted.author?.displayName || formatted.author?.username || 'Someone'} is calling`, path: `/channels/@me/${channelId}` }, [
+      { type: channelType, id: channelId },
+    ]);
     return reply.status(201).send({ call: publicCall(call) });
   });
 

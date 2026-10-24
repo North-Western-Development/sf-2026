@@ -153,6 +153,8 @@ export async function buildApp() {
   await app.register(callRoutes, { prefix: '/api/v1/calls' });
   const { e2eeRoutes } = await import('./modules/e2ee/e2ee.routes.js');
   await app.register(e2eeRoutes, { prefix: '/api/v1/e2ee' });
+  const { pushRoutes } = await import('./modules/push/push.routes.js');
+  await app.register(pushRoutes, { prefix: '/api/v1/push' });
 
   const { affiliationRoutes } = await import('./modules/affiliations/affiliations.routes.js');
   await app.register(affiliationRoutes, { prefix: '/api/v1/affiliations' });

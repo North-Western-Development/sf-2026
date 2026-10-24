@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Subspace Frequency",
+    "slug": "subspace-frequency",
+    "scheme": "subspace",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#030305",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#030305"
+    },
+    "ios": {
+      "bundleIdentifier": "click.subspace.mobile",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Subspace uses the camera for video in calls and Comm-Links.",
+        "NSMicrophoneUsageDescription": "Subspace uses the microphone for voice in calls and Comm-Links.",
+        "UIBackgroundModes": ["audio", "remote-notification"]
+      }
+    },
+    "android": {
+      "package": "click.subspace.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#030305"
+      },
+      "permissions": ["CAMERA", "RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS", "POST_NOTIFICATIONS", "VIBRATE"]
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#3B8EF2"
+        }
+      ]
+    ]
+  }
+}

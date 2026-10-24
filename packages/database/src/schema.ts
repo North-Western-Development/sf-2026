@@ -385,6 +385,14 @@ export const e2eeOneTimePreKeys = pgTable('e2ee_one_time_pre_keys', {
   primaryKey({ columns: [table.deviceId, table.keyId] }),
 ]);
 
+/** Expo push tokens of the mobile app installs a transmitter is signed in on. */
+export const pushTokens = pgTable('push_tokens', {
+  token: text('token').primaryKey(),
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  platform: text('platform').default('unknown').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 /**
  * Cloud drive connections (Google Drive, OneDrive, Dropbox) for importing into the vault.
  * Tokens are AES-256-GCM encrypted by the file service; never stored or returned in clear.

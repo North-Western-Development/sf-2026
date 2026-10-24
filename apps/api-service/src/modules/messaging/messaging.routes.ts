@@ -28,6 +28,7 @@ import { formatTransmission, deriveChannel } from '../../lib/transmissions.js';
 import { parseMentions } from '../../lib/mentions.js';
 import { touchChannelLastTransmission, incrementMentionCounts } from '../../lib/read-state.js';
 import { linkIsEncrypted } from '../e2ee/e2ee.routes.js';
+import { queuePush } from '../../lib/push.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
@@ -36,6 +37,19 @@ const MAX_PINS = 250;
 const TYPING_THROTTLE_SECONDS = 5;
 
 const channelTypeSchema = { type: 'string', enum: CHANNEL_TYPES };
+
+/** Plain words for a push preview: mention tokens and markdown markers removed. */
+export function pushText(content: string): string {
+  return content
+    .replace(/<@&?!?[0-9a-f-]{36}>/g, '@someone')
+    .replace(/<#[0-9a-f-]{36}>/g, '#relay')
+    .replace(/<a?:(\w+):[0-9a-f-]{36}>/g, ':$1:')
+    .replace(/\|\|[\s\S]*?\|\|/g, '[spoiler]')
+    .replace(/[*_~`>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+}
 
 /** Room for one envelope per device on both sides (10 + 10) plus the sender's own copy. */
 export const MAX_ENCRYPTED_BYTES = 256 * 1024;
@@ -365,6 +379,22 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         { channelType: channel.channelType, channelId, transmission: formatted, nonce: body.nonce },
         audienceForChannel(channel)
       );
+
+      // Mobile push: every message in direct links and meshes, mentions elsewhere.
+      const authorName = formatted.author?.displayName || formatted.author?.username || 'Someone';
+      const preview = body.encrypted ? 'Sent an encrypted transmission' : pushText(content) || (attachments.length ? 'Sent an attachment' : '');
+      if (channel.channelType === 'link' || channel.channelType === 'mesh') {
+        queuePush(app, recipientIds.filter((id) => id !== token.transmitterId), { title: authorName, body: preview, path: `/channels/@me/${channelId}` }, [
+          { type: channel.channelType, id: channelId },
+        ]);
+      } else if (parsed.mentions.length) {
+        queuePush(
+          app,
+          parsed.mentions.filter((id) => id !== token.transmitterId && recipientIds.includes(id)),
+          { title: `${authorName} mentioned you`, body: preview, path: `/channels/${channel.beaconId}/${channel.relayId}` },
+          [{ type: 'relay', id: channel.relayId! }, { type: 'beacon', id: channel.beaconId! }]
+        );
+      }
       // After the create event, so clients already hold the transmission the previews belong to.
       scheduleEmbeds(app, inserted);
 

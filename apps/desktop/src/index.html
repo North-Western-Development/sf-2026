@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https: http:; img-src 'self' data:" />
+    <title>Subspace Frequency</title>
+    <link rel="stylesheet" href="./connect.css" />
+  </head>
+  <body>
+    <main class="card" aria-labelledby="title">
+      <svg class="star" width="56" height="56" viewBox="-0.5 -0.5 10 10" aria-hidden="true" shape-rendering="crispEdges">
+        <defs>
+          <radialGradient id="g" cx="50%" cy="50%" r="55%">
+            <stop offset="0%" stop-color="#FFFDE8" />
+            <stop offset="18%" stop-color="#FFFDE8" />
+            <stop offset="55%" stop-color="#FFF36B" />
+            <stop offset="100%" stop-color="#FFF36B" />
+          </radialGradient>
+        </defs>
+        <path d="M4 0h1v2h1v1h1v1h2v1h-2v1h-1v1h-1v2h-1v-2h-1v-1h-1v-1h-2v-1h2v-1h1v-1h1z" fill="url(#g)" stroke="#5A5C8E" stroke-width="0.45" stroke-linejoin="round" />
+      </svg>
+      <h1 id="title">Connect to Subspace</h1>
+      <p class="sub">Enter the address of the Subspace Frequency instance you use.</p>
+      <form id="connect" novalidate>
+        <label for="server">Server address</label>
+        <input id="server" name="server" type="url" inputmode="url" autocomplete="url" placeholder="https://subspace.example.com" required autofocus />
+        <p id="error" class="error" role="alert" hidden></p>
+        <button id="submit" type="submit">Connect</button>
+      </form>
+      <p class="hint">You can change this later from the tray icon: <strong>Change Server</strong>.</p>
+    </main>
+    <footer>A transmission from <img src="./nwd-logo.png" alt="NWD" height="28" /></footer>
+    <script type="module" src="./connect.js"></script>
+  </body>
+</html>
