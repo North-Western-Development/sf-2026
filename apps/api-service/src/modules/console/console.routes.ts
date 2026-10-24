@@ -11,6 +11,7 @@ import {
 } from '@subspace/database';
 import { STAFF_RANKS } from '@subspace/constants';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+import { revokeSessions } from '../../lib/sessions.js';
 
 export const consoleRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -209,6 +210,8 @@ export const consoleRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       })
       .where(eq(transmitters.id, targetId))
       .returning();
+    // Out everywhere at once: every device session ends and open sockets close.
+    await revokeSessions(app, targetId);
 
     return reply.send({
       message: 'Transmitter suspended from instance',

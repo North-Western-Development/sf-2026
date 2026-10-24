@@ -27,6 +27,8 @@ describe('Account: devices, email, username, disable and delete', () => {
     owner: 'f1000000-0000-4000-8000-000000000007',
     friend: 'f1000000-0000-4000-8000-000000000008',
     pwchange: 'f1000000-0000-4000-8000-000000000009',
+    suspended: 'f1000000-0000-4000-8000-00000000000a',
+    staff: 'f1000000-0000-4000-8000-00000000000b',
   };
   const user = (k: keyof typeof ids) => ({ id: ids[k], username: `acct_${k}`, email: `acct_${k}@subspace.net` });
 
@@ -68,6 +70,24 @@ describe('Account: devices, email, username, disable and delete', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  describe('Instance suspension', () => {
+    it('ends every session of a suspended account at once', async () => {
+      if (!db) return;
+      await db.update(transmitters).set({ staffRank: 2, isBanned: false }).where(eq(transmitters.id, ids.staff));
+      await db.update(transmitters).set({ isBanned: false, staffRank: 0 }).where(eq(transmitters.id, ids.suspended));
+      const victim = await session('suspended');
+      const staff = await session('staff');
+      expect((await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: as(victim.accessToken) })).statusCode).toBe(200);
+      const ban = await app.inject({ method: 'POST', url: `/api/v1/console/transmitters/${ids.suspended}/ban`, headers: as(staff.accessToken), payload: { reason: 'spam' } });
+      expect(ban.statusCode).toBe(200);
+      const after = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: as(victim.accessToken) });
+      expect(after.statusCode).toBe(401);
+      expect(after.json().code).toBe('SESSION_REVOKED');
+      expect((await app.inject({ method: 'POST', url: '/api/v1/auth/refresh', payload: { refreshToken: victim.refreshToken } })).statusCode).toBe(401);
+      await db.update(transmitters).set({ isBanned: false }).where(eq(transmitters.id, ids.suspended));
+    });
   });
 
   describe('Logged-in devices', () => {

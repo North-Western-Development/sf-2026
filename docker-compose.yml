@@ -90,6 +90,21 @@ services:
       redis:
         condition: service_healthy
 
+  # Applies the schema before anything else starts (see docker/Dockerfile.migrate).
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.migrate
+    container_name: subspace-migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
+    networks:
+      - subspace_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api-service:
     build:
       context: .
@@ -102,9 +117,23 @@ services:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:-}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env}
+      WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS:-}
+      RP_ID: ${RP_ID:-}
+      MEDIA_PROXY_SECRET: ${MEDIA_PROXY_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      EMAIL_LINK_BASE: ${EMAIL_LINK_BASE:-}
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
     networks:
       - subspace_net
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -122,6 +151,8 @@ services:
     networks:
       - subspace_net
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -142,12 +173,19 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       ONEDRIVE_CLIENT_ID: ${ONEDRIVE_CLIENT_ID:-}
+      ONEDRIVE_CLIENT_SECRET: ${ONEDRIVE_CLIENT_SECRET:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
+      DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
+      DRIVE_REDIRECT_BASE: ${DRIVE_REDIRECT_BASE:-}
+      DRIVE_TOKEN_KEY: ${DRIVE_TOKEN_KEY:-}
     networks:
       - subspace_net
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       minio:
@@ -164,6 +202,8 @@ services:
     networks:
       - subspace_net
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

@@ -1,0 +1,13 @@
+# One-shot schema sync: brings the database up to packages/database/src/schema.ts, then exits.
+# No --force: a change that would drop data stops here for an operator instead of running.
+FROM node:22-alpine
+WORKDIR /app
+RUN npm install -g pnpm@10.30.2
+
+COPY pnpm-lock.yaml* pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
+COPY packages/constants ./packages/constants
+COPY packages/database ./packages/database
+
+RUN pnpm install --frozen-lockfile=false --filter @subspace/database...
+
+CMD ["pnpm", "--filter", "@subspace/database", "exec", "drizzle-kit", "push"]

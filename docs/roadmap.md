@@ -2,9 +2,9 @@
 
 What exists today, what is left, and how it is tested. Status was last checked against the code on 2026-10-23 (branch `ui-parity`).
 
-- **API source of truth:** [docs/api/parity-contract.md](api/parity-contract.md)
+- **API source of truth:** [docs/api/parity-contract.md](https://github.com/North-Western-Development/sf-2026/blob/main/docs/api/parity-contract.md)
 - **Terminology:** [docs/terminology.md](terminology.md) (Beacon = server, Relay = channel, Transmission = message, and so on)
-- **Phase specs (original plan):** [docs/phases/](phases/)
+- **Phase specs (original plan):** [docs/phases/](https://github.com/North-Western-Development/sf-2026/tree/main/docs/phases)
 
 Status key: **Done** works end to end and is covered by tests. **API only** has a server with no web UI yet. **Placeholder** is shown greyed out with a "Coming soon" tooltip. **Not started** means nothing exists yet.
 

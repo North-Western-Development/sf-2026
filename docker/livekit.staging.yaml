@@ -1,0 +1,19 @@
+# LiveKit on a public server. Signaling goes through the web edge (/rtc); media flows directly
+# over the published UDP range (and TCP 7881 as a fallback for restrictive networks).
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  # Discover the server's public IP so browsers get reachable ICE candidates.
+  use_external_ip: true
+
+redis:
+  address: redis:6379
+
+logging:
+  json: true
+  level: info

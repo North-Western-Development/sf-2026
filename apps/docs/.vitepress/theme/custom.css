@@ -1,0 +1,36 @@
+/* The app's NWD palette: deep black, blue brand, star yellow. */
+:root,
+.dark {
+  --vp-c-bg: #07080c;
+  --vp-c-bg-alt: #030305;
+  --vp-c-bg-elv: #131622;
+  --vp-c-bg-soft: #0d0f16;
+  --vp-c-divider: #1f2336;
+  --vp-c-border: #2e3350;
+  --vp-c-gutter: #030305;
+  --vp-c-text-1: #eef1fa;
+  --vp-c-text-2: #a4a9c4;
+  --vp-c-text-3: #6d7294;
+  --vp-c-brand-1: #3dcbff;
+  --vp-c-brand-2: #3b8ef2;
+  --vp-c-brand-3: #3353d6;
+  --vp-c-brand-soft: rgb(59 142 242 / 0.16);
+  --vp-c-tip-1: #3dcbff;
+  --vp-c-warning-1: #ffb547;
+  --vp-c-danger-1: #ff4d6a;
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #fff36b 10%, #3dcbff 60%, #3b8ef2);
+  --vp-home-hero-image-background-image: radial-gradient(circle, rgb(59 142 242 / 0.35), transparent 65%);
+  --vp-home-hero-image-filter: blur(56px);
+  --vp-code-block-bg: #0d0f16;
+}
+
+.VPNavBar,
+.VPLocalNav {
+  background-color: rgb(3 3 5 / 0.85) !important;
+}
+
+.VPHero .image-src {
+  image-rendering: pixelated;
+  max-width: 160px;
+}
