@@ -25,6 +25,7 @@ const ME = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  httpMock.get.mockResolvedValue({ passkeys: [] });
   useStore.setState({
     me: ME as any,
     beacons: { b1: { id: 'b1', name: 'Bajor', ownerId: 'someone-else', description: null, iconUrl: null, bannerUrl: null, isDiscoverable: false } },

@@ -40,7 +40,7 @@ import { userTag } from '../../lib/normalize';
 import { setChatPrefs, useChatPrefs } from '../../lib/chatPrefs';
 import { term, PRESENCE_LABELS } from '../../lib/strings';
 import type { DisplayNameStyle, SelfUser, CustomStatus, Presence } from '../../lib/types';
-import { closeModal, confirmAction, openModal, toast } from '../../app/ui';
+import { closeModal, confirmAction, openModal, promptText, toast } from '../../app/ui';
 import {
   ComingSoon,
   Field,
@@ -290,6 +290,154 @@ function EmailDialog({ me, onClose }: { me: SelfUser; onClose: () => void }) {
   );
 }
 
+interface Passkey {
+  id: string;
+  name: string;
+  deviceType: string;
+  backedUp: boolean;
+  createdAt: string;
+}
+
+/** WebAuthn errors users can act on, in plain words. */
+function passkeyErrorText(err: unknown): string {
+  const name = (err as Error)?.name;
+  if (name === 'NotAllowedError' || name === 'AbortError') return 'The passkey prompt was closed before it finished.';
+  if (name === 'InvalidStateError') return 'This device already has a passkey for your account.';
+  return (err as Error)?.message || 'Something went wrong with the passkey.';
+}
+
+function PasskeysDialog({ onClose }: { onClose: () => void }) {
+  const [passkeys, setPasskeys] = useState<Passkey[] | null>(null);
+  const [mode, setMode] = useState<{ kind: 'list' } | { kind: 'add' } | { kind: 'remove'; passkey: Passkey }>({ kind: 'list' });
+  const [name, setName] = useState('');
+  const pw = usePasswordField();
+  const [busy, setBusy] = useState(false);
+
+  const load = () => http.get<{ passkeys: Passkey[] }>('/auth/passkeys').then((r) => setPasskeys(r.passkeys), () => setPasskeys([]));
+  useEffect(() => {
+    void load();
+  }, []);
+  const back = () => {
+    setMode({ kind: 'list' });
+    setName('');
+    pw.onChange('');
+  };
+
+  const add = (e: FormEvent) => {
+    e.preventDefault();
+    void withPassword(
+      async () => {
+        const { options } = await http.post<{ options: any }>('/auth/passkeys/register/options', { password: pw.password });
+        let response;
+        try {
+          const { startRegistration } = await import('@simplewebauthn/browser');
+          response = await startRegistration({ optionsJSON: options });
+        } catch (err) {
+          toast(passkeyErrorText(err), 'error');
+          return;
+        }
+        await http.post('/auth/passkeys/register/verify', { response, name: name.trim() || undefined });
+        toast('Passkey added. You can sign in with it now.', 'success');
+        back();
+        await load();
+      },
+      pw.setError,
+      setBusy
+    );
+  };
+
+  const remove = (e: FormEvent) => {
+    e.preventDefault();
+    if (mode.kind !== 'remove') return;
+    void withPassword(
+      async () => {
+        await http.post(`/auth/passkeys/${mode.passkey.id}/delete`, { password: pw.password });
+        toast(`Removed ${mode.passkey.name}.`, 'success');
+        back();
+        await load();
+      },
+      pw.setError,
+      setBusy
+    );
+  };
+
+  const rename = (p: Passkey) =>
+    promptText({
+      title: 'Rename Passkey',
+      label: 'Name',
+      initial: p.name,
+      maxLength: 64,
+      confirmLabel: 'Save',
+      onSubmit: async (value) => {
+        await http.patch(`/auth/passkeys/${p.id}`, { name: value });
+        await load();
+      },
+    });
+
+  if (mode.kind === 'add' || mode.kind === 'remove') {
+    const adding = mode.kind === 'add';
+    return (
+      <Modal
+        isOpen
+        onClose={onClose}
+        title={adding ? 'Add a Passkey' : `Remove ${mode.passkey.name}`}
+        description={adding ? 'Confirm your password, then follow your browser or device to create the passkey.' : 'You will no longer be able to sign in with this passkey.'}
+        maxWidth="md"
+      >
+        <form onSubmit={adding ? add : remove} className="space-y-4">
+          {adding && <Input label="Passkey Name" value={name} maxLength={64} placeholder="e.g. Work laptop" onChange={(e) => setName(e.target.value)} autoFocus />}
+          <CurrentPassword value={pw.password} onChange={pw.onChange} error={pw.error} autoFocus={!adding} />
+          <DialogFooter>
+            <Button variant="link" className="text-fg" onClick={back}>
+              Back
+            </Button>
+            <Button type="submit" variant={adding ? 'primary' : 'danger'} isLoading={busy} disabled={!pw.password}>
+              {adding ? 'Continue' : 'Remove'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title="Passkeys" description="Sign in with your fingerprint, face, screen lock or a security key instead of a password." maxWidth="md">
+      {passkeys === null ? (
+        <p className="py-8 text-center text-sm text-fg-muted">Loading…</p>
+      ) : passkeys.length === 0 ? (
+        <p className="rounded-lg bg-raised p-4 text-sm text-fg-muted">You have not added a passkey yet.</p>
+      ) : (
+        <ul aria-label="Your passkeys" className="divide-y divide-line overflow-hidden rounded-lg bg-raised">
+          {passkeys.map((p) => (
+            <li key={p.id} className="flex items-center gap-3 px-4 py-3">
+              <KeyRound className="h-5 w-5 shrink-0 text-brand-sky" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-fg">{p.name}</p>
+                <p className="text-xs text-fg-muted">
+                  Added {new Date(p.createdAt).toLocaleDateString()}
+                  {p.backedUp ? ' · Synced' : ''}
+                </p>
+              </div>
+              <RowButton onClick={() => rename(p)}>Rename</RowButton>
+              <RowButton danger onClick={() => setMode({ kind: 'remove', passkey: p })}>
+                Remove
+              </RowButton>
+            </li>
+          ))}
+        </ul>
+      )}
+      <DialogFooter>
+        <Button variant="link" className="text-fg" onClick={onClose}>
+          Done
+        </Button>
+        <Button onClick={() => setMode({ kind: 'add' })} disabled={typeof window !== 'undefined' && !window.PublicKeyCredential}>
+          Add a Passkey
+        </Button>
+      </DialogFooter>
+    </Modal>
+  );
+}
+
 const REMOVAL_COPY = {
   disable: {
     title: 'Disable Account',
@@ -501,7 +649,11 @@ function MfaDialog({ enabled, onClose }: { enabled: boolean; onClose: () => void
 
 function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
   const [revealEmail, setRevealEmail] = useState(false);
-  const [dialog, setDialog] = useState<null | 'password' | 'username' | 'email' | 'mfa' | 'disable' | 'delete'>(null);
+  const [dialog, setDialog] = useState<null | 'password' | 'username' | 'email' | 'mfa' | 'passkeys' | 'disable' | 'delete'>(null);
+  const [passkeyCount, setPasskeyCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (dialog === null) void http.get<{ passkeys: unknown[] }>('/auth/passkeys').then((r) => setPasskeyCount(r.passkeys.length), () => {});
+  }, [dialog]);
   const maskedEmail = me.email ? me.email.replace(/^(.*)(@.*)$/, (_, a: string, b: string) => '*'.repeat(a.length) + b) : '';
   const close = () => setDialog(null);
 
@@ -532,7 +684,12 @@ function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
       <SettingsSection id="password-security" title="Password & Security">
         <SettingsRow label="Password" action={<RowButton onClick={() => setDialog('password')}>Edit</RowButton>} />
         <SettingsRow label="Multi-Factor Authentication" value={me.is2faEnabled ? 'Enabled' : <span className="text-fg-subtle">Off</span>} onClick={() => setDialog('mfa')} />
-        <PlaceholderRow soon="Security keys" label="Security Keys" value={<span className="text-fg-subtle">None</span>} />
+        <SettingsRow
+          label="Passkeys"
+          description="Sign in without a password using your device's screen lock or a security key."
+          value={passkeyCount ? `${passkeyCount} added` : <span className="text-fg-subtle">None</span>}
+          onClick={() => setDialog('passkeys')}
+        />
         <SettingsRow label="Logged-in Devices" description="See where you're signed in and sign out of other devices." onClick={() => go('devices')} />
       </SettingsSection>
 
@@ -561,6 +718,7 @@ function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
       {dialog === 'email' && <EmailDialog me={me} onClose={close} />}
       {(dialog === 'disable' || dialog === 'delete') && <AccountRemovalDialog mode={dialog} onClose={close} />}
       {dialog === 'mfa' && <MfaDialog enabled={!!me.is2faEnabled} onClose={close} />}
+      {dialog === 'passkeys' && <PasskeysDialog onClose={close} />}
     </>
   );
 }

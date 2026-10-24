@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { KeyRound } from 'lucide-react';
 import { Button, Input } from '@subspace/ui';
 import { api, type LoginResult } from '../../services/api';
 import { AuthHeading, AuthLayout, FormError } from './AuthLayout';
@@ -60,14 +61,19 @@ function LoginForm({ onResult, onRegister }: { onResult: (r: LoginResult) => voi
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [disabled, setDisabled] = useState(false);
+  const [method, setMethod] = useState<'password' | 'passkey'>('password');
 
-  const signIn = async (reactivate = false) => {
+  const signIn = async (reactivate = false, via = method) => {
     setError(null);
     setBusy(true);
+    setMethod(via);
     try {
-      onResult(await api.login(identifier.trim(), password, { reactivate }));
+      onResult(via === 'passkey' ? await api.loginWithPasskey({ reactivate }) : await api.login(identifier.trim(), password, { reactivate }));
     } catch (err) {
-      if ((err as { code?: string }).code === 'ACCOUNT_DISABLED') setDisabled(true);
+      const e = err as { code?: string; name?: string };
+      if (e.code === 'ACCOUNT_DISABLED') setDisabled(true);
+      else if (e.name === 'NotAllowedError' || e.name === 'AbortError') setError(null);
+      else if (e.code === 'PASSKEY_UNKNOWN') setError('That passkey is not linked to an account here.');
       else setError(describeError(err));
     } finally {
       setBusy(false);
@@ -118,9 +124,19 @@ function LoginForm({ onResult, onRegister }: { onResult: (r: LoginResult) => voi
           required
         />
       </div>
-      <Button type="submit" size="lg" fullWidth className="mt-6" isLoading={busy} disabled={!identifier || !password}>
+      <Button type="submit" size="lg" fullWidth className="mt-6" isLoading={busy && method === 'password'} disabled={!identifier || !password || busy}>
         Sign in
       </Button>
+      {typeof window !== 'undefined' && !!window.PublicKeyCredential && (
+        <>
+          <div className="my-4 flex items-center gap-3 text-xs uppercase text-fg-subtle">
+            <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />
+          </div>
+          <Button variant="secondary" size="lg" fullWidth isLoading={busy && method === 'passkey'} disabled={busy} onClick={() => void signIn(false, 'passkey')}>
+            <KeyRound className="mr-2 h-4 w-4" /> Sign in with a passkey
+          </Button>
+        </>
+      )}
       <p className="mt-4 text-sm text-fg-subtle">
         New to Subspace?{' '}
         <Button variant="link" onClick={onRegister}>

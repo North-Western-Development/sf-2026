@@ -19,14 +19,10 @@ import {
   verifyAccessToken,
   verifyTypedToken,
   TokenPayload,
-  PasskeyManager,
   getJwtSecret,
 } from '@subspace/crypto';
 
 const JWT_SECRET = getJwtSecret();
-const RP_NAME = process.env.RP_NAME || 'Subspace Frequency';
-const RP_ID = process.env.RP_ID || 'localhost';
-const ORIGIN = process.env.ORIGIN || 'http://localhost:3000';
 const CURRENT_RULES_VERSION = SUBSPACE_DIRECTIVES.version;
 
 const REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -45,7 +41,7 @@ import { serializeTransmitter } from '../../lib/serialize.js';
  * Refresh tokens are single-use: their jti is stored in Redis (with the session id) and
  * consumed on /refresh, and removed on /logout.
  */
-async function issueSession(redis: any, user: any, request?: any, sid?: string) {
+export async function issueSession(redis: any, user: any, request?: any, sid?: string) {
   const sessionId = sid ?? (await createSession(redis, user.id, request));
   const jti = randomBytes(16).toString('hex');
   const accessToken = signAccessToken(

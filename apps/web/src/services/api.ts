@@ -220,6 +220,16 @@ class SubspaceApiClient {
     return { kind: 'session', transmitter: data.transmitter, requiresRulesAgreement: !!data.requiresRulesAgreement };
   }
 
+  /** Passwordless sign-in: the browser asks for any passkey saved for this site. */
+  public async loginWithPasskey(opts: { reactivate?: boolean } = {}): Promise<LoginResult> {
+    const { options, challengeId } = await this.postJson(`${API_BASE}/auth/passkeys/login/options`, {});
+    const { startAuthentication } = await import('@simplewebauthn/browser');
+    const response = await startAuthentication({ optionsJSON: options });
+    const data = await this.postJson(`${API_BASE}/auth/passkeys/login/verify`, { challengeId, response, ...(opts.reactivate ? { reactivate: true } : {}) });
+    this.setSession(data);
+    return { kind: 'session', transmitter: data.transmitter, requiresRulesAgreement: !!data.requiresRulesAgreement };
+  }
+
   public async completeTwoFactor(challengeToken: string, code: string, isBackupCode = false): Promise<LoginResult> {
     const data = await this.postJson(`${API_BASE}/auth/2fa/verify`, { token: challengeToken, code, isBackupCode });
     this.setSession(data);

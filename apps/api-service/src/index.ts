@@ -113,6 +113,8 @@ export async function buildApp() {
   // Import and register routes
   const { authRoutes } = await import('./modules/auth/auth.routes.js');
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
+  const { passkeyRoutes } = await import('./modules/auth/passkeys.routes.js');
+  await app.register(passkeyRoutes, { prefix: '/api/v1/auth/passkeys' });
 
   const { beaconRoutes } = await import('./modules/beacons/beacons.routes.js');
   await app.register(beaconRoutes, { prefix: '/api/v1/beacons' });
