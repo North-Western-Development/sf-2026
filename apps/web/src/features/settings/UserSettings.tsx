@@ -854,7 +854,7 @@ function ProfilePreview({ me, d, tag }: { me: SelfUser; d: ProfileDraft; tag?: s
       }
     : undefined;
   return (
-    <div className="sticky top-0 w-[300px] shrink-0">
+    <div className="w-full shrink-0 md:sticky md:top-0 md:w-[300px]">
       <p className="mb-2 text-sm font-semibold text-fg">Preview</p>
       <div className={clsx('overflow-hidden rounded-xl shadow-pop', !themed && 'bg-overlay', themed && 'p-[3px]')} style={cardBg}>
         <div className={clsx('overflow-hidden', themed && 'rounded-[10px] bg-black/45')}>
@@ -918,7 +918,7 @@ function UserProfileForm({ me }: { me: SelfUser }) {
 
   return (
     <>
-      <div className="flex gap-8">
+      <div className="flex flex-col-reverse gap-8 md:flex-row">
         <div className="min-w-0 flex-1">
           <FormBlock label="Display Name">
             <Input value={d.displayName} maxLength={32} onChange={(e) => set('displayName', e.target.value)} placeholder={me.username} aria-label="Display Name" />
@@ -1109,7 +1109,7 @@ function BeaconProfileForm({ me, initialBeacon }: { me: SelfUser; initialBeacon?
 
   return (
     <>
-      <div className="flex gap-8">
+      <div className="flex flex-col-reverse gap-8 md:flex-row">
         <div className="min-w-0 flex-1">
           <FormBlock label={`Choose a ${term('beacon').toLowerCase()}`}>
             <SelectField label={term('beacon')} value={beaconId} onChange={setBeaconId}>

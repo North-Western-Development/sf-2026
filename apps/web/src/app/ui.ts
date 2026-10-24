@@ -50,6 +50,8 @@ interface UiState {
   search: SearchState | null;
   /** A message to scroll to once its channel is showing. */
   jumpTarget: { key: string; messageId: string } | null;
+  /** Small screens: the beacon rail and sidebar drawer is open. */
+  mobileNav: boolean;
 }
 
 export interface SearchState {
@@ -79,6 +81,7 @@ export const useUi = create<UiState>()(() => ({
   editing: null,
   search: null,
   jumpTarget: null,
+  mobileNav: false,
 }));
 
 useUi.subscribe((s) => {

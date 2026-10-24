@@ -19,7 +19,9 @@ import { Toasts } from './Toasts';
 import { NoticeBar } from './NoticeBar';
 import { IncomingCall } from '../features/voice/DmCall';
 import { PixelStar } from '../features/auth/PixelStar';
-import { lastRelay } from './ui';
+import { clsx } from 'clsx';
+import { lastRelay, useUi } from './ui';
+import { useIsMobile } from './mobile';
 import { useGlobalShortcuts } from './shortcuts';
 
 function Boot({ children }: { children: React.ReactNode }) {
@@ -61,12 +63,26 @@ function Boot({ children }: { children: React.ReactNode }) {
 
 function Layout({ sidebar }: { sidebar: React.ReactNode }) {
   useGlobalShortcuts();
+  const mobile = useIsMobile();
+  const navOpen = useUi((s) => s.mobileNav);
+  const closeNav = () => useUi.setState({ mobileNav: false });
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-void text-fg">
       <NoticeBar />
       <div className="flex min-h-0 w-full flex-1">
-        {/* Rail + sidebar share one column so the user island can span both (Discord layout). */}
-        <div className="relative flex w-[312px] shrink-0 flex-col">
+        {/* Rail + sidebar share one column so the user island can span both (Discord layout).
+            On small screens the column is a drawer over the content. */}
+        {mobile && navOpen && <div className="fixed inset-0 z-[790] bg-black/60" onClick={closeNav} aria-hidden />}
+        <div
+          className={clsx(
+            'flex w-[312px] shrink-0 flex-col',
+            mobile ? 'fixed inset-y-0 left-0 z-[800] bg-void shadow-modal transition-transform duration-200' : 'relative',
+            mobile && !navOpen && '-translate-x-full'
+          )}
+          aria-hidden={mobile && !navOpen ? true : undefined}
+          // Picking a relay, DM or page in the sidebar closes the drawer; picking a beacon keeps it open.
+          onClick={(e) => mobile && (e.target as HTMLElement).closest('aside a, aside [role="link"]') && closeNav()}
+        >
           <div className="flex min-h-0 flex-1">
             <BeaconRail />
             <aside className="flex w-60 shrink-0 flex-col overflow-hidden rounded-tl-xl bg-raised">

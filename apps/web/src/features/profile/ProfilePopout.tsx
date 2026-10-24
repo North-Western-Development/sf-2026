@@ -54,7 +54,9 @@ function Popout({ userId, beaconId, rect, side }: { userId: string; beaconId?: s
     if (x + w > window.innerWidth - 8) x = rect.left - w - 12;
     if (x < 8) x = Math.min(rect.right + 12, window.innerWidth - w - 8);
     const y = Math.max(8, Math.min(rect.top, window.innerHeight - h - 8));
-    setPos({ x, y });
+    // The fallback profile is a new object each render until the fetch lands; keep the same
+    // state when nothing moved so this effect does not loop.
+    setPos((p) => (p.x === x && p.y === y ? p : { x, y }));
   }, [rect, side, profile]);
 
   useEffect(() => {

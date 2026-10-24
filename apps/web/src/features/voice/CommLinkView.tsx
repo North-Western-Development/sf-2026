@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { Lock, MessageSquare, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff, Headphones, HeadphoneOff, Volume2, Users as UsersIcon } from 'lucide-react';
+import { X, Lock, MessageSquare, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff, Headphones, HeadphoneOff, Volume2, Users as UsersIcon } from 'lucide-react';
 import type { Track } from 'livekit-client';
 import { ComingSoon, Tooltip } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
@@ -16,6 +16,7 @@ import { MessageList } from '../chat/MessageList';
 import { Composer } from '../chat/Composer';
 import { TypingIndicator } from '../chat/TypingIndicator';
 import { useUi } from '../../app/ui';
+import { MobileNavButton } from '../../app/mobile';
 
 function VideoSurface({ track, mirrored }: { track: Track; mirrored?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -103,6 +104,7 @@ export function CommLinkView({ relay }: { relay: Relay }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-void">
       <header className="flex h-12 shrink-0 items-center gap-2 px-4">
+        <MobileNavButton />
         <Volume2 className="h-6 w-6 text-fg-subtle" />
         <h1 className="font-semibold text-fg">{relay.name}</h1>
         {relay.isE2ee && (
@@ -187,7 +189,13 @@ export function CommLinkView({ relay }: { relay: Relay }) {
         </section>
 
         {chatOpen && (
-          <aside aria-label="Comm-Link chat" className="relative flex w-[400px] shrink-0 flex-col border-l border-line bg-base">
+          <aside aria-label="Comm-Link chat" className="fixed inset-0 z-[700] flex flex-col bg-base md:relative md:inset-auto md:z-auto md:w-[400px] md:shrink-0 md:border-l md:border-line">
+            <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4 md:hidden">
+              <span className="font-semibold text-fg">#{relay.name} chat</span>
+              <button type="button" aria-label="Close chat" onClick={() => setChatOpen(false)} className="text-fg-muted hover:text-fg">
+                <X className="h-5 w-5" />
+              </button>
+            </header>
             <MessageList
               channelKey={key}
               beaconId={relay.beaconId}

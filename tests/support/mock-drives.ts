@@ -170,7 +170,10 @@ export async function startMockDrives(port = 0): Promise<MockDrives> {
     send(res, 404, { error: 'mock: unknown route' });
   });
 
-  await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', resolve);
+  });
   const address = server.address() as { port: number };
   return {
     origin: `http://127.0.0.1:${address.port}`,

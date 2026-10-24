@@ -13,6 +13,7 @@ import { toast } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
 import { memberMenu } from '../members/memberMenu';
 import { PixelStar } from '../auth/PixelStar';
+import { MobileNavButton } from '../../app/mobile';
 
 type Tab = 'online' | 'all' | 'pending' | 'blocked' | 'add';
 
@@ -186,6 +187,7 @@ export function FriendsView() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-4 border-b border-line px-4 shadow-sm">
+        <MobileNavButton />
         <span className="flex items-center gap-2 font-semibold text-fg">
           <Users className="h-6 w-6 text-fg-subtle" /> {term('affiliate', true)}
         </span>

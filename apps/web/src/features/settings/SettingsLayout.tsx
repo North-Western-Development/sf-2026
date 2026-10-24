@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { ChevronRight, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { useIsMobile } from '../../app/mobile';
 import { ComingSoon } from '@subspace/ui';
 
 export interface SettingsSubItem {
@@ -62,6 +63,13 @@ export function SettingsLayout({
 }) {
   const [query, setQuery] = useState('');
   const [wide, setWide] = useState(false);
+  // Small screens show one pane: the section list, then the chosen page with a back button.
+  const mobile = useIsMobile();
+  const [pageOpen, setPageOpen] = useState(false);
+  const select = (id: string) => {
+    onSelect(id);
+    setPageOpen(true);
+  };
   const [activeSub, setActiveSub] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const pendingJump = useRef<string | null>(null);
@@ -119,6 +127,7 @@ export function SettingsLayout({
   };
 
   const selectSub = (parent: string, id: string) => {
+    setPageOpen(true);
     if (parent === active) return jumpTo(id);
     pendingJump.current = id;
     onSelect(parent);
@@ -144,8 +153,19 @@ export function SettingsLayout({
         data-settings
         className="flex h-full w-full max-w-[1200px] overflow-hidden bg-base shadow-modal animate-[rise-in_160ms_var(--ease-out-soft)] sm:max-h-[960px] sm:rounded-xl"
       >
-        <nav aria-label={`${title} sections`} className="flex w-[232px] shrink-0 flex-col border-r border-line bg-raised">
+        <nav
+          aria-label={`${title} sections`}
+          className={clsx('flex shrink-0 flex-col border-r border-line bg-raised', mobile ? (pageOpen ? 'hidden' : 'w-full') : 'w-[232px]')}
+        >
           <div className="shrink-0 px-3 pt-4">
+            {mobile && (
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-semibold text-fg">{title}</span>
+                <button type="button" onClick={onClose} aria-label="Close settings" className="flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            )}
             {header}
             <label className="mt-3 flex h-9 items-center gap-2 rounded-md border border-line bg-void px-2.5 text-fg-subtle focus-within:border-brand">
               <Search className="h-4 w-4 shrink-0" />
@@ -164,7 +184,7 @@ export function SettingsLayout({
                 {sec.heading && <p className="truncate px-2 pb-1 pt-1.5 text-xs font-semibold text-fg-subtle">{sec.heading}</p>}
                 {sec.items.map((it) => (
                   <div key={it.id}>
-                    <NavItem item={it} active={active === it.id} onSelect={onSelect} />
+                    <NavItem item={it} active={active === it.id && !(mobile && !pageOpen)} onSelect={select} />
                     {it.children && (active === it.id || q) && (
                       <div className="mb-1 ml-[18px] border-l border-line-strong pl-2">
                         {it.children.map((c) => (
@@ -189,9 +209,14 @@ export function SettingsLayout({
             {!visible.length && <p className="px-2 py-4 text-sm text-fg-subtle">No settings match "{query}".</p>}
           </div>
         </nav>
-        <section className="flex min-w-0 flex-1 flex-col">
+        <section className={clsx('min-w-0 flex-1 flex-col', mobile && !pageOpen ? 'hidden' : 'flex')}>
           <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
-            <h1 className="truncate text-[15px] font-semibold text-fg">{activeItem?.label ?? title}</h1>
+            {mobile && (
+              <button type="button" onClick={() => setPageOpen(false)} aria-label="Back to settings" className="-ml-1 mr-1 flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg">
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            )}
+            <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-fg">{activeItem?.label ?? title}</h1>
             <button
               type="button"
               onClick={onClose}
@@ -203,7 +228,7 @@ export function SettingsLayout({
             </button>
           </header>
           <div ref={scroller} onScroll={spy} className="min-h-0 flex-1 overflow-y-auto">
-            <div className={clsx('mx-auto w-full px-8 pb-24 pt-10', wide ? 'max-w-[820px]' : 'max-w-[640px]')}>
+            <div className={clsx('mx-auto w-full px-4 pb-24 pt-6 md:px-8 md:pt-10', wide ? 'max-w-[820px]' : 'max-w-[640px]')}>
               <WideContext.Provider value={setWide}>{children}</WideContext.Provider>
             </div>
           </div>

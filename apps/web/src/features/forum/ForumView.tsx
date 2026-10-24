@@ -18,6 +18,7 @@ import { toPlainText } from '../chat/markdown';
 import { MessageList } from '../chat/MessageList';
 import { Composer } from '../chat/Composer';
 import { TypingIndicator } from '../chat/TypingIndicator';
+import { MobileNavButton } from '../../app/mobile';
 
 export interface ForumThread {
   id: string;
@@ -287,8 +288,9 @@ export function ForumView({ relay }: { relay: Relay }) {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <div className={clsx('flex min-w-0 flex-col', selected ? 'w-[46%] max-w-[560px]' : 'flex-1')}>
+      <div className={clsx('flex min-w-0 flex-col', selected ? 'hidden w-[46%] max-w-[560px] md:flex' : 'flex-1')}>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4 shadow-sm">
+        <MobileNavButton />
           <MessagesSquare className="h-6 w-6 text-fg-subtle" />
           <h1 className="font-semibold text-fg">{relay.name}</h1>
           {relay.topic && !selected && <span className="ml-2 truncate text-sm text-fg-muted">{toPlainText(relay.topic)}</span>}

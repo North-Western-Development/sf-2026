@@ -10,6 +10,7 @@ import { muteDurations, setNotificationSetting } from '../../data/notificationAc
 import { parseChannelKey, type ChannelKey, type NotificationLevel, type Transmission } from '../../lib/types';
 import { useUi } from '../../app/ui';
 import { SearchBar, SearchResults } from '../search/Search';
+import { MobileNavButton, MobileSheet, useIsMobile } from '../../app/mobile';
 import { formatMessageTime } from '../../lib/time';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
@@ -168,14 +169,22 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
 
   const searchScope = beaconId ?? 'dms';
   const search = useUi((s) => (s.search?.scope === searchScope ? s.search : null));
-  const showAside = memberListOpen && (aside !== undefined || !!beaconId);
+  const mobile = useIsMobile();
+  // Small screens start without the side panel; it opens over the conversation.
+  const [mobileAside, setMobileAside] = useState(false);
+  const hasAside = aside !== undefined || !!beaconId;
+  const showAside = hasAside && (mobile ? mobileAside : memberListOpen);
+  const asideOpen = mobile ? mobileAside : memberListOpen;
+  const toggleAside = () => (mobile ? setMobileAside((v) => !v) : useUi.setState({ memberListOpen: !memberListOpen }));
+  const panel = search ? <SearchResults search={search} /> : showAside ? (aside ?? (beaconId ? <MemberList beaconId={beaconId} /> : null)) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4 shadow-sm">
+        <MobileNavButton />
         <span className="text-fg-subtle">{icon}</span>
-        <h1 className="shrink-0 font-semibold text-fg">{title}</h1>
-        {topic && (
+        <h1 className="min-w-0 shrink truncate font-semibold text-fg md:shrink-0">{title}</h1>
+        {topic && !mobile && (
           <>
             <span className="mx-2 h-6 w-px bg-line-strong" />
             <div className="min-w-0 flex-1 truncate text-sm text-fg-muted [&_div]:inline">
@@ -183,33 +192,41 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
             </div>
           </>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
           {actions}
-          <ComingSoon label="Threads" placement="bottom">
-            <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
-              <Hash className="h-5 w-5" />
-            </span>
-          </ComingSoon>
-          <NotificationButton channelKey={key} />
-          <HeaderButton label="Pinned Transmissions" onClick={(e) => setPinsAnchor(e.currentTarget.getBoundingClientRect())}>
-            <Pin className="h-5 w-5" />
-          </HeaderButton>
-          {(beaconId || aside !== undefined) && (
-            <HeaderButton label={memberListOpen ? 'Hide Member List' : 'Show Member List'} active={memberListOpen} onClick={() => useUi.setState({ memberListOpen: !memberListOpen })}>
+          {!mobile && (
+            <>
+              <ComingSoon label="Threads" placement="bottom">
+                <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
+                  <Hash className="h-5 w-5" />
+                </span>
+              </ComingSoon>
+              <NotificationButton channelKey={key} />
+              <HeaderButton label="Pinned Transmissions" onClick={(e) => setPinsAnchor(e.currentTarget.getBoundingClientRect())}>
+                <Pin className="h-5 w-5" />
+              </HeaderButton>
+            </>
+          )}
+          {hasAside && (
+            <HeaderButton label={asideOpen ? 'Hide Member List' : 'Show Member List'} active={asideOpen} onClick={toggleAside}>
               <Users className="h-5 w-5" />
             </HeaderButton>
           )}
           <SearchBar scope={searchScope} />
-          <ComingSoon label="Inbox" placement="bottom">
-            <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
-              <Inbox className="h-5 w-5" />
-            </span>
-          </ComingSoon>
-          <ComingSoon label="Help" placement="bottom">
-            <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
-              <CircleHelp className="h-5 w-5" />
-            </span>
-          </ComingSoon>
+          {!mobile && (
+            <>
+              <ComingSoon label="Inbox" placement="bottom">
+                <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
+                  <Inbox className="h-5 w-5" />
+                </span>
+              </ComingSoon>
+              <ComingSoon label="Help" placement="bottom">
+                <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
+                  <CircleHelp className="h-5 w-5" />
+                </span>
+              </ComingSoon>
+            </>
+          )}
         </div>
       </header>
       {banner}
@@ -220,7 +237,10 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
           <Composer channelKey={key} beaconId={beaconId} placeholder={placeholder} />
           <TypingIndicator channelKey={key} beaconId={beaconId} />
         </section>
-        {search ? <SearchResults search={search} /> : showAside && (aside ?? (beaconId ? <MemberList beaconId={beaconId} /> : null))}
+        {panel && !mobile && panel}
+        {panel && mobile && (
+          <MobileSheet onClose={() => (search ? useUi.setState({ search: null }) : setMobileAside(false))}>{panel}</MobileSheet>
+        )}
       </div>
 
       {pinsAnchor && <PinsPopover channelKey={key} beaconId={beaconId} anchor={pinsAnchor} onClose={() => setPinsAnchor(null)} />}

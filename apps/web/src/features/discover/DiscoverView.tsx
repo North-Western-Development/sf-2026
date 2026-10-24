@@ -9,6 +9,7 @@ import type { Beacon } from '../../lib/types';
 import { term } from '../../lib/strings';
 import { toast } from '../../app/ui';
 import { PixelStar } from '../auth/PixelStar';
+import { MobileNavButton } from '../../app/mobile';
 
 type Listing = Beacon & { memberCount?: number; onlineCount?: number };
 
@@ -82,7 +83,10 @@ export function DiscoverView() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <section className="relative mx-6 mt-6 overflow-hidden rounded-2xl bg-raised px-8 py-12 text-center">
+      <div className="px-3 pt-2 md:hidden">
+        <MobileNavButton />
+      </div>
+      <section className="relative mx-3 mt-3 md:mx-6 md:mt-6 overflow-hidden rounded-2xl bg-raised px-8 py-12 text-center">
         <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(60% 80% at 50% 0%, rgb(59 142 242 / 0.25), transparent 70%)' }} />
         <PixelStar size={36} className="relative mx-auto mb-3" />
         <h1 className="relative text-3xl font-bold text-fg">Find your frequency</h1>

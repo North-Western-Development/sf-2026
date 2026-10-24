@@ -117,7 +117,7 @@ export function SearchBar({ scope }: { scope: string }) {
   const expanded = focused || !!value;
 
   return (
-    <div ref={box} className={clsx('relative transition-[width] duration-150', expanded ? 'w-60' : 'w-36')}>
+    <div ref={box} className={clsx('relative transition-[width] duration-150', expanded ? 'w-40 md:w-60' : 'w-24 md:w-36')}>
       <input
         ref={input}
         type="search"
@@ -172,8 +172,8 @@ export function SearchBar({ scope }: { scope: string }) {
             aria-label={token.key ? `${token.key} suggestions` : 'Search options'}
             data-context-menu
             onMouseDown={(e) => e.preventDefault()}
-            className="fixed z-[1200] w-[320px] rounded-lg bg-overlay p-2 shadow-pop"
-            style={{ top: rect.bottom + 8, left: Math.max(8, rect.right - 320) }}
+            className="fixed z-[1200] w-[min(320px,calc(100vw-16px))] rounded-lg bg-overlay p-2 shadow-pop"
+            style={{ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.right - 320, window.innerWidth - 328)) }}
           >
             <h3 className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
               {token.key === 'from' ? 'From User' : token.key === 'mentions' ? 'Mentions User' : token.key === 'in' ? 'In Relay' : token.key === 'has' ? 'Contains' : 'Search Options'}
@@ -303,7 +303,7 @@ export function SearchResults({ search }: { search: SearchState }) {
   }
 
   return (
-    <aside aria-label="Search results" className="flex w-[420px] shrink-0 flex-col bg-raised">
+    <aside aria-label="Search results" className="flex w-full shrink-0 flex-col bg-raised md:w-[420px]">
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
         <h2 className="font-semibold text-fg" aria-live="polite">
           {state.loading ? 'Searching…' : `${state.total.toLocaleString()} Result${state.total === 1 ? '' : 's'}`}

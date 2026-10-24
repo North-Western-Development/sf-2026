@@ -13,6 +13,7 @@ import { confirmAction, openModal, toast } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
 import { Markdown } from '../chat/markdown';
 import { PixelStar } from '../auth/PixelStar';
+import { MobileNavButton } from '../../app/mobile';
 
 /** Discord's Message Requests page: introductory transmissions from non-affiliates. */
 export function RequestsView() {
@@ -37,6 +38,7 @@ export function RequestsView() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-4 border-b border-line px-4 shadow-sm">
+        <MobileNavButton />
         <span className="flex items-center gap-2 font-semibold text-fg">
           <Inbox className="h-6 w-6 text-fg-subtle" /> {term('transmissionRequest', true)}
         </span>

@@ -15,6 +15,7 @@ import { confirmAction, toast } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { toPlainText } from '../chat/markdown';
+import { MobileNavButton } from '../../app/mobile';
 
 interface GalleryItem {
   key: string;
@@ -299,6 +300,7 @@ export function GalleryView({ relay }: { relay: Relay }) {
       onDrop={onDrop}
     >
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4 shadow-sm">
+        <MobileNavButton />
         <ImageIcon className="h-6 w-6 text-fg-subtle" />
         <h1 className="font-semibold text-fg">{relay.name}</h1>
         {relay.topic && <span className="ml-2 min-w-0 flex-1 truncate text-sm text-fg-muted">{toPlainText(relay.topic)}</span>}
