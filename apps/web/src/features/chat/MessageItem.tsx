@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { CornerUpLeft, Pencil, SmilePlus, MoreHorizontal, Pin, AlertCircle, FileText, Download, Forward, MessageSquarePlus, Phone, PhoneMissed } from 'lucide-react';
+import { CornerUpLeft, Pencil, SmilePlus, MoreHorizontal, Pin, AlertCircle, FileText, Download, Forward, MessageSquarePlus, Phone, PhoneMissed, Lock } from 'lucide-react';
 import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { useStore } from '../../data/store';
 import { explicitlyMentionsMe } from '../../data/notifications';
@@ -17,6 +17,7 @@ import { Markdown, toPlainText } from './markdown';
 import { useMarkdownResolvers, glyphUrl } from './resolvers';
 import { EmojiPicker } from './EmojiPicker';
 import { Embeds } from './Embeds';
+import { SealedAttachments, SealedNotice } from './EncryptedBits';
 import { useChatPrefs } from '../../lib/chatPrefs';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
@@ -143,6 +144,8 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
   const resolvers = useMarkdownResolvers(beaconId);
   const [pickerFor, setPickerFor] = useState<DOMRect | null>(null);
   const isMine = m.author.id === me?.id;
+  // Encrypted replies: the server cannot quote the original, so read it from this device.
+  const replyText = useStore((s) => (m.replyTo ? s.messages[key]?.byId[m.replyTo.id]?.content : undefined));
   const canManage = perms === null ? isMine : can(perms, PERMISSIONS.MANAGE_TRANSMISSIONS);
   const canPin = perms === null ? true : can(perms, PERMISSIONS.PIN_TRANSMISSIONS) || can(perms, PERMISSIONS.MANAGE_TRANSMISSIONS);
   const canReact = perms === null ? true : can(perms, PERMISSIONS.ADD_REACTIONS);
@@ -194,6 +197,21 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
     items.push({ separator: true }, { label: 'Copy Transmission ID', onClick: () => void navigator.clipboard?.writeText(m.id) });
     return items;
   };
+
+  if (m.type === 'system_encryption') {
+    return (
+      <div id={`msg-${m.id}`} role="note" className="flex items-center gap-4 py-1 pl-4 pr-12 text-sm text-fg-muted">
+        <Lock className="ml-3 h-4 w-4 text-online" />
+        <span>
+          <button className="font-semibold text-fg hover:underline" onClick={openProfile}>
+            <UserName user={m.author} styled={false} />
+          </button>{' '}
+          turned on end-to-end encryption. Transmissions from here on can only be read on your devices.{' '}
+          <span className="text-xs text-fg-subtle">{formatMessageTime(m.createdAt)}</span>
+        </span>
+      </div>
+    );
+  }
 
   if (m.type === 'system_call') {
     const info = parseCallContent(m.content);
@@ -252,7 +270,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
                 @<UserName user={m.replyTo.author} beaconId={beaconId} styled={false} />
               </span>
               <button type="button" onClick={() => onJumpTo?.(m.replyTo!.id)} className="min-w-0 truncate text-left hover:text-fg">
-                {toPlainText(m.replyTo.content, resolvers) || (m.replyTo.attachmentsCount ? 'Click to see attachment' : '')}
+                {toPlainText(replyText ?? m.replyTo.content, resolvers) || (m.replyTo.attachmentsCount ? 'Click to see attachment' : '')}
               </button>
             </>
           )}
@@ -301,7 +319,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
         />
       ) : (
         <div className={clsx('text-[15px] leading-[22px] text-fg', m.failed && 'text-danger')}>
-          <Markdown content={m.content} resolvers={resolvers} />
+          {m.encrypted && m.e2ee !== 'ok' ? <SealedNotice state={m.e2ee} /> : <Markdown content={m.content} resolvers={resolvers} />}
           {m.editedAt && (
             <Tooltip content={formatFullDate(m.editedAt)}>
               <span className="ml-1 text-[11px] text-fg-subtle">(edited)</span>
@@ -311,6 +329,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
       )}
 
       <Attachments items={m.attachments} />
+      <SealedAttachments items={m.encryptedAttachments} />
       <Embeds embeds={m.embeds} messageId={m.id} canRemove={isMine || (chType !== 'link' && chType !== 'mesh' && canManage)} />
 
       {m.failed && (

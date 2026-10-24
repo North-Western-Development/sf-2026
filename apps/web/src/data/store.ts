@@ -142,7 +142,9 @@ export function upsertMessages(key: ChannelKey, incoming: Transmission[], opts: 
       const early = earlyEmbeds.get(t.id)?.embeds;
       earlyEmbeds.delete(t.id);
       const embeds = early ?? (prev?.embeds?.length && !t.embeds?.length && !t.suppressEmbeds && prev.content === t.content ? prev.embeds : t.embeds);
-      byId[t.id] = { ...prev, ...t, embeds, pending: false, failed: false };
+      // Already-decrypted text survives a refetch of the same (unedited) ciphertext.
+      const opened = t.e2ee === 'pending' && prev?.e2ee === 'ok' && prev.editedAt === t.editedAt ? { content: prev.content, encryptedAttachments: prev.encryptedAttachments, e2ee: prev.e2ee } : {};
+      byId[t.id] = { ...prev, ...t, embeds, ...opened, pending: false, failed: false };
     }
     const ids = Object.values(byId).sort(byTime).map((t) => t.id);
     const latest = ids.length ? byId[ids[ids.length - 1]] : null;

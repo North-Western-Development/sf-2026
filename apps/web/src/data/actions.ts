@@ -36,6 +36,9 @@ import {
   upsertMessages,
 } from './store';
 import { api } from '../services/api';
+import { encryptFor, isEncryptedChannel, openEncrypted, rememberSent } from './e2ee';
+import { ensureDevice, forgetDevice } from '../lib/e2ee/client';
+import { toast } from '../app/ui';
 import { gateway } from '../services/gateway';
 
 type Raw = Record<string, any>;
@@ -156,6 +159,8 @@ export async function bootstrap(): Promise<void> {
     ready: true,
   });
   void loadCalls().catch(() => {});
+  // Set up this browser for end-to-end encryption in the background.
+  void ensureDevice(me.id);
 }
 
 /** Active calls in this user's direct links and meshes (so a call in progress shows after a reload). */
@@ -236,6 +241,7 @@ export async function loadMessages(key: ChannelKey, opts: { before?: string } = 
     const items = raw.map(toTransmission).map((t) => ({ ...t, ...parseChannelFields(key) }));
     rememberUsers(items.map((t) => t.author));
     upsertMessages(key, items, { loading: false, loaded: true, hasMoreBefore: raw.length >= PAGE });
+    openEncrypted(key, items);
   } catch (err) {
     setChannelMeta(key, { loading: false, error: (err as Error).message });
   }
@@ -268,6 +274,8 @@ export interface SendOptions {
   replyToId?: string;
   replyPing?: boolean;
   attachmentIds?: string[];
+  /** Encrypted links: files sealed on this device, described inside the ciphertext. */
+  encryptedAttachments?: Array<{ url: string; key: string; filename: string; mimeType: string; size: number }>;
 }
 
 export async function sendMessage(key: ChannelKey, content: string, opts: SendOptions = {}): Promise<void> {
@@ -302,19 +310,31 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
   // upsertMessages clears `pending`; re-mark the optimistic entry.
   patchMessage(key, optimistic.id, { pending: true });
 
-  const body = { content, nonce, ...opts };
   try {
     let raw: Raw;
-    try {
-      raw = (await http.post<{ transmission: Raw }>(`/channels/${type}/${id}/transmissions`, body)).transmission;
-    } catch (err) {
-      if (!(err instanceof ApiError) || err.status !== 404) throw err;
-      raw = (await legacySend(key, content)).transmission;
+    if (isEncryptedChannel(key)) {
+      // Only ciphertext leaves the device; keep the plaintext locally under the new id.
+      const plain = { text: content, attachments: opts.encryptedAttachments };
+      const encrypted = await encryptFor(key, plain);
+      raw = (await http.post<{ transmission: Raw }>(`/channels/${type}/${id}/transmissions`, { encrypted, nonce, replyToId: opts.replyToId, replyPing: opts.replyPing })).transmission;
+      await rememberSent(raw.id, plain);
+    } else {
+      const { encryptedAttachments: _sealed, ...plainOpts } = opts;
+      const body = { content, nonce, ...plainOpts };
+      try {
+        raw = (await http.post<{ transmission: Raw }>(`/channels/${type}/${id}/transmissions`, body)).transmission;
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.status !== 404) throw err;
+        raw = (await legacySend(key, content)).transmission;
+      }
     }
-    upsertMessages(key, [{ ...toTransmission(raw), ...parseChannelFields(key), nonce }]);
+    const sent = { ...toTransmission(raw), ...parseChannelFields(key), nonce };
+    upsertMessages(key, [sent]);
+    openEncrypted(key, [sent]);
     await ackChannel(key);
-  } catch {
+  } catch (err) {
     patchMessage(key, optimistic.id, { pending: false, failed: true });
+    if (isEncryptedChannel(key)) toast(`Could not encrypt the transmission: ${(err as Error).message}`, 'error');
   }
 }
 
@@ -338,6 +358,15 @@ export async function retryMessage(key: ChannelKey, pendingId: string) {
 }
 
 export const editMessage = async (key: ChannelKey, id: string, content: string) => {
+  if (isEncryptedChannel(key)) {
+    const prev = getState().messages[key]?.byId[id];
+    const plain = { text: content, attachments: prev?.encryptedAttachments };
+    const res = await http.patch<{ transmission: Raw }>(`/transmissions/${id}`, { encrypted: await encryptFor(key, plain) });
+    const patch = toEditPatch(res.transmission);
+    await rememberSent(id, plain, patch.editedAt ?? '');
+    patchMessage(key, id, { ...patch, content, encryptedAttachments: plain.attachments, e2ee: 'ok' });
+    return;
+  }
   const res = await http.patch<{ transmission: Raw }>(`/transmissions/${id}`, { content });
   patchMessage(key, id, toEditPatch(res.transmission));
 };
@@ -570,5 +599,6 @@ async function bootstrapLinks() {
 
 export async function signOut() {
   gateway.disconnect();
+  forgetDevice();
   await api.logout();
 }

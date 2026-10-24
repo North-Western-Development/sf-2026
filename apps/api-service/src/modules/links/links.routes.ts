@@ -78,6 +78,7 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         recipient: recipient ? { ...recipient, presence } : null,
         lastTransmissionId: link.lastTransmissionId,
         lastTransmissionAt: link.lastTransmissionAt,
+        encryptedAt: link.encryptedAt ?? null,
       });
     }
 
@@ -289,6 +290,9 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
             transmitter2Id: targetId,
           })
           .returning();
+      }
+      if (link.encryptedAt) {
+        return reply.status(400).send({ error: 'This conversation is end-to-end encrypted; send ciphertext only', code: 'ENCRYPTION_REQUIRED' });
       }
 
       const [newTransmission] = await db

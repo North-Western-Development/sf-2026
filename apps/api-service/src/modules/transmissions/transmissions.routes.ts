@@ -23,6 +23,7 @@ import { beaconMembers as beaconMembersTable, subspaceMeshMembers as subspaceMes
 
 import { resolveVaultAttachments } from '../../lib/attachments.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
+import { MAX_ENCRYPTED_BYTES } from '../messaging/messaging.routes.js';
 const MAX_TRANSMISSION_LENGTH = 2000;
 
 export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -257,6 +258,22 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
 
     const body = request.body as any;
     const { content } = body || {};
+
+    // Encrypted transmissions are edited by replacing their ciphertext.
+    if (existing.encryptedPayload) {
+      const encrypted = body?.encrypted;
+      if (!encrypted || typeof encrypted !== 'object' || encrypted.v !== 1 || typeof encrypted.envelopes !== 'object' || content) {
+        return reply.status(400).send({ error: 'This conversation is end-to-end encrypted; send ciphertext only', code: 'ENCRYPTION_REQUIRED' });
+      }
+      if (JSON.stringify(encrypted).length > MAX_ENCRYPTED_BYTES) return reply.status(413).send({ error: 'Encrypted transmission is too large' });
+      const [updated] = await db
+        .update(transmissions)
+        .set({ encryptedPayload: JSON.stringify(encrypted), isEdited: true, updatedAt: new Date() })
+        .where(eq(transmissions.id, transmissionId))
+        .returning();
+      await publishGatewayEvent(app, 'TRANSMISSION_UPDATE', { link_id: existing.p2pLinkId, transmission: { ...updated, encrypted } }, await audienceForTransmission(db, existing));
+      return reply.send({ message: 'Transmission updated', transmission: { ...updated, encrypted } });
+    }
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
       return reply.status(400).send({ error: 'Content cannot be empty' });

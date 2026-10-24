@@ -10,6 +10,7 @@ export default defineConfig({
     alias: {
       '@subspace/constants': pkg('constants'),
       '@subspace/ui': pkg('ui'),
+      '@subspace/e2ee': pkg('e2ee'),
     },
   },
   test: {

@@ -63,7 +63,7 @@ function PinsPopover({ channelKey: key, beaconId, anchor, onClose }: { channelKe
               <span className="text-xs text-fg-subtle">{formatMessageTime(m.createdAt)}</span>
             </div>
             <div className="text-sm text-fg">
-              <Markdown content={m.content} resolvers={resolvers} />
+              <Markdown content={useStore.getState().messages[key]?.byId[m.id]?.content || m.content} resolvers={resolvers} />
             </div>
           </article>
         ))}

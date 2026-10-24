@@ -152,7 +152,11 @@ export interface Transmission {
   embeds: Embed[];
   /** Previews were removed by the author or a moderator. */
   suppressEmbeds?: boolean;
-  type: 'default' | 'reply' | 'system_join' | 'system_pin' | 'system_call';
+  /** Ciphertext, in an end-to-end encrypted link; `content` is filled in once decrypted. */
+  encrypted?: unknown | null;
+  e2ee?: 'pending' | 'ok' | 'other-device' | 'failed';
+  encryptedAttachments?: Array<{ url: string; key: string; filename: string; mimeType: string; size: number }>;
+  type: 'default' | 'reply' | 'system_join' | 'system_pin' | 'system_call' | 'system_encryption';
   /** Client-only: optimistic send state. */
   pending?: boolean;
   failed?: boolean;
@@ -226,6 +230,8 @@ export interface DirectLink {
   recipient: UserRef;
   lastTransmissionId: string | null;
   lastTransmissionAt: string | null;
+  /** Set once the link is end-to-end encrypted (it cannot be turned off). */
+  encryptedAt?: string | null;
 }
 
 export interface Mesh {

@@ -154,6 +154,8 @@ export async function formatTransmission(
     reactions,
     pinned: !!row.pinnedAt,
     embeds: row.suppressEmbeds ? [] : (row as any).embeds || [],
+    // End-to-end encrypted links: ciphertext only, for the clients to open.
+    encrypted: row.encryptedPayload ? JSON.parse(row.encryptedPayload) : null,
     suppressEmbeds: !!(row as any).suppressEmbeds,
     type: row.type || 'default',
   };

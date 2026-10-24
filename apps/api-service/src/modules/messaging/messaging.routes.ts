@@ -27,6 +27,7 @@ import { CHANNEL_TYPES, ChannelType, loadChannel, checkChannelAccess, audienceFo
 import { formatTransmission, deriveChannel } from '../../lib/transmissions.js';
 import { parseMentions } from '../../lib/mentions.js';
 import { touchChannelLastTransmission, incrementMentionCounts } from '../../lib/read-state.js';
+import { linkIsEncrypted } from '../e2ee/e2ee.routes.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
@@ -35,6 +36,24 @@ const MAX_PINS = 250;
 const TYPING_THROTTLE_SECONDS = 5;
 
 const channelTypeSchema = { type: 'string', enum: CHANNEL_TYPES };
+
+/** Room for one envelope per device on both sides (10 + 10) plus the sender's own copy. */
+export const MAX_ENCRYPTED_BYTES = 256 * 1024;
+/**
+ * Ciphertext for an end-to-end encrypted link (see packages/e2ee): an envelope per recipient
+ * device, keyed by device id, and the sender's own sealed copy. The server cannot read it.
+ */
+export const ENCRYPTED_PAYLOAD = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['v', 'senderDevice', 'envelopes'],
+  properties: {
+    v: { const: 1 },
+    senderDevice: { type: 'string', format: 'uuid' },
+    envelopes: { type: 'object', maxProperties: 25, additionalProperties: { type: 'object' } },
+    self: { type: 'string', maxLength: 65536 },
+  },
+};
 
 function containerColumn(channelType: string): 'relayId' | 'threadId' | 'p2pLinkId' | 'meshId' {
   switch (channelType) {
@@ -201,6 +220,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
             replyToId: { type: 'string', format: 'uuid' },
             replyPing: { type: 'boolean' },
             nonce: { type: 'string', maxLength: 100 },
+            encrypted: ENCRYPTED_PAYLOAD,
           },
         },
       },
@@ -223,11 +243,24 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         replyToId?: string;
         replyPing?: boolean;
         nonce?: string;
+        encrypted?: Record<string, unknown>;
       };
       const content = (body.content || '').trim();
       const attachmentIds = body.attachmentIds || [];
 
-      if (!content && attachmentIds.length === 0) {
+      // Encrypted links take ciphertext only; nothing else may carry it.
+      const encryptedLink = channel.channelType === 'link' && (await linkIsEncrypted(db, channelId));
+      if (encryptedLink && (content || attachmentIds.length || !body.encrypted)) {
+        return reply.status(400).send({ error: 'This conversation is end-to-end encrypted; send ciphertext only', code: 'ENCRYPTION_REQUIRED' });
+      }
+      if (!encryptedLink && body.encrypted) {
+        return reply.status(400).send({ error: 'This conversation is not end-to-end encrypted', code: 'NOT_ENCRYPTED' });
+      }
+      if (body.encrypted && JSON.stringify(body.encrypted).length > MAX_ENCRYPTED_BYTES) {
+        return reply.status(413).send({ error: 'Encrypted transmission is too large', code: 'TRANSMISSION_TOO_LARGE' });
+      }
+
+      if (!content && attachmentIds.length === 0 && !body.encrypted) {
         return reply.status(400).send({ error: 'content or attachmentIds is required' });
       }
 
@@ -297,6 +330,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           mentionRoles: parsed.mentionRoles,
           mentionEveryone: parsed.mentionEveryone,
           type: replyToId ? 'reply' : 'default',
+          encryptedPayload: body.encrypted ? JSON.stringify(body.encrypted) : null,
         })
         .returning();
 

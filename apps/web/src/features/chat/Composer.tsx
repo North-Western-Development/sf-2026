@@ -9,6 +9,10 @@ import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types'
 import { resolveName } from '../../lib/normalize';
 import { useUi, toast, openModal } from '../../app/ui';
 import { uploadToVault } from '../../lib/uploads';
+import { sealFile } from '../../lib/e2ee/client';
+import { isEncryptedChannel } from '../../data/e2ee';
+
+type SealedAttachment = { url: string; key: string; filename: string; mimeType: string; size: number };
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { EmojiPicker, EMOJI_INDEX, loadGlyphs, type Glyph } from './EmojiPicker';
@@ -64,7 +68,8 @@ export function Composer({
   const [emojiAnchor, setEmojiAnchor] = useState<DOMRect | null>(null);
   const [glyphs, setGlyphs] = useState<Glyph[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
-  const [attachmentIds, setAttachmentIds] = useState<Array<{ id: string; name: string }>>([]);
+  const [attachmentIds, setAttachmentIds] = useState<Array<{ id: string; name: string; sealed?: SealedAttachment }>>([]);
+  const encrypted = useStore((s) => isEncryptedChannel(key) && !!s.me);
   const tokens = useRef(new Map<string, string>());
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -207,10 +212,12 @@ export function Composer({
     if ((!content && !attachmentIds.length) || content.length > MAX_LENGTH) return;
     setText('');
     tokens.current.clear();
+    const sealed = attachmentIds.flatMap((a) => (a.sealed ? [a.sealed] : []));
     const opts = {
       replyToId: reply?.messageId,
       replyPing: reply?.ping,
-      attachmentIds: attachmentIds.length ? attachmentIds.map((a) => a.id) : undefined,
+      attachmentIds: !encrypted && attachmentIds.length ? attachmentIds.map((a) => a.id) : undefined,
+      encryptedAttachments: encrypted && sealed.length ? sealed : undefined,
     };
     setAttachmentIds([]);
     useUi.setState((s) => ({ replyingTo: { ...s.replyingTo, [key]: undefined } }));
@@ -258,8 +265,18 @@ export function Composer({
     for (const file of Array.from(files).slice(0, 10)) {
       setUploading(file.name);
       try {
-        const saved = await uploadToVault(file);
-        if (saved) setAttachmentIds((a) => [...a, { id: saved.id, name: file.name }]);
+        if (encrypted) {
+          // Sealed on this device; the vault only ever holds ciphertext.
+          const { blob, key: fileKey } = await sealFile(file);
+          const saved = await uploadToVault(new File([blob], 'encrypted.bin', { type: 'application/octet-stream' }));
+          if (saved) {
+            const sealedFile = { url: `/api/v1/vault/files/${saved.id}`, key: fileKey, filename: file.name, mimeType: file.type || 'application/octet-stream', size: file.size };
+            setAttachmentIds((a) => [...a, { id: saved.id, name: file.name, sealed: sealedFile }]);
+          }
+        } else {
+          const saved = await uploadToVault(file);
+          if (saved) setAttachmentIds((a) => [...a, { id: saved.id, name: file.name }]);
+        }
       } catch (err) {
         toast(`Upload failed: ${(err as Error).message}`, 'error');
       } finally {
@@ -393,11 +410,11 @@ export function Composer({
             onClick={(e) =>
               openContextMenu({ clientX: e.clientX, clientY: e.clientY - 8 }, [
                 { label: 'Upload a File', icon: <FileUp className="h-4 w-4" />, onClick: () => fileInput.current?.click() },
-                {
+                ...(encrypted ? [] : [{
                   label: 'Attach from Cloud Drive',
                   icon: <Cloud className="h-4 w-4" />,
                   onClick: () => openModal({ kind: 'drivePicker', onPick: (f) => setAttachmentIds((a) => [...a, { id: f.id, name: f.filename }]) }),
-                },
+                }]),
                 { label: 'Create Thread', disabled: true, sublabel: 'Coming soon' },
                 { label: 'Use Apps', disabled: true, sublabel: 'Coming soon' },
               ])

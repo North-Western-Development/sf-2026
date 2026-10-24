@@ -1,5 +1,5 @@
 import { Navigate, useParams } from 'react-router';
-import { AtSign, Users } from 'lucide-react';
+import { AtSign, Lock, Users } from 'lucide-react';
 import { useStore } from '../../data/store';
 import { channelKey, type UserRef } from '../../lib/types';
 import { userTag } from '../../lib/normalize';
@@ -9,6 +9,7 @@ import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { openModal } from '../../app/ui';
 import { CallButtons, CallPanel } from '../voice/DmCall';
+import { EncryptionButton } from './EncryptionControls';
 
 function DmProfilePanel({ user }: { user: UserRef }) {
   const status = useStore((s) => s.presence[user.id]?.customStatus?.text);
@@ -50,7 +51,12 @@ export function DirectRoute() {
         icon={<AtSign className="h-6 w-6" />}
         title={name}
         placeholder={`Transmit to @${name}`}
-        actions={<CallButtons channelKey={channelKey('link', link.id)} />}
+        actions={
+          <>
+            <EncryptionButton link={link} />
+            <CallButtons channelKey={channelKey('link', link.id)} />
+          </>
+        }
         banner={<CallPanel channelKey={channelKey('link', link.id)} />}
         aside={<DmProfilePanel user={u} />}
         welcome={
@@ -61,6 +67,11 @@ export function DirectRoute() {
             <p className="mt-2 text-fg-muted">
               This is the beginning of your {term('link').toLowerCase()} history with <strong>@{name}</strong>.
             </p>
+            {link.encryptedAt && (
+              <p className="mt-2 flex items-center gap-1.5 text-sm text-online">
+                <Lock className="h-4 w-4" /> Transmissions here are end-to-end encrypted.
+              </p>
+            )}
           </div>
         }
       />

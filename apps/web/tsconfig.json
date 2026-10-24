@@ -18,7 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@subspace/ui": ["../../packages/ui/src/index.ts"],
-      "@subspace/constants": ["../../packages/constants/src/index.ts"]
+      "@subspace/constants": ["../../packages/constants/src/index.ts"],
+      "@subspace/e2ee": ["../../packages/e2ee/src/index.ts"]
     }
   },
   "include": ["src"]

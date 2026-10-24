@@ -13,6 +13,7 @@ export default defineConfig({
       '@subspace/constants': path.resolve(__dirname, 'packages/constants/src/index.ts'),
       '@subspace/database': path.resolve(__dirname, 'packages/database/src/index.ts'),
       '@subspace/crypto': path.resolve(__dirname, 'packages/crypto/src/index.ts'),
+      '@subspace/e2ee': path.resolve(__dirname, 'packages/e2ee/src/index.ts'),
     },
   },
 });

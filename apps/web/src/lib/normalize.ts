@@ -143,6 +143,8 @@ export function toTransmission(t: Raw): Transmission {
     pinned: !!(t.pinned ?? t.isPinned),
     embeds: Array.isArray(t.embeds) ? t.embeds : [],
     suppressEmbeds: !!t.suppressEmbeds,
+    encrypted: t.encrypted ?? null,
+    e2ee: t.encrypted ? 'pending' : undefined,
     type: t.type ?? (t.replyTo ? 'reply' : 'default'),
     nonce: t.nonce,
   };
@@ -151,7 +153,14 @@ export function toTransmission(t: Raw): Transmission {
 /** The fields an edit changes. Edit payloads are bare rows, so applying them whole would drop author, reactions and reply. */
 export function toEditPatch(t: Raw): Partial<Transmission> {
   const n = toTransmission(t);
-  return { content: n.content, editedAt: n.editedAt, mentions: n.mentions, mentionRoles: n.mentionRoles, mentionEveryone: n.mentionEveryone };
+  return {
+    content: n.content,
+    editedAt: n.editedAt,
+    mentions: n.mentions,
+    mentionRoles: n.mentionRoles,
+    mentionEveryone: n.mentionEveryone,
+    ...(n.encrypted ? { encrypted: n.encrypted, e2ee: 'pending' as const } : {}),
+  };
 }
 
 export function toCluster(c: Raw): Cluster {
@@ -174,6 +183,7 @@ export function toLink(l: Raw, selfId: string): DirectLink {
     recipient: toUserRef(recipientRaw),
     lastTransmissionId: l.lastTransmissionId ?? null,
     lastTransmissionAt: l.lastTransmissionAt ?? l.updatedAt ?? null,
+    encryptedAt: l.encryptedAt ?? null,
   };
 }
 

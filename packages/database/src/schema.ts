@@ -189,6 +189,8 @@ export const pointToPointLinks = pgTable('point_to_point_links', {
   transmitter2Id: uuid('transmitter2_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   lastTransmissionId: uuid('last_transmission_id'),
   lastTransmissionAt: timestamp('last_transmission_at', { withTimezone: true }),
+  /** End-to-end encrypted: the server stores and accepts only ciphertext from this point on. */
+  encryptedAt: timestamp('encrypted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -356,6 +358,30 @@ export const vaultFiles = pgTable('vault_files', {
   isQuarantined: boolean('is_quarantined').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/**
+ * End-to-end encryption devices. Only public keys: the identity (ECDH P-256) and signing
+ * (ECDSA P-256) keys, and the current signed prekey. Private keys never leave the device.
+ */
+export const e2eeDevices = pgTable('e2ee_devices', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').default('Device').notNull(),
+  identityKey: text('identity_key').notNull(),
+  signingKey: text('signing_key').notNull(),
+  signedPreKey: jsonb('signed_pre_key').$type<{ id: number; key: string; signature: string }>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** One-time prekeys; each is handed out once and deleted. */
+export const e2eeOneTimePreKeys = pgTable('e2ee_one_time_pre_keys', {
+  deviceId: uuid('device_id').references(() => e2eeDevices.id, { onDelete: 'cascade' }).notNull(),
+  keyId: integer('key_id').notNull(),
+  publicKey: text('public_key').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.deviceId, table.keyId] }),
+]);
 
 /**
  * Cloud drive connections (Google Drive, OneDrive, Dropbox) for importing into the vault.

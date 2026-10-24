@@ -24,6 +24,7 @@ import {
   patchMessage,
   stashEmbeds,
 } from './store';
+import { openEncrypted } from './e2ee';
 import { ackChannel, applyReaction, loadBeacon, loadCalls, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 
@@ -96,7 +97,10 @@ function onTransmissionCreate(d: Raw) {
   // the notification) can open it.
   const linkLoad = key.startsWith('link:') && !s.links[key.slice(5)] ? refreshLinks().catch(() => {}) : null;
 
-  if (s.messages[key]?.loaded) upsertMessages(key, [t]);
+  if (s.messages[key]?.loaded) {
+    upsertMessages(key, [t]);
+    openEncrypted(key, [t]);
+  }
   else
     setState((st) => ({
       activity: { ...st.activity, [key]: { ...st.activity[key], lastId: t.id, lastAt: t.createdAt } },
@@ -123,7 +127,7 @@ function onTransmissionCreate(d: Raw) {
   const relay = key.startsWith('relay:') ? s.relays[key.slice(6)] : undefined;
   const member = relay ? s.members[relay.beaconId]?.[t.author.id] : undefined;
   // Calls ring through the incoming-call prompt instead of a message notification.
-  if (t.type !== 'system_call') maybeNotify(key, t, titleFor(key, resolveName(t.author, member)), () => void Promise.resolve(linkLoad).then(() => navigate(pathFor(key))));
+  if (t.type !== 'system_call') maybeNotify(key, t.encrypted ? { ...t, content: 'Sent an encrypted transmission' } : t, titleFor(key, resolveName(t.author, member)), () => void Promise.resolve(linkLoad).then(() => navigate(pathFor(key))));
 }
 
 const handlers: Record<string, (d: Raw) => void> = {
@@ -198,6 +202,8 @@ const handlers: Record<string, (d: Raw) => void> = {
     if (!key || !d.transmission) return;
     if (getState().messages[key]?.byId[d.transmission.id]) patchMessage(key, d.transmission.id, toEditPatch(d.transmission));
     else upsertMessages(key, [toTransmission(d.transmission)]);
+    const updated = getState().messages[key]?.byId[d.transmission.id];
+    if (updated) openEncrypted(key, [updated]);
   },
   TRANSMISSION_EMBEDS_UPDATE(d) {
     const key = eventChannel(d);
@@ -334,6 +340,10 @@ const handlers: Record<string, (d: Raw) => void> = {
     rememberUsers([u]);
     const me = getState().me;
     if (me && u.id === me.id) setState({ me: { ...me, ...(d.user ?? d) } });
+  },
+  LINK_ENCRYPTION_ENABLED(d) {
+    const link = getState().links[d.linkId];
+    if (link) setState((s) => ({ links: { ...s.links, [d.linkId]: { ...link, encryptedAt: d.encryptedAt } } }));
   },
   EMAIL_VERIFIED() {
     const me = getState().me;
