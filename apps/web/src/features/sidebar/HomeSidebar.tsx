@@ -15,6 +15,7 @@ import { term } from '../../lib/strings';
 import { openModal, confirmAction } from '../../app/ui';
 import { Avatar, MentionBadge } from '../common/Avatar';
 import { http } from '../../lib/http';
+import { joinCall } from '../voice/session';
 
 function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
   return (
@@ -76,7 +77,13 @@ function ConversationRow({ conv }: { conv: Conversation }) {
       const u = conv.link.recipient;
       items.push(
         { label: 'Profile', onClick: () => openModal({ kind: 'profile', userId: u.id }) },
-        { label: 'Call', disabled: true, sublabel: 'Coming soon' },
+        {
+          label: 'Call',
+          onClick: () => {
+            navigate(`/channels/@me/${id}`);
+            void joinCall(key);
+          },
+        },
         { separator: true }
       );
       items.push(

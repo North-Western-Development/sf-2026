@@ -5,6 +5,8 @@ import { blockUser, openDirectLink, removeRelationship } from '../../data/action
 import { http } from '../../lib/http';
 import { userTag } from '../../lib/normalize';
 import { confirmAction, openModal, promptText, toast } from '../../app/ui';
+import { channelKey } from '../../lib/types';
+import { joinCall } from '../voice/session';
 
 /** Context menu for a transmitter (member list, author lines, DM rows). */
 export function memberMenu(beaconId: string | undefined, userId: string, navigate?: (p: string) => void): ContextMenuItem[] {
@@ -28,7 +30,18 @@ export function memberMenu(beaconId: string | undefined, userId: string, navigat
         }
       },
     });
-    items.push({ label: 'Call', disabled: true, sublabel: 'Coming soon' });
+    items.push({
+      label: 'Call',
+      onClick: async () => {
+        try {
+          const linkId = await openDirectLink(userId);
+          (navigate ?? ((p: string) => window.history.pushState({}, '', p)))(`/channels/@me/${linkId}`);
+          void joinCall(channelKey('link', linkId));
+        } catch {
+          toast('You cannot call this transmitter.', 'error');
+        }
+      },
+    });
   }
   items.push({
     label: 'Add Note',
