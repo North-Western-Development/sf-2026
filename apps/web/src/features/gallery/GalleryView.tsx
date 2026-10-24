@@ -145,7 +145,7 @@ function Lightbox({
 
   const iconButton = 'flex h-9 w-9 items-center justify-center rounded-full text-fg-muted hover:bg-white/10 hover:text-fg';
   return (
-    <div role="dialog" aria-modal="true" aria-label={item.caption || item.filename} className="fixed inset-0 z-50 flex flex-col bg-black/90" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label={item.caption || item.filename} className="fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-sm" onClick={onClose}>
       <div className="flex h-14 shrink-0 items-center gap-3 px-4" onClick={(e) => e.stopPropagation()}>
         <Avatar user={item.author} size={32} />
         <div className="min-w-0 flex-1">
