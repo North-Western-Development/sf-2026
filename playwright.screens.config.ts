@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Captures a picture of every screen into screenshots/ (not a test suite):
+// Captures a picture of every screen into screenshots/ (not a test suite). Build the docs first.
 //   npx playwright test --config playwright.screens.config.ts
 // Uses the browser-test stack (port 4173) and its fixtures.
 export default defineConfig({
