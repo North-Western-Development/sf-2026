@@ -12,6 +12,7 @@ import {
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { resolveBeaconActorContext, resolveRelayActorContext, ClearanceContext } from '../middleware/hierarchy.js';
 import { Audience } from './events.js';
+import { dmAccess } from './dm-access.js';
 
 export type ChannelType = 'relay' | 'link' | 'mesh' | 'thread';
 export const CHANNEL_TYPES: ChannelType[] = ['relay', 'link', 'mesh', 'thread'];
@@ -135,6 +136,9 @@ export async function checkChannelAccess(
         )
         .limit(1);
       if (blocked) return { allowed: false, status: 403, error: 'Communication blocked by signal filter', code: 'SIGNAL_BLOCKED' };
+      // Like Discord: without an affiliation, the two need a shared beacon where the other allows DMs.
+      const access = await dmAccess(db, transmitterId, otherId);
+      if (!access.ok) return { allowed: false, status: 403, error: access.error, code: access.code };
     }
     return { allowed: true, status: 200 };
   }

@@ -19,6 +19,7 @@ export type ModalState =
   | { kind: 'badges' }
   | { kind: 'status' }
   | { kind: 'events'; beaconId: string }
+  | { kind: 'beaconPrivacy'; beaconId: string }
   | { kind: 'createEvent'; beaconId: string; eventId?: string }
   | { kind: 'drivePicker'; onPick: (file: { id: string; filename: string }) => void }
   | { kind: 'console' }

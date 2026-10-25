@@ -771,6 +771,25 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
   //
 
   /**
+   * GET /api/v1/beacons/:id/members/@me/privacy
+   * The caller's Privacy Settings for this beacon (only they see these).
+   */
+  app.get('/:id/members/@me/privacy', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+
+    const { id: beaconId } = request.params as { id: string };
+    const [member] = await db
+      .select({ allowDms: beaconMembers.allowDms })
+      .from(beaconMembers)
+      .where(and(eq(beaconMembers.beaconId, beaconId), eq(beaconMembers.transmitterId, token.transmitterId)))
+      .limit(1);
+    if (!member) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+    return reply.send({ privacy: member });
+  });
+
+  /**
    * PATCH /api/v1/beacons/:id/members/@me
    */
   app.patch(
@@ -789,6 +808,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
             themePrimary: { type: ['string', 'null'] },
             themeAccent: { type: ['string', 'null'] },
             displayNameStyle: { type: ['object', 'null'] },
+            allowDms: { type: 'boolean' },
           },
         },
       },
@@ -828,6 +848,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       if (body.themePrimary !== undefined) updates.themePrimary = body.themePrimary;
       if (body.themeAccent !== undefined) updates.themeAccent = body.themeAccent;
       if (body.displayNameStyle !== undefined) updates.displayNameStyle = body.displayNameStyle;
+      if (body.allowDms !== undefined) updates.allowDms = body.allowDms;
 
       if (Object.keys(updates).length === 0) {
         return reply.send({ member: actorContext.member });

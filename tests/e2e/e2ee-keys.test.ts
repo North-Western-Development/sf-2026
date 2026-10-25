@@ -106,6 +106,7 @@ describe('E2EE: key server and encrypted links', () => {
   it('only accepts ciphertext where the link is encrypted', async () => {
     if (!db) return;
     const [plainLink] = await db.insert(pointToPointLinks).values({ transmitter1Id: alice.id, transmitter2Id: eve.id }).returning();
+    await db.insert(affiliations).values({ transmitterId: alice.id, targetId: eve.id, status: 'accepted' });
     const res = await call('POST', `/api/v1/channels/link/${plainLink.id}/transmissions`, alice, { encrypted: { v: 1, senderDevice: deviceIds.alice, envelopes: {} } });
     expect(res.json().code).toBe('NOT_ENCRYPTED');
   });

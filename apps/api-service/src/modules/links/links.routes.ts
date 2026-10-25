@@ -21,6 +21,7 @@ import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { AUTHOR_FIELDS } from '../../lib/transmissions.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
 import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
+import { dmAccess } from '../../lib/dm-access.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
 
@@ -134,15 +135,15 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
       // Quarantined accounts can still message their friends, nobody new.
       if (!friendship && (await isQuarantined(db, token.transmitterId))) return reply.status(403).send(QUARANTINED);
-      let allowed = !!friendship;
-      if (!allowed) {
-        const mine = await db.select({ beaconId: beaconMembers.beaconId }).from(beaconMembers).where(eq(beaconMembers.transmitterId, token.transmitterId));
-        const theirs = await db.select({ beaconId: beaconMembers.beaconId }).from(beaconMembers).where(eq(beaconMembers.transmitterId, targetId));
-        const mineSet = new Set(mine.map((m: any) => m.beaconId));
-        allowed = theirs.some((t: any) => mineSet.has(t.beaconId));
+      if (!friendship) {
+        // A shared beacon counts only where they allow DMs from members (its Privacy Settings).
+        const access = await dmAccess(db, token.transmitterId, targetId);
+        if (!access.ok) {
+          return reply
+            .status(403)
+            .send(access.code === 'DMS_DISABLED' ? { error: access.error, code: access.code } : { error: 'Cannot open a link with this transmitter', code: 'LINK_NOT_ALLOWED' });
+        }
       }
-
-      if (!allowed) return reply.status(403).send({ error: 'Cannot open a link with this transmitter', code: 'LINK_NOT_ALLOWED' });
 
       let [link] = await db
         .select()
@@ -328,28 +329,12 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       });
     }
 
-    // 4. Transmission Request Gate (Non-affiliated users)
-    // Find mutual beacons
-    const senderBeacons = await db
-      .select({ beaconId: beaconMembers.beaconId })
-      .from(beaconMembers)
-      .where(eq(beaconMembers.transmitterId, senderId));
-
-    const targetBeacons = await db
-      .select({ beaconId: beaconMembers.beaconId })
-      .from(beaconMembers)
-      .where(eq(beaconMembers.transmitterId, targetId));
-
+    // 4. Transmission Request Gate (Non-affiliated users): needs a shared beacon where the
+    // target allows DMs from members.
     if (await isQuarantined(db, senderId)) return reply.status(403).send(QUARANTINED);
-    const senderSet = new Set(senderBeacons.map((b: any) => b.beaconId));
-    const mutualBeacon = targetBeacons.find((b: any) => senderSet.has(b.beaconId));
-
-    if (!mutualBeacon) {
-      return reply.status(403).send({
-        error: 'Cannot initiate transmission link without sharing a mutual Beacon',
-        code: 'NO_SHARED_BEACON',
-      });
-    }
+    const access = await dmAccess(db, senderId, targetId);
+    if (!access.ok) return reply.status(403).send({ error: access.error, code: access.code });
+    const mutualBeacon = { beaconId: access.beaconId! };
 
     // Check existing transmission requests between sender and target
     const [existingRequest] = await db

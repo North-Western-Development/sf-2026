@@ -49,6 +49,30 @@ test.describe('Beacon folders (clusters)', () => {
     const folder = page.getByRole('navigation', { name: 'Beacons' }).getByRole('button', { name: 'Work cluster' });
     await expect(folder.getByText('1')).toBeVisible();
   });
+
+  test('Move to… puts a beacon first or last in its cluster, or into another cluster', async ({ page, me }) => {
+    const { beacon: a } = await me.api.createBeacon('Move Alpha');
+    const { beacon: b } = await me.api.createBeacon('Move Beta');
+    const { beacon: c } = await me.api.createBeacon('Move Gamma');
+    const { beacon: d } = await me.api.createBeacon('Move Delta');
+    const { cluster: work } = await me.api.post('/clusters', { name: 'Work', color: '#3B8EF2', beaconIds: [a.id, b.id] });
+    await me.api.post('/clusters', { name: 'Play', color: '#3DDC84', beaconIds: [c.id, d.id] });
+    await signIn(page, me);
+    const rail = page.getByRole('navigation', { name: 'Beacons' });
+    await rail.getByRole('button', { name: 'Work cluster' }).click();
+
+    await rail.getByRole('button', { name: 'Move Beta' }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Move to…' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Last in Cluster' })).toHaveAttribute('aria-disabled', 'true');
+    await page.getByRole('menuitem', { name: 'First in Cluster' }).click();
+    await expect.poll(async () => (await me.api.get('/clusters')).clusters.find((x: any) => x.id === work.id)?.beaconIds).toEqual([b.id, a.id]);
+
+    await rail.getByRole('button', { name: 'Move Beta' }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Move to…' }).click();
+    await page.getByRole('menuitem', { name: 'Cluster', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Play' }).click();
+    await expect.poll(async () => (await me.api.get('/clusters')).clusters.find((x: any) => x.name === 'Play')?.beaconIds).toEqual([c.id, d.id, b.id]);
+  });
 });
 
 test.describe('Beacon administration', () => {
@@ -71,6 +95,7 @@ test.describe('Beacon administration', () => {
 
     await page.getByRole('navigation', { name: 'Beacons' }).getByRole('button', { name: 'Old Name' }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Beacon Settings' }).click();
+    await page.getByRole('menuitem', { name: 'Beacon Profile', exact: true }).click();
     const settings = page.getByRole('dialog', { name: /Settings/ });
     await settings.getByLabel('Beacon Name').fill('New Name');
     await settings.getByRole('button', { name: 'Save Changes' }).click();
@@ -102,6 +127,39 @@ test.describe('Beacon administration', () => {
     await expect(page.getByRole('menuitem', { name: 'Leave Beacon' })).toBeVisible();
     // The API agrees.
     await expect(crew.api.patch(`/beacons/${beacon.id}`, { name: 'Hijacked' })).rejects.toThrow(/403/);
+  });
+
+  test('the menu opens each settings page directly, and Privacy Settings stops DMs from that beacon', async ({ page, me, browser }) => {
+    const crew = await register('privacy');
+    const { beacon, relays } = await me.api.createBeacon('Quiet Harbor');
+    const { code } = await me.api.createInvite(beacon.id);
+    await crew.api.join(beacon.id, code);
+    const general = relays.find((r) => r.type === 'text')!;
+
+    // The owner's Beacon Settings submenu opens a page directly.
+    await signIn(page, me, `/channels/${beacon.id}/${general.id}`);
+    await page.getByRole('navigation', { name: 'Beacons' }).getByRole('button', { name: 'Quiet Harbor' }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Beacon Settings' }).click();
+    await page.getByRole('menuitem', { name: 'Invites' }).click();
+    await expect(page.getByRole('dialog', { name: /Settings/ }).getByRole('heading', { name: 'Invites' }).first()).toBeVisible();
+
+    // A member's menu: privacy and per-beacon profile, no admin pages.
+    const theirs = await openAs(browser, crew, `/channels/${beacon.id}/${general.id}`);
+    await theirs.getByRole('navigation', { name: 'Beacons' }).getByRole('button', { name: 'Quiet Harbor' }).click({ button: 'right' });
+    await expect(theirs.getByRole('menuitem', { name: 'Beacon Settings' })).toHaveCount(0);
+    await theirs.getByRole('menuitem', { name: 'Privacy Settings' }).click();
+    const dialog = theirs.getByRole('dialog', { name: 'Privacy Settings—Quiet Harbor' });
+    const dms = dialog.getByRole('switch', { name: 'Direct Links' });
+    await expect(dms).toHaveAttribute('aria-checked', 'true');
+    // A beacon-mate can open a DM while it is on...
+    const { link } = await me.api.post('/links', { targetId: crew.transmitter.id });
+    await dms.click();
+    await expect(dms).toHaveAttribute('aria-checked', 'false');
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    // ...and not once it is off: neither a new one nor in the existing one.
+    await expect(me.api.post('/links', { targetId: crew.transmitter.id })).rejects.toThrow(/403/);
+    await expect(me.api.post(`/channels/link/${link.id}/transmissions`, { content: 'hello?' })).rejects.toThrow(/403/);
+    await theirs.context().close();
   });
 });
 

@@ -9,6 +9,7 @@ import { ProfileModal } from '../features/profile/ProfilePopout';
 import { BadgesModal } from '../features/profile/BadgesModal';
 import { StatusModal } from '../features/user/StatusModal';
 import { EventsModal } from '../features/events/EventsModal';
+import { BeaconPrivacyModal } from '../features/modals/BeaconPrivacyModal';
 import { CreateEventModal } from '../features/events/CreateEventModal';
 import { UserSettings } from '../features/settings/UserSettings';
 import { BeaconSettings } from '../features/settings/BeaconSettings';
@@ -82,6 +83,9 @@ export function ModalHost() {
     }
     case 'events':
       content = <EventsModal beaconId={modal.beaconId} />;
+      break;
+    case 'beaconPrivacy':
+      content = <BeaconPrivacyModal beaconId={modal.beaconId} />;
       break;
     case 'createEvent':
       content = <CreateEventModal beaconId={modal.beaconId} eventId={modal.eventId} />;

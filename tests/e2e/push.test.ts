@@ -55,6 +55,8 @@ describe('Mobile push notifications', () => {
       if (!existing.length) await db.insert(transmitters).values({ id: u.id, username: u.username, email: `${u.username}@subspace.test`, passwordHash: 'x', displayName: u.username === 'push_alice' ? 'Alice Nova' : 'Bob' });
     }
     linkId = (await db.insert(pointToPointLinks).values({ transmitter1Id: alice.id, transmitter2Id: bob.id }).returning())[0].id;
+    // Affiliates, so the DM is allowed without a shared beacon.
+    await db.insert(affiliations).values({ transmitterId: alice.id, targetId: bob.id, status: 'accepted' });
     await (app as any).redis?.hdel('presence', bob.id);
   });
 

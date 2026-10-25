@@ -60,7 +60,7 @@ test.describe('Shell layout', () => {
 
     await page.getByRole('navigation', { name: 'Beacons' }).getByRole('button', { name: 'Menu Beacon' }).click({ button: 'right' });
     await expect(page.getByRole('menu')).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: 'Invite Transmitters' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Invite to Beacon' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('menu')).toHaveCount(0);
   });
