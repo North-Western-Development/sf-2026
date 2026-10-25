@@ -17,6 +17,7 @@ import {
   PERMISSIONS,
   DEFAULT_EVERYONE_PERMISSIONS,
   hasPermission,
+  TIMEOUT_DURATIONS,
 } from '@subspace/constants';
 import {
   extractAuthToken,
@@ -27,6 +28,7 @@ import {
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 import { validateMediaUrl } from '../../lib/media.js';
 import { buildMember, buildMembers } from '../../lib/members.js';
+import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
 
 export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -359,6 +361,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (ban) {
       return reply.status(403).send({ error: 'Transmitter is banned from this Beacon', code: 'BANNED' });
     }
+    if (await isQuarantined(db, token.transmitterId)) return reply.status(403).send(QUARANTINED);
 
     const [existingMember] = await db
       .select()
@@ -451,6 +454,38 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (!actor) return reply.status(404).send({ error: 'Beacon not found' });
 
     return reply.send({ members: await buildMembers(db, (app as any).redis, beaconId) });
+  });
+
+  /**
+   * PUT /api/v1/beacons/:id/members/:targetId/timeout   { seconds }   (0 lifts it)
+   * Discord's timeout: the member keeps reading but cannot send, react or join voice.
+   */
+  app.put('/:id/members/:targetId/timeout', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    const { id: beaconId, targetId } = request.params as { id: string; targetId: string };
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const seconds = Number((request.body as any)?.seconds);
+    if (seconds !== 0 && !(TIMEOUT_DURATIONS as readonly number[]).includes(seconds)) {
+      return reply.status(400).send({ error: `seconds must be 0 or one of ${TIMEOUT_DURATIONS.join(', ')}` });
+    }
+    const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
+    if (!actorContext) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
+    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MODERATE_MEMBERS)) {
+      return reply.status(403).send({ error: 'Transmitter lacks MODERATE_MEMBERS clearance' });
+    }
+    if (!(await assertCanModerateTarget(db, actorContext, targetId, reply))) return;
+
+    const timeoutUntil = seconds ? new Date(Date.now() + seconds * 1000) : null;
+    const [updated] = await db
+      .update(beaconMembers)
+      .set({ timeoutUntil })
+      .where(and(eq(beaconMembers.beaconId, beaconId), eq(beaconMembers.transmitterId, targetId)))
+      .returning();
+    if (!updated) return reply.status(404).send({ error: 'Member not found' });
+    await publishGatewayEvent(app, 'MEMBER_UPDATE', { beaconId, member: await buildMember(db, (app as any).redis, beaconId, targetId) }, { beaconId });
+    await publishSessionRefresh(app, [targetId]);
+    return reply.send({ timeoutUntil });
   });
 
   /**

@@ -10,6 +10,16 @@ import { joinCall } from '../voice/session';
 import { copyText } from '../../lib/clipboard';
 
 /** Context menu for a transmitter (member list, author lines, DM rows). */
+/** Discord's timeout lengths. */
+const TIMEOUT_CHOICES: Array<[number, string]> = [
+  [60, '60 seconds'],
+  [300, '5 minutes'],
+  [600, '10 minutes'],
+  [3600, '1 hour'],
+  [86400, '1 day'],
+  [604800, '1 week'],
+];
+
 export function memberMenu(beaconId: string | undefined, userId: string, navigate?: (p: string) => void): ContextMenuItem[] {
   const s = getState();
   const user = s.users[userId];
@@ -91,6 +101,24 @@ export function memberMenu(beaconId: string | undefined, userId: string, navigat
                 .catch(() => toast('You cannot change clearances for this transmitter.', 'error'));
             },
           })),
+        });
+      }
+    }
+    if (!self && can(perms, PERMISSIONS.MODERATE_MEMBERS)) {
+      const name = user.displayName || user.username;
+      const until = s.members[beaconId]?.[userId]?.timeoutUntil;
+      const setTimeoutFor = (seconds: number) =>
+        void http
+          .put(`/beacons/${beaconId}/members/${userId}/timeout`, { seconds })
+          .then(() => toast(seconds ? `${name} is timed out` : `${name}'s timeout was removed`, 'success'))
+          .catch((e) => toast((e as Error).message, 'error'));
+      if (until && new Date(until).getTime() > Date.now()) {
+        mod.push({ label: `Remove Timeout for ${name}`, onClick: () => setTimeoutFor(0) });
+      } else {
+        mod.push({
+          label: `Timeout ${name}`,
+          danger: true,
+          children: TIMEOUT_CHOICES.map(([seconds, label]) => ({ label, onClick: () => setTimeoutFor(seconds) })),
         });
       }
     }

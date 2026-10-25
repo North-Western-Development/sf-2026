@@ -5,7 +5,7 @@ import { AtSign, CirclePlus, Cloud, Smile, Sticker, X, FileUp, Hash } from 'luci
 import { ComingSoon, Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore, getState } from '../../data/store';
 import { notifyTyping, sendMessage } from '../../data/actions';
-import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
+import { relayPermissions, can, PERMISSIONS, myTimeout } from '../../data/permissions';
 import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types';
 import { resolveName } from '../../lib/normalize';
 import { useUi, toast, openModal } from '../../app/ui';
@@ -95,6 +95,14 @@ export function Composer({
   const canAttach = perms === null || can(perms, PERMISSIONS.ATTACH_FILES);
   const canEveryone = perms === null ? false : can(perms, PERMISSIONS.MENTION_EVERYONE);
   const needsOnboarding = useNeedsOnboarding(type === 'relay' ? beaconId : undefined);
+  const timedOutUntil = useStore((s) => (type === 'relay' && beaconId ? myTimeout(s, beaconId) : null));
+  // Re-render when a timeout runs out so the composer comes back on its own.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!timedOutUntil) return;
+    const t = window.setTimeout(() => setTick((n) => n + 1), new Date(timedOutUntil).getTime() - Date.now() + 500);
+    return () => window.clearTimeout(t);
+  }, [timedOutUntil]);
 
   // Reset per channel.
   useEffect(() => {
@@ -303,7 +311,10 @@ export function Composer({
   if (!canSend || disabledReason) {
     return (
       <div className="px-4 pb-6">
-        <div className="flex h-11 items-center rounded-lg bg-raised px-4 text-sm text-fg-subtle">{disabledReason || 'You do not have permission to transmit in this relay.'}</div>
+        <div className="flex h-11 items-center rounded-lg bg-raised px-4 text-sm text-fg-subtle">{disabledReason ||
+            (timedOutUntil
+              ? `You're timed out until ${new Date(timedOutUntil).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}. You can still read along.`
+              : 'You do not have permission to transmit in this relay.')}</div>
       </div>
     );
   }

@@ -1,7 +1,8 @@
 import { eq, and, or, inArray } from 'drizzle-orm';
-import { PERMISSIONS, computeMemberPermissions, hasPermission } from '@subspace/constants';
+import { PERMISSIONS, computeMemberPermissions, hasPermission, restrictPermissions } from '@subspace/constants';
 import {
   beacons,
+  transmitters,
   beaconMembers,
   clearances,
   relays,
@@ -100,7 +101,9 @@ export async function computeRelayPermissions(
     perms = (perms & ~memberOverwrite.denyBits) | memberOverwrite.allowBits;
   }
 
-  return perms;
+  // A timeout or a staff quarantine takes away posting, reacting and voice.
+  const [account] = await db.select({ quarantinedAt: transmitters.quarantinedAt }).from(transmitters).where(eq(transmitters.id, transmitterId)).limit(1);
+  return restrictPermissions(perms, { timeoutUntil: member?.timeoutUntil, quarantined: !!account?.quarantinedAt });
 }
 
 /** Transmitter ids that may VIEW the given relay (owner + members whose effective permissions include VIEW_RELAY). */

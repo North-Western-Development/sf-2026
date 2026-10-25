@@ -3,6 +3,7 @@ import { eq, and, beacons, clearances, beaconMembers, transmitters, computeRelay
 import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import {
   computeMemberPermissions,
+  restrictPermissions,
   getHighestRank,
   canModerate,
   hasPermission,
@@ -82,7 +83,12 @@ export async function resolveBeaconActorContext(
     (c) => assignedIds.has(c.id) || c.position === 0
   );
 
-  const effectivePermissions = computeMemberPermissions(activeClearances, isOwner);
+  const [account] = await db.select({ quarantinedAt: transmitters.quarantinedAt }).from(transmitters).where(eq(transmitters.id, transmitterId)).limit(1);
+  // A timeout or a staff quarantine takes away posting, reacting and voice.
+  const effectivePermissions = restrictPermissions(computeMemberPermissions(activeClearances, isOwner), {
+    timeoutUntil: member?.timeoutUntil,
+    quarantined: !!account?.quarantinedAt,
+  });
   const highestRank = getHighestRank(activeClearances, isOwner);
 
   return {

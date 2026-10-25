@@ -17,6 +17,7 @@ import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 import { buildMember } from '../../lib/members.js';
+import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
 
 const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const ALLOWED_MAX_AGE = [0, 1800, 3600, 21600, 43200, 86400, 604800];
@@ -244,6 +245,7 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       .where(and(eq(beaconBans.beaconId, invite.beaconId), eq(beaconBans.transmitterId, token.transmitterId)))
       .limit(1);
     if (ban) return reply.status(403).send({ error: 'Transmitter is banned from this Beacon', code: 'BANNED' });
+    if (await isQuarantined(db, token.transmitterId)) return reply.status(403).send(QUARANTINED);
 
     const [blocked] = await db
       .select()

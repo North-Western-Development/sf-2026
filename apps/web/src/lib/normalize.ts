@@ -105,6 +105,7 @@ export function toMember(m: Raw, beaconId: string): Member {
     bio: m.member?.bio ?? null,
     pronouns: m.member?.pronouns ?? null,
     hasCompletedOnboarding: m.hasCompletedOnboarding ?? true,
+    timeoutUntil: m.timeoutUntil ?? null,
   };
 }
 

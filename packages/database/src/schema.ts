@@ -54,6 +54,9 @@ export const transmitters = pgTable('transmitters', {
   profileVisibility: text('profile_visibility').default('everyone').notNull(), // 'everyone' | 'beacons' | 'friends'
   // Self-service account removal: disabled accounts reactivate on sign-in; deleted ones are anonymised.
   disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  /** Staff quarantine: the account can read but not post in beacons, DM non-friends or join beacons. */
+  quarantinedAt: timestamp('quarantined_at', { withTimezone: true }),
+  quarantineReason: text('quarantine_reason'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -151,6 +154,8 @@ export const beaconMembers = pgTable('beacon_members', {
   /** The invite code used, kept after the invite itself is revoked. */
   joinInviteCode: text('join_invite_code'),
   invitedBy: uuid('invited_by'),
+  /** Timed out until (Discord's timeout): can read, cannot send, react or join voice. */
+  timeoutUntil: timestamp('timeout_until', { withTimezone: true }),
 }, (table) => [
   primaryKey({ columns: [table.beaconId, table.transmitterId] }),
 ]);

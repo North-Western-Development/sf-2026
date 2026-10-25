@@ -20,6 +20,7 @@ import { loadChannel } from '../../lib/channels.js';
 import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { AUTHOR_FIELDS } from '../../lib/transmissions.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
+import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
 
@@ -131,6 +132,8 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         )
         .limit(1);
 
+      // Quarantined accounts can still message their friends, nobody new.
+      if (!friendship && (await isQuarantined(db, token.transmitterId))) return reply.status(403).send(QUARANTINED);
       let allowed = !!friendship;
       if (!allowed) {
         const mine = await db.select({ beaconId: beaconMembers.beaconId }).from(beaconMembers).where(eq(beaconMembers.transmitterId, token.transmitterId));
@@ -337,6 +340,7 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       .from(beaconMembers)
       .where(eq(beaconMembers.transmitterId, targetId));
 
+    if (await isQuarantined(db, senderId)) return reply.status(403).send(QUARANTINED);
     const senderSet = new Set(senderBeacons.map((b: any) => b.beaconId));
     const mutualBeacon = targetBeacons.find((b: any) => senderSet.has(b.beaconId));
 

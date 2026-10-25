@@ -1,10 +1,16 @@
-import { PERMISSIONS, computeMemberPermissions, hasPermission } from '@subspace/constants';
+import { PERMISSIONS, computeMemberPermissions, hasPermission, restrictPermissions } from '@subspace/constants';
 import type { SubspaceState } from './store';
 import { useStore } from './store';
 
 export { PERMISSIONS };
 
-/** Beacon-level permissions for the signed-in transmitter (owner = all). */
+/** My timeout in a beacon (ISO) while it lasts, else null. */
+export function myTimeout(s: SubspaceState, beaconId: string): string | null {
+  const until = s.me ? s.members[beaconId]?.[s.me.id]?.timeoutUntil : null;
+  return until && new Date(until).getTime() > Date.now() ? until : null;
+}
+
+/** Beacon-level permissions for the signed-in transmitter (owner = all), less a running timeout. */
 export function beaconPermissions(s: SubspaceState, beaconId: string): bigint {
   const beacon = s.beacons[beaconId];
   const me = s.me;
@@ -13,14 +19,14 @@ export function beaconPermissions(s: SubspaceState, beaconId: string): bigint {
   const member = s.members[beaconId]?.[me.id];
   const clearances = s.clearances[beaconId] ?? [];
   const active = clearances.filter((c) => c.position === 0 || member?.clearanceIds.includes(c.id));
-  return computeMemberPermissions(active, false);
+  return restrictPermissions(computeMemberPermissions(active, false), { timeoutUntil: myTimeout(s, beaconId) });
 }
 
-/** Relay-level permissions: server-computed `myPermissions` when present, else beacon-level. */
+/** Relay-level permissions: server-computed `myPermissions` when present, else beacon-level; a timeout applies either way. */
 export function relayPermissions(s: SubspaceState, relayId: string): bigint {
   const relay = s.relays[relayId];
   if (!relay) return 0n;
-  if (relay.myPermissions) return BigInt(relay.myPermissions);
+  if (relay.myPermissions) return restrictPermissions(BigInt(relay.myPermissions), { timeoutUntil: myTimeout(s, relay.beaconId) });
   return beaconPermissions(s, relay.beaconId);
 }
 

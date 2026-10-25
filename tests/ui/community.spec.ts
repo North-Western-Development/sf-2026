@@ -126,6 +126,51 @@ test.describe('Events, Channels & Roles, and the Members page', () => {
     await theirs.context().close();
   });
 
+  test('a moderator times a member out; they can read but not transmit, and the Members page flags and filters it', async ({ page, browser }) => {
+    const owner = await register('toowner', 'TO Owner');
+    const member = await register('tomember', 'TO Member');
+    const other = await register('toother', 'TO Other');
+    const { beacon, relays } = await owner.api.createBeacon('Timeout Beacon');
+    const text = relays.find((r) => r.type === 'text')!;
+    const { code } = await owner.api.createInvite(beacon.id);
+    await member.api.join(beacon.id, code);
+    await other.api.join(beacon.id, (await owner.api.createInvite(beacon.id)).code);
+    const theirs = await openAs(browser, member, `/channels/${beacon.id}/${text.id}`);
+    await expect(theirs.getByRole('textbox', { name: /^Transmit to #/ })).toBeVisible();
+
+    await signIn(page, owner, `/channels/${beacon.id}/${text.id}`);
+    await page.getByRole('complementary', { name: 'Members' }).getByRole('button', { name: /TO Member/ }).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Timeout TO Member' }).hover();
+    await page.getByRole('menuitem', { name: '10 minutes' }).click();
+    await expect(page.getByText('TO Member is timed out')).toBeVisible();
+
+    // Live for them: the composer gives way to the timeout notice.
+    await expect(theirs.getByText(/You're timed out until/)).toBeVisible();
+    await expect(theirs.getByRole('textbox', { name: /^Transmit to #/ })).toHaveCount(0);
+
+    await page.getByRole('navigation', { name: 'Relays' }).getByRole('button', { name: 'Members' }).click();
+    const row = page.getByRole('row').filter({ hasText: 'TO Member' });
+    await expect(row.getByRole('img', { name: 'Timed Out' })).toBeVisible();
+    await page.getByRole('button', { name: 'Filter by Signals' }).click();
+    await page.getByRole('group', { name: 'Signals filters' }).getByText('Timed Out').click();
+    await expect(page.getByRole('row').filter({ hasText: 'TO Other' })).toHaveCount(0);
+    await expect(row).toBeVisible();
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}members-filters.png` });
+    await page.getByRole('group', { name: 'Signals filters' }).getByText('Timed Out').click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Filter by Join Method' }).click();
+    await page.getByRole('group', { name: 'Join Method filters' }).getByText(code).click();
+    await expect(page.getByRole('row').filter({ hasText: 'TO Other' })).toHaveCount(0);
+    await expect(page.getByRole('row').filter({ hasText: 'TO Member' })).toBeVisible();
+
+    // Removing the timeout gives the composer back.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'More options for tomember', exact: false }).first().click();
+    await page.getByRole('menuitem', { name: 'Remove Timeout for TO Member' }).click();
+    await expect(theirs.getByRole('textbox', { name: /^Transmit to #/ })).toBeVisible();
+    await theirs.context().close();
+  });
+
   test('the Members page lists join details for moderators and is hidden from everyone else', async ({ page, browser }) => {
     const owner = await register('mbowner', 'MB Owner');
     const member = await register('mbmember', 'MB Member', { verified: false });
@@ -139,8 +184,7 @@ test.describe('Events, Channels & Roles, and the Members page', () => {
     await expect(page).toHaveURL(/member-safety$/);
     const row = page.getByRole('row').filter({ hasText: 'MB Member' });
     await expect(row).toContainText(code);
-    await expect(row.getByRole('img', { name: 'Email not verified' })).toBeVisible();
-    await expect(row.getByRole('img', { name: /New account/ })).toBeVisible();
+    await expect(row.getByRole('img', { name: 'Unusual Account Activity' })).toBeVisible();
     await expect(page.getByRole('row').filter({ hasText: 'MB Owner' })).toContainText('Created it');
     await page.getByRole('textbox', { name: 'Search members' }).fill('mbowner');
     await expect(page.getByRole('row').filter({ hasText: 'MB Member' })).toHaveCount(0);

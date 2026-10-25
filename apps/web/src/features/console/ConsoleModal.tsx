@@ -139,8 +139,22 @@ function TransmittersTab({ staffRank }: { staffRank: number }) {
       },
     });
 
+  const toggleQuarantine = (u: any) =>
+    confirmAction({
+      title: u.quarantinedAt ? 'Lift Quarantine' : 'Quarantine Transmitter',
+      body: u.quarantinedAt
+        ? `${u.displayName || u.username} will be able to post, DM and join beacons again.`
+        : `${u.displayName || u.username} keeps reading, but cannot post or react in beacons, DM anyone new or join beacons. Beacon moderators see it as a signal.`,
+      confirmLabel: u.quarantinedAt ? 'Lift Quarantine' : 'Quarantine',
+      danger: !u.quarantinedAt,
+      onConfirm: async () => {
+        await http.post(`/console/transmitters/${u.id}/${u.quarantinedAt ? 'unquarantine' : 'quarantine'}`, { reason: 'Quarantined by instance staff' });
+        await load();
+      },
+    });
+
   return (
-    <SettingsSection title="Transmitters" description="Find accounts on this instance and suspend ones that break the Subspace Directives.">
+    <SettingsSection title="Transmitters" description="Find accounts on this instance; quarantine or suspend ones that break the Subspace Directives.">
       <label className="mb-4 flex h-9 items-center gap-2 rounded-md bg-void px-3">
         <Search className="h-4 w-4 text-fg-subtle" />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by username or display name" aria-label="Search transmitters" className="flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-subtle" />
@@ -162,14 +176,20 @@ function TransmittersTab({ staffRank }: { staffRank: number }) {
                   </span>
                   {u.staffRank > 0 && <span className={clsx(pill, 'bg-brand/20 text-brand-sky')}>{RANK_NAMES[u.staffRank] ?? `Rank ${u.staffRank}`}</span>}
                   {u.isBanned && <span className={clsx(pill, 'bg-danger-soft text-danger')}>Suspended</span>}
+                  {u.quarantinedAt && <span className={clsx(pill, 'bg-warning/15 text-warning')}>Quarantined</span>}
                 </p>
                 <p className="text-xs text-fg-subtle">Joined {new Date(u.createdAt).toLocaleDateString()}</p>
               </div>
-              {staffRank >= 2 && u.staffRank < staffRank && (
-                <RowButton danger={!u.isBanned} onClick={() => toggleBan(u)}>
-                  {u.isBanned ? 'Lift Suspension' : 'Suspend'}
-                </RowButton>
-              )}
+              <div className="flex gap-2">
+                {staffRank >= 1 && u.staffRank < staffRank && (
+                  <RowButton onClick={() => toggleQuarantine(u)}>{u.quarantinedAt ? 'Lift Quarantine' : 'Quarantine'}</RowButton>
+                )}
+                {staffRank >= 2 && u.staffRank < staffRank && (
+                  <RowButton danger={!u.isBanned} onClick={() => toggleBan(u)}>
+                    {u.isBanned ? 'Lift Suspension' : 'Suspend'}
+                  </RowButton>
+                )}
+              </div>
             </li>
           ))}
         </ul>

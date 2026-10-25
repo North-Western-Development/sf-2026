@@ -19,6 +19,7 @@ export async function buildMembers(db: any, redis: any, beaconId: string, onlyId
       hasCompletedOnboarding: beaconMembers.hasCompletedOnboarding,
       clearanceIds: beaconMembers.clearanceIds,
       joinedAt: beaconMembers.joinedAt,
+      timeoutUntil: beaconMembers.timeoutUntil,
       memberAvatarUrl: beaconMembers.avatarUrl,
       memberBannerUrl: beaconMembers.bannerUrl,
       memberBio: beaconMembers.bio,
@@ -87,6 +88,8 @@ export async function buildMembers(db: any, redis: any, beaconId: string, onlyId
       // Per-beacon profile overrides; null means "use the global profile".
       member: { avatarUrl: m.memberAvatarUrl, bannerUrl: m.memberBannerUrl, bio: m.memberBio, pronouns: m.memberPronouns },
       joinedAt: m.joinedAt,
+      // Only while it lasts.
+      timeoutUntil: m.timeoutUntil && new Date(m.timeoutUntil).getTime() > Date.now() ? m.timeoutUntil : null,
       presence: presence.get(m.transmitterId) || 'offline',
       customStatus: m.customStatus,
       hasCompletedOnboarding: m.hasCompletedOnboarding,

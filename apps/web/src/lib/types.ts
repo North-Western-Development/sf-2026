@@ -107,6 +107,8 @@ export interface Member {
   bio?: string | null;
   pronouns?: string | null;
   hasCompletedOnboarding?: boolean;
+  /** Timed out until (ISO), while it lasts. */
+  timeoutUntil?: string | null;
 }
 
 export interface Attachment {

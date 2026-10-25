@@ -64,8 +64,10 @@ describe('Beacon community: members page, channels & roles, events', () => {
       const byId = Object.fromEntries(res.json().members.map((m: any) => [m.transmitterId, m]));
       expect(byId[owner.id].joinMethod).toBe('owner');
       expect(byId[pilot.id].joinMethod).toBe('discovery');
-      expect(byId[quiet.id].signals).toEqual(expect.arrayContaining(['new_account', 'unverified_email']));
-      expect(byId[pilot.id].signals).not.toContain('unverified_email');
+      const types = (id: string) => byId[id].signals.map((s: any) => s.type);
+      expect(types(quiet.id)).toContain('unusual_account_activity');
+      expect(byId[quiet.id].signals.find((s: any) => s.type === 'unusual_account_activity').detail).toContain('email not verified');
+      expect(byId[pilot.id].signals.find((s: any) => s.type === 'unusual_account_activity').detail).not.toContain('email');
     });
 
     it('counts and prunes quiet members without clearances, never the owner', async () => {
@@ -76,6 +78,47 @@ describe('Beacon community: members page, channels & roles, events', () => {
       expect((await call('POST', `/${beaconId}/prune`, owner, { days: 30 })).json().pruned).toBe(1);
       const left = await db.select().from(beaconMembers).where(eq(beaconMembers.beaconId, beaconId));
       expect(left.map((m: any) => m.transmitterId).sort()).toEqual([owner.id, pilot.id].sort());
+    });
+  });
+
+  describe('Timeouts and quarantine', () => {
+    it('a timed-out member keeps reading but cannot send; only moderators set it; it shows as a signal', async () => {
+      if (!db) return;
+      expect((await call('PUT', `/${beaconId}/members/${owner.id}/timeout`, pilot, { seconds: 60 })).statusCode).toBe(403);
+      expect((await call('PUT', `/${beaconId}/members/${pilot.id}/timeout`, owner, { seconds: 42 })).statusCode).toBe(400);
+      const set = await call('PUT', `/${beaconId}/members/${pilot.id}/timeout`, owner, { seconds: 600 });
+      expect(set.statusCode).toBe(200);
+      expect(new Date(set.json().timeoutUntil).getTime()).toBeGreaterThan(Date.now() + 590_000);
+
+      const send = await call('POST', `/${beaconId}/relays/${textId}/transmissions`, pilot, { content: 'let me talk' });
+      expect([403, 404]).toContain(send.statusCode);
+      const sendViaChannel = await app.inject({ method: 'POST', url: `/api/v1/channels/relay/${textId}/transmissions`, headers: auth(pilot), payload: { content: 'let me talk' } });
+      expect(sendViaChannel.statusCode).toBe(403);
+      const read = await app.inject({ method: 'GET', url: `/api/v1/channels/relay/${textId}/transmissions`, headers: auth(pilot) });
+      expect(read.statusCode).toBe(200);
+      const members = (await call('GET', `/${beaconId}/members`, owner)).json().members;
+      expect(members.find((m: any) => m.transmitterId === pilot.id).timeoutUntil).toBeTruthy();
+      const details = (await call('GET', `/${beaconId}/member-details`, owner)).json().members;
+      expect(details.find((m: any) => m.transmitterId === pilot.id).signals.map((s: any) => s.type)).toContain('timed_out');
+
+      expect((await call('PUT', `/${beaconId}/members/${pilot.id}/timeout`, owner, { seconds: 0 })).statusCode).toBe(200);
+      const after = await app.inject({ method: 'POST', url: `/api/v1/channels/relay/${textId}/transmissions`, headers: auth(pilot), payload: { content: 'thanks' } });
+      expect(after.statusCode).toBe(201);
+    });
+
+    it('a quarantined account cannot join beacons, and shows as a signal where it is already a member', async () => {
+      if (!db) return;
+      await db.update(transmitters).set({ quarantinedAt: new Date() }).where(eq(transmitters.id, quiet.id));
+      try {
+        expect((await call('POST', `/${beaconId}/join`, quiet)).json().code).toBe('QUARANTINED');
+        await db.insert(beaconMembers).values({ beaconId, transmitterId: quiet.id, clearanceIds: [] }).onConflictDoNothing();
+        const details = (await call('GET', `/${beaconId}/member-details`, owner)).json().members;
+        expect(details.find((m: any) => m.transmitterId === quiet.id).signals.map((s: any) => s.type)).toContain('quarantined');
+        const send = await app.inject({ method: 'POST', url: `/api/v1/channels/relay/${textId}/transmissions`, headers: auth(quiet), payload: { content: 'hi' } });
+        expect(send.statusCode).toBe(403);
+      } finally {
+        await db.update(transmitters).set({ quarantinedAt: null }).where(eq(transmitters.id, quiet.id));
+      }
     });
   });
 

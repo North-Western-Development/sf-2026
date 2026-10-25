@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useParams } from 'react-router';
 import { clsx } from 'clsx';
-import { ArrowUpDown, ChevronLeft, ChevronRight, Link2, MailWarning, MoreVertical, Search, Sparkle, UserRound, Users } from 'lucide-react';
+import { ArrowUpDown, ChevronLeft, ChevronRight, Link2, MessageCircleWarning, MoreVertical, Search, ShieldX, SlidersVertical, TimerOff, UserRound, UserRoundX, Users } from 'lucide-react';
 import { Button, Modal, Tooltip, useContextMenu } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../data/store';
@@ -24,8 +24,32 @@ interface Details {
   joinMethod: 'invite' | 'discovery' | 'owner' | 'unknown';
   inviteCode: string | null;
   inviter: Pick<UserRef, 'id' | 'username' | 'displayName' | 'avatarUrl'> & { discriminator?: string } | null;
-  signals: Array<'new_account' | 'unverified_email'>;
+  signals: Array<{ type: SignalType; detail: string }>;
 }
+type SignalType = 'unusual_dm_activity' | 'timed_out' | 'unusual_account_activity' | 'quarantined';
+
+/** Age buckets the Member Since and Joined Subspace filters offer. */
+const AGES = [
+  { id: 'hour', label: 'Within the last hour', ms: 3_600_000 },
+  { id: 'day', label: 'Within the last day', ms: 86_400_000 },
+  { id: 'week', label: 'Within the last week', ms: 7 * 86_400_000 },
+  { id: 'month', label: 'Within the last month', ms: 30 * 86_400_000 },
+  { id: 'older', label: 'More than a month ago', ms: Infinity },
+] as const;
+const ageBucket = (iso: string | undefined) => {
+  if (!iso) return 'older';
+  const age = Date.now() - new Date(iso).getTime();
+  return AGES.find((a) => age <= a.ms)!.id;
+};
+interface Filters {
+  memberSince: Set<string>;
+  account: Set<string>;
+  joinMethod: Set<string>;
+  clearances: Set<string>;
+  signals: Set<string>;
+}
+const NO_FILTERS: Filters = { memberSince: new Set(), account: new Set(), joinMethod: new Set(), clearances: new Set(), signals: new Set() };
+const joinKey = (d?: Details) => (d?.joinMethod === 'invite' && d.inviteCode ? `invite:${d.inviteCode}` : d?.joinMethod ?? 'unknown');
 
 const SORTS = [
   { id: 'joined_desc', label: 'Member since (newest first)' },
@@ -35,9 +59,12 @@ const SORTS = [
 ] as const;
 type Sort = (typeof SORTS)[number]['id'];
 const PAGE_SIZES = [12, 25, 50, 100];
-const SIGNALS: Record<string, { icon: React.ReactNode; label: string }> = {
-  new_account: { icon: <Sparkle className="h-4 w-4 text-warning" />, label: 'New account (under a week old)' },
-  unverified_email: { icon: <MailWarning className="h-4 w-4 text-warning" />, label: 'Email not verified' },
+/** Discord's member signals, in its order. */
+const SIGNALS: Record<SignalType, { icon: React.ReactNode; label: string }> = {
+  unusual_dm_activity: { icon: <MessageCircleWarning className="h-4 w-4 text-warning" />, label: 'Unusual DM Activity' },
+  timed_out: { icon: <TimerOff className="h-4 w-4 text-warning" />, label: 'Timed Out' },
+  unusual_account_activity: { icon: <UserRoundX className="h-4 w-4 text-warning" />, label: 'Unusual Account Activity' },
+  quarantined: { icon: <ShieldX className="h-4 w-4 text-danger" />, label: 'Quarantined' },
 };
 const MODERATION = [PERMISSIONS.KICK_MEMBERS, PERMISSIONS.BAN_MEMBERS, PERMISSIONS.MANAGE_CLEARANCES, PERMISSIONS.MANAGE_NICKNAMES];
 const EMPTY: Record<string, Member> = {};
@@ -66,6 +93,16 @@ export function MembersPage() {
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pruning, setPruning] = useState(false);
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const toggleFilter = (k: keyof Filters, v: string) => {
+    setFilters((f) => {
+      const next = new Set(f[k]);
+      if (next.has(v)) next.delete(v);
+      else next.add(v);
+      return { ...f, [k]: next };
+    });
+    setPage(0);
+  };
 
   const reload = () =>
     void optional(http.get<{ members: Details[] }>(`/beacons/${beaconId}/member-details`), { members: [] }).then((r) =>
@@ -77,9 +114,19 @@ export function MembersPage() {
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = Object.values(members).filter(
-      (m) => !q || m.transmitterId === q || m.user.username.includes(q) || (m.nickname ?? '').toLowerCase().includes(q) || (m.user.displayName ?? '').toLowerCase().includes(q)
-    );
+    // Each column filter narrows by any of its checked values.
+    const pass = (set: Set<string>, ...values: string[]) => !set.size || values.some((v) => set.has(v));
+    const list = Object.values(members).filter((m) => {
+      const d = details[m.transmitterId];
+      return (
+        (!q || m.transmitterId === q || m.user.username.includes(q) || (m.nickname ?? '').toLowerCase().includes(q) || (m.user.displayName ?? '').toLowerCase().includes(q)) &&
+        pass(filters.memberSince, ageBucket(m.joinedAt)) &&
+        pass(filters.account, ageBucket(d?.accountCreatedAt)) &&
+        pass(filters.joinMethod, joinKey(d)) &&
+        pass(filters.clearances, ...m.clearanceIds) &&
+        pass(filters.signals, ...(d?.signals.map((s) => s.type) ?? []))
+      );
+    });
     const at = (m: Member, f: 'joinedAt' | 'accountCreatedAt') => new Date(details[m.transmitterId]?.[f] ?? m.joinedAt ?? 0).getTime();
     const by: Record<Sort, (a: Member, b: Member) => number> = {
       joined_desc: (a, b) => at(b, 'joinedAt') - at(a, 'joinedAt'),
@@ -88,10 +135,19 @@ export function MembersPage() {
       account_asc: (a, b) => at(a, 'accountCreatedAt') - at(b, 'accountCreatedAt'),
     };
     return list.sort(by[sort]);
-  }, [members, details, query, sort]);
+  }, [members, details, query, sort, filters]);
 
   if (!beacon) return null;
   if (!allowed) return <Navigate to={`/channels/${beaconId}`} replace />;
+
+  // Join methods present in this beacon: each invite code, plus Discover / creator / unknown.
+  const joinOptions = [...new Set(Object.values(details).map((d) => joinKey(d)))]
+    .sort()
+    .map((k) => ({
+      value: k,
+      label: k.startsWith('invite:') ? k.slice(7) : { discovery: 'Discover', owner: 'Created it', unknown: 'Unknown', invite: 'Invite' }[k] ?? k,
+      icon: k.startsWith('invite:') ? <Link2 className="h-3.5 w-3.5" /> : undefined,
+    }));
 
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, pages - 1);
@@ -190,11 +246,23 @@ export function MembersPage() {
                   />
                 </th>
                 <th className="py-2">Name</th>
-                <th className="py-2">Member Since</th>
-                <th className="py-2">Joined Subspace</th>
-                <th className="py-2">Join Method</th>
-                <th className="py-2">{term('clearance', true)}</th>
-                <th className="py-2">Signals</th>
+                <FilterHeader label="Member Since" options={AGES.map((a) => ({ value: a.id, label: a.label }))} chosen={filters.memberSince} onToggle={(v) => toggleFilter('memberSince', v)} />
+                <FilterHeader label="Joined Subspace" options={AGES.map((a) => ({ value: a.id, label: a.label }))} chosen={filters.account} onToggle={(v) => toggleFilter('account', v)} />
+                <FilterHeader label="Join Method" options={joinOptions} chosen={filters.joinMethod} onToggle={(v) => toggleFilter('joinMethod', v)} />
+                <FilterHeader
+                  label={term('clearance', true)}
+                  align="right"
+                  options={clearances.filter((c) => c.position > 0).map((c) => ({ value: c.id, label: c.name, icon: <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.color }} /> }))}
+                  chosen={filters.clearances}
+                  onToggle={(v) => toggleFilter('clearances', v)}
+                />
+                <FilterHeader
+                  label="Signals"
+                  align="right"
+                  options={(Object.keys(SIGNALS) as SignalType[]).map((k) => ({ value: k, label: SIGNALS[k].label, icon: SIGNALS[k].icon }))}
+                  chosen={filters.signals}
+                  onToggle={(v) => toggleFilter('signals', v)}
+                />
                 <th className="w-20" />
               </tr>
             </thead>
@@ -239,9 +307,17 @@ export function MembersPage() {
                     <td>
                       <span className="flex items-center gap-1.5">
                         {d?.signals.map((s) => (
-                          <Tooltip key={s} content={SIGNALS[s].label}>
-                            <span role="img" aria-label={SIGNALS[s].label}>
-                              {SIGNALS[s].icon}
+                          <Tooltip
+                            key={s.type}
+                            content={
+                              <span>
+                                <span className="block font-semibold">{SIGNALS[s.type].label}</span>
+                                <span className="block text-fg-muted">{s.type === 'timed_out' ? `Until ${new Date(s.detail.replace('Timed out until ', '')).toLocaleString()}` : s.detail}</span>
+                              </span>
+                            }
+                          >
+                            <span role="img" aria-label={SIGNALS[s.type].label}>
+                              {SIGNALS[s.type].icon}
                             </span>
                           </Tooltip>
                         ))}
@@ -391,3 +467,62 @@ function PruneDialog({ beaconId, onClose, onDone }: { beaconId: string; onClose:
   );
 }
 
+
+/** A column header with Discord's filter control: a checkbox list of values to narrow by. */
+function FilterHeader({
+  label,
+  options,
+  chosen,
+  onToggle,
+  align = 'left',
+}: {
+  label: string;
+  options: Array<{ value: string; label: string; icon?: React.ReactNode }>;
+  chosen: Set<string>;
+  onToggle: (v: string) => void;
+  /** Right-aligned popups for the last columns keep the list on screen. */
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLTableCellElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return (
+    <th ref={ref} className="relative py-2">
+      <span className="flex items-center gap-1">
+        {label}
+        <button
+          type="button"
+          aria-label={`Filter by ${label}`}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={clsx('flex h-6 w-6 items-center justify-center rounded-md hover:bg-hover hover:text-fg', chosen.size ? 'text-brand-sky' : 'text-fg-subtle')}
+        >
+          <SlidersVertical className="h-3.5 w-3.5" />
+        </button>
+        {chosen.size > 0 && <span className="rounded-full bg-brand px-1.5 text-[10px] font-bold leading-4 text-on-brand">{chosen.size}</span>}
+      </span>
+      {open && (
+        <div role="group" aria-label={`${label} filters`} className={clsx('absolute top-full z-30 mt-1 w-64', align === 'right' ? 'right-0' : 'left-0', ' rounded-lg bg-overlay p-1.5 font-normal shadow-pop ring-1 ring-line')}>
+          {options.length === 0 && <p className="px-2 py-1.5 text-sm text-fg-subtle">Nothing to filter by yet.</p>}
+          {options.map((o) => (
+            <label key={o.value} className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-sm font-medium text-fg hover:bg-hover">
+              {o.icon && <span className="flex w-4 shrink-0 justify-center">{o.icon}</span>}
+              <span className="min-w-0 flex-1 truncate">{o.label}</span>
+              <input type="checkbox" checked={chosen.has(o.value)} onChange={() => onToggle(o.value)} className="h-4 w-4 accent-[var(--color-brand)]" />
+            </label>
+          ))}
+        </div>
+      )}
+    </th>
+  );
+}

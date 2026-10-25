@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { and, eq, gte, inArray, beaconMembers, beacons, relays, transmissions, transmitters, resolveBeaconAudience } from '@subspace/database';
+import { and, eq, gte, inArray, count, beaconMembers, beacons, relays, transmissions, transmitters, transmissionRequests, resolveBeaconAudience } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
@@ -7,6 +7,8 @@ import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js'
 /** Any of these lets a member see the Members page. */
 const MODERATION = [PERMISSIONS.KICK_MEMBERS, PERMISSIONS.BAN_MEMBERS, PERMISSIONS.MANAGE_CLEARANCES, PERMISSIONS.MANAGE_NICKNAMES];
 const NEW_ACCOUNT_DAYS = 7;
+/** DM requests to this beacon's members in a day that count as unusual. */
+const UNUSUAL_DM_REQUESTS = 3;
 const DAY = 86_400_000;
 
 /**
@@ -39,10 +41,21 @@ export const memberSafetyRoutes: FastifyPluginAsync = async (app: FastifyInstanc
         invitedBy: beaconMembers.invitedBy,
         accountCreatedAt: transmitters.createdAt,
         isEmailVerified: transmitters.isEmailVerified,
+        quarantinedAt: transmitters.quarantinedAt,
+        timeoutUntil: beaconMembers.timeoutUntil,
       })
       .from(beaconMembers)
       .innerJoin(transmitters, eq(beaconMembers.transmitterId, transmitters.id))
       .where(eq(beaconMembers.beaconId, beaconId));
+
+    // Unusual DM activity: several DM requests to this beacon's members within a day.
+    const since = new Date(Date.now() - DAY);
+    const requestCounts = await db
+      .select({ senderId: transmissionRequests.senderId, n: count() })
+      .from(transmissionRequests)
+      .where(and(eq(transmissionRequests.mutualBeaconId, beaconId), gte(transmissionRequests.createdAt, since)))
+      .groupBy(transmissionRequests.senderId);
+    const dmRequests = new Map<string, number>(requestCounts.map((r: any) => [r.senderId, Number(r.n)]));
 
     const inviterIds = [...new Set(rows.map((r: any) => r.invitedBy).filter(Boolean))] as string[];
     const inviters = inviterIds.length
@@ -53,9 +66,16 @@ export const memberSafetyRoutes: FastifyPluginAsync = async (app: FastifyInstanc
 
     return reply.send({
       members: rows.map((r: any) => {
-        const signals: string[] = [];
-        if (now - new Date(r.accountCreatedAt).getTime() < NEW_ACCOUNT_DAYS * DAY) signals.push('new_account');
-        if (!r.isEmailVerified) signals.push('unverified_email');
+        // Discord's four member signals, each with the reason shown on hover.
+        const signals: Array<{ type: string; detail: string }> = [];
+        const requests = dmRequests.get(r.transmitterId) ?? 0;
+        if (requests >= UNUSUAL_DM_REQUESTS) signals.push({ type: 'unusual_dm_activity', detail: `${requests} DM requests to members in the last day` });
+        if (r.timeoutUntil && new Date(r.timeoutUntil).getTime() > now) signals.push({ type: 'timed_out', detail: `Timed out until ${new Date(r.timeoutUntil).toISOString()}` });
+        const account: string[] = [];
+        if (now - new Date(r.accountCreatedAt).getTime() < NEW_ACCOUNT_DAYS * DAY) account.push('new account');
+        if (!r.isEmailVerified) account.push('email not verified');
+        if (account.length) signals.push({ type: 'unusual_account_activity', detail: account.join(', ') });
+        if (r.quarantinedAt) signals.push({ type: 'quarantined', detail: 'Quarantined by Subspace staff' });
         return {
           transmitterId: r.transmitterId,
           joinedAt: r.joinedAt,

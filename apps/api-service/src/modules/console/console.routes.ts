@@ -151,6 +151,8 @@ export const consoleRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         staffRank: transmitters.staffRank,
         isBanned: transmitters.isBanned,
         banReason: transmitters.banReason,
+        quarantinedAt: transmitters.quarantinedAt,
+        quarantineReason: transmitters.quarantineReason,
         createdAt: transmitters.createdAt,
       })
       .from(transmitters)
@@ -228,6 +230,32 @@ export const consoleRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
    * POST /api/v1/console/transmitters/:id/unban
    * Lift suspension on a transmitter (staffRank >= ADMIN, hierarchy enforced)
    */
+  /**
+   * POST /api/v1/console/transmitters/:id/quarantine   { reason }
+   * POST /api/v1/console/transmitters/:id/unquarantine
+   * Quarantine: the account keeps reading, but cannot post or react in beacons, DM anyone
+   * new or join beacons. Shown to beacon moderators as a member signal.
+   */
+  const setQuarantine = (on: boolean) => async (request: any, reply: any) => {
+    const auth = await requireStaffRank(request, reply, STAFF_RANKS.MODERATOR);
+    if (!auth) return;
+    const { id: targetId } = request.params as { id: string };
+    const [target] = await db.select().from(transmitters).where(eq(transmitters.id, targetId)).limit(1);
+    if (!target) return reply.status(404).send({ error: 'Target transmitter not found' });
+    if (target.staffRank >= auth.staffMember.staffRank) {
+      return reply.status(403).send({ error: 'Cannot modify staff member with equal or higher rank', code: 'FORBIDDEN_STAFF_HIERARCHY' });
+    }
+    const reason = on ? String((request.body as any)?.reason ?? '').trim().slice(0, 500) || 'Flagged by Subspace staff' : null;
+    const [row] = await db
+      .update(transmitters)
+      .set({ quarantinedAt: on ? new Date() : null, quarantineReason: reason, updatedAt: new Date() })
+      .where(eq(transmitters.id, targetId))
+      .returning();
+    return reply.send({ transmitter: { id: row.id, username: row.username, quarantinedAt: row.quarantinedAt, quarantineReason: row.quarantineReason } });
+  };
+  app.post('/transmitters/:id/quarantine', setQuarantine(true));
+  app.post('/transmitters/:id/unquarantine', setQuarantine(false));
+
   app.post('/transmitters/:id/unban', async (request, reply) => {
     const auth = await requireStaffRank(request, reply, STAFF_RANKS.ADMIN);
     if (!auth) return;

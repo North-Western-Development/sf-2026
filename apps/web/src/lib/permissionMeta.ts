@@ -36,6 +36,7 @@ export const PERMISSION_GROUPS: Array<{ title: string; items: PermissionMeta[] }
       p('MANAGE_NICKNAMES', 'Manage Nicknames', 'Change the nicknames of other members.', false),
       p('KICK_MEMBERS', 'Kick Members', 'Remove members below their highest clearance. They can rejoin with an invite.', false),
       p('BAN_MEMBERS', 'Ban Members', 'Permanently remove members below their highest clearance.', false),
+      p('MODERATE_MEMBERS', 'Timeout Members', 'Stop members below their highest clearance from sending, reacting or speaking for a while.', false),
     ],
   },
   {

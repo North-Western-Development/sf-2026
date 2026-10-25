@@ -58,6 +58,7 @@ export const PERMISSIONS = {
   PIN_TRANSMISSIONS: 1n << 23n,      // Pin/unpin transmissions
   CREATE_EVENTS: 1n << 24n,          // Schedule events; edit or cancel your own
   MANAGE_EVENTS: 1n << 25n,          // Edit, start, end or cancel anyone's events
+  MODERATE_MEMBERS: 1n << 26n,       // Time out members below own rank
   ADMINISTRATOR: 1n << 29n,          // 0x20000000 - Bypass all relay permission checks
 } as const;
 
@@ -256,3 +257,30 @@ export const SUBSPACE_DIRECTIVES = {
     { title: 'Command Staff decisions apply', body: 'Staff may remove content or suspend accounts that break these directives.' },
   ],
 } as const;
+
+/**
+ * What a timed-out member (or a quarantined account) loses in a beacon: anything that posts,
+ * reacts, speaks or invites. They can still read.
+ */
+export const RESTRICTED_MASK =
+  PERMISSIONS.SEND_TRANSMISSIONS |
+  PERMISSIONS.ATTACH_FILES |
+  PERMISSIONS.EMBED_LINKS |
+  PERMISSIONS.ADD_REACTIONS |
+  PERMISSIONS.USE_SIGNAL_GLYPHS |
+  PERMISSIONS.CONNECT_AUDIO |
+  PERMISSIONS.SPEAK_AUDIO |
+  PERMISSIONS.BROADCAST_HOLO_CAST |
+  PERMISSIONS.CREATE_INVITES |
+  PERMISSIONS.CHANGE_NICKNAME |
+  PERMISSIONS.CREATE_EVENTS;
+
+/** Applies a timeout or quarantine to a permission set. Administrators are never restricted (they cannot be timed out). */
+export function restrictPermissions(perms: bigint, restriction: { timeoutUntil?: Date | string | null; quarantined?: boolean }, now = Date.now()): bigint {
+  if ((perms & PERMISSIONS.ADMINISTRATOR) === PERMISSIONS.ADMINISTRATOR) return perms;
+  const timedOut = !!restriction.timeoutUntil && new Date(restriction.timeoutUntil).getTime() > now;
+  return timedOut || restriction.quarantined ? perms & ~RESTRICTED_MASK : perms;
+}
+
+/** Timeout lengths offered, in seconds (Discord's set). */
+export const TIMEOUT_DURATIONS = [60, 300, 600, 3600, 86400, 604800] as const;
