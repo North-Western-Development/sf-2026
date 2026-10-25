@@ -18,6 +18,7 @@ import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { EmojiPicker, EMOJI_INDEX, loadGlyphs, type Glyph } from './EmojiPicker';
 import { OnboardingGate, useNeedsOnboarding } from '../onboarding/OnboardingGate';
+import { RichInput, type RichInputHandle } from '../common/RichInput';
 
 const MAX_LENGTH = 2000;
 
@@ -84,7 +85,7 @@ export function Composer({
   const [attachmentIds, setAttachmentIds] = useState<Array<{ id: string; name: string; sealed?: SealedAttachment }>>([]);
   const encrypted = useStore((s) => isEncryptedChannel(key) && !!s.me);
   const tokens = useRef(new Map<string, string>());
-  const area = useRef<HTMLTextAreaElement>(null);
+  const area = useRef<RichInputHandle>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const { openContextMenu } = useContextMenu();
 
@@ -124,14 +125,6 @@ export function Composer({
       /* ignore */
     }
   }, [text, key]);
-
-  // Autosize
-  useEffect(() => {
-    const el = area.current;
-    if (!el) return;
-    el.style.height = '0px';
-    el.style.height = `${Math.min(el.scrollHeight, 50 * 22)}px`;
-  }, [text]);
 
   // Focus composer when replying.
   useEffect(() => {
@@ -189,7 +182,7 @@ export function Composer({
       const g: Suggestion[] = glyphs
         .filter((x) => x.name.toLowerCase().includes(q))
         .slice(0, 4)
-        .map((x) => ({ kind: 'emoji', id: x.id, label: `:${x.name}:`, glyph: x, insert: `:${x.name}:`, token: `<:${x.name}:${x.id}>` }));
+        .map((x) => ({ kind: 'emoji', id: x.id, label: `:${x.name}:`, glyph: x, insert: `<:${x.name}:${x.id}>`, token: `<:${x.name}:${x.id}>` }));
       const u: Suggestion[] = EMOJI_INDEX.filter((e) => e.slug.startsWith(q))
         .slice(0, 10 - g.length)
         .map((e) => ({ kind: 'emoji', id: e.slug, label: `:${e.slug}:`, emoji: e.emoji, insert: e.emoji, token: e.emoji }));
@@ -204,29 +197,16 @@ export function Composer({
     if (!trigger) return;
     const el = area.current!;
     const before = text.slice(0, trigger.start);
-    const after = text.slice(el.selectionStart);
+    const after = text.slice(el.getSelection()[1]);
     const insert = `${sug.insert} `;
     if (sug.insert !== sug.token) tokens.current.set(sug.insert, sug.token);
     const next = before + insert + after;
     setText(next);
     setTrigger(null);
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = before.length + insert.length;
-      el.setSelectionRange(pos, pos);
-    });
+    requestAnimationFrame(() => el.setCaret(before.length + insert.length));
   };
 
-  const insertAtCaret = (value: string) => {
-    const el = area.current!;
-    const start = el.selectionStart ?? text.length;
-    const next = text.slice(0, start) + value + text.slice(el.selectionEnd ?? start);
-    setText(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(start + value.length, start + value.length);
-    });
-  };
+  const insertAtCaret = (value: string) => area.current?.insert(value);
 
   const submit = async () => {
     const content = encodeMentions(text, tokens.current).trim();
@@ -245,7 +225,7 @@ export function Composer({
     await sendMessage(key, content, opts);
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (suggestions.length && trigger) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -458,26 +438,25 @@ export function Composer({
             e.target.value = '';
           }}
         />
-        <textarea
+        <RichInput
           ref={area}
+          wrapperClassName="min-w-0 flex-1"
           value={text}
-          rows={1}
           aria-label={placeholder}
           placeholder={placeholder}
-          onChange={(e) => {
-            setText(e.target.value);
-            setTrigger(findTrigger(e.target.value, e.target.selectionStart));
-            if (e.target.value) notifyTyping(key);
+          onChange={(v, caret) => {
+            setText(v);
+            setTrigger(findTrigger(v, caret));
+            if (v) notifyTyping(key);
           }}
           onKeyDown={onKeyDown}
-          onClick={(e) => setTrigger(findTrigger(text, e.currentTarget.selectionStart))}
-          onPaste={(e) => {
-            if (canAttach && e.clipboardData.files.length) {
-              e.preventDefault();
-              void upload(e.clipboardData.files);
-            }
+          onCaret={(caret) => setTrigger(findTrigger(text, caret))}
+          onPasteFiles={(files) => {
+            if (!canAttach) return false;
+            void upload(files);
+            return true;
           }}
-          className="max-h-[50vh] min-h-[44px] flex-1 resize-none bg-transparent px-1 py-[11px] text-[15px] leading-[22px] text-fg outline-none placeholder:text-fg-subtle"
+          className="max-h-[50vh] min-h-[44px] px-1 py-[11px] text-[15px] leading-[22px]"
         />
         <div className="mt-2 flex items-center gap-1">
           <ComingSoon label="GIFs">
@@ -508,11 +487,7 @@ export function Composer({
           tabs
           onClose={() => setEmojiAnchor(null)}
           onPick={(emoji, glyph) => {
-            if (glyph) {
-              const label = `:${glyph.name}:`;
-              tokens.current.set(label, `<:${glyph.name}:${glyph.id}>`);
-              insertAtCaret(label);
-            } else insertAtCaret(emoji);
+            insertAtCaret(glyph ? `<:${glyph.name}:${glyph.id}>` : emoji);
           }}
         />
       )}

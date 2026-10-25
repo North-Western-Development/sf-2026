@@ -22,6 +22,7 @@ import { SealedAttachments, SealedNotice } from './EncryptedBits';
 import { useChatPrefs } from '../../lib/chatPrefs';
 import { copyText } from '../../lib/clipboard';
 import { prefetchProfile } from '../profile/useProfile';
+import { RichInput, type RichInputHandle } from '../common/RichInput';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
@@ -98,19 +99,18 @@ export function Attachments({ items }: { items: Transmission['attachments'] }) {
 
 function InlineEditor({ initial, onSave, onCancel }: { initial: string; onSave: (v: string) => void; onCancel: () => void }) {
   const [value, setValue] = useState(initial);
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const ref = useRef<RichInputHandle>(null);
   useEffect(() => {
-    const el = ref.current!;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
+    ref.current?.setCaret(initial.length);
   }, []);
   return (
     <div className="mt-1">
-      <textarea
+      <RichInput
         ref={ref}
+        wrapperClassName="w-full rounded-md bg-overlay"
         value={value}
-        rows={Math.min(10, value.split('\n').length)}
-        onChange={(e) => setValue(e.target.value)}
+        aria-label="Edit transmission"
+        onChange={(v) => setValue(v)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') onCancel();
           if (e.key === 'Enter' && !e.shiftKey) {
@@ -118,7 +118,7 @@ function InlineEditor({ initial, onSave, onCancel }: { initial: string; onSave: 
             onSave(value);
           }
         }}
-        className="w-full resize-none rounded-md bg-overlay px-3 py-2 text-[15px] text-fg outline-none"
+        className="max-h-[50vh] px-3 py-2 text-[15px] leading-[22px]"
       />
       <p className="mt-1 text-xs text-fg-subtle">
         escape to <button className="text-brand-sky hover:underline" onClick={onCancel}>cancel</button> • enter to{' '}

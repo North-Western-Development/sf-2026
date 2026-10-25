@@ -2,6 +2,22 @@
 @source "../../../packages/ui";
 
 /*
+ * Twemoji as a colour font, limited to emoji code points so ordinary text never uses it.
+ * Text fields (the message box, inputs) cannot hold the sprite images used in messages,
+ * so this gives them the same Twemoji art instead of the system's emoji font.
+ */
+@font-face {
+  font-family: 'Twemoji';
+  src: url('../node_modules/twemoji-colr-font/twemoji.woff2') format('woff2');
+  font-display: swap;
+  /* Emoji a little larger than the text around them, as in Discord's message box. */
+  size-adjust: 135%;
+  unicode-range: U+00A9, U+00AE, U+200D, U+203C, U+2049, U+20E3, U+2122, U+2139, U+2194-2199, U+21A9-21AA, U+231A-231B,
+    U+2328, U+23CF, U+23E9-23F3, U+23F8-23FA, U+24C2, U+25AA-25AB, U+25B6, U+25C0, U+25FB-25FE, U+2600-27BF, U+2934-2935,
+    U+2B05-2B07, U+2B1B-2B1C, U+2B50, U+2B55, U+3030, U+303D, U+3297, U+3299, U+FE0F, U+1F000-1FAFF, U+E0020-E007F;
+}
+
+/*
  * Subspace design tokens.
  * Deep black base; accents drawn from the NWD mark: sky-to-cobalt blue lettering,
  * star yellow with a white core, and the slate-violet outline.
@@ -69,9 +85,9 @@
   --shadow-glow: 0 0 0 1px rgb(61 203 255 / 0.35), 0 0 24px rgb(61 203 255 / 0.15);
 
   /* Type */
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-sans: 'Twemoji', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Twemoji', 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: 'Twemoji', 'Space Grotesk', 'Inter', sans-serif;
 
   /* Motion */
   --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -159,4 +175,13 @@
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
+}
+
+/* Emoji and glyphs in the message editor: Discord's size and spacing. */
+.rich-emoji {
+  width: 22px;
+  height: 22px;
+  margin: 0 0.05em 0 0.1em;
+  vertical-align: -0.35em;
+  object-fit: contain;
 }

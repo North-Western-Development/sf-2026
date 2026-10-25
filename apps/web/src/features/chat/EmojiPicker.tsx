@@ -34,6 +34,15 @@ const pushRecent = (e: string) => {
     /* ignore */
   }
 };
+const CLOSE_KEY = 'subspace_emoji_close_after';
+/** Close the picker after a pick (on unless turned off). */
+const readCloseAfter = () => {
+  try {
+    return localStorage.getItem(CLOSE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+};
 const readTone = () => {
   try {
     return Number(localStorage.getItem(TONE_KEY)) || 0;
@@ -103,6 +112,16 @@ export function EmojiPicker({
   const [active, setActive] = useState<string>('');
   const [tone, setTone] = useState(readTone);
   const [tonePicker, setTonePicker] = useState(false);
+  const [closeAfter, setCloseAfter] = useState(readCloseAfter);
+  const shiftHeld = useRef(false);
+  const saveCloseAfter = (v: boolean) => {
+    setCloseAfter(v);
+    try {
+      localStorage.setItem(CLOSE_KEY, v ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  };
   const [pos, setPos] = useState({ x: -9999, y: -9999 });
   const ref = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -200,8 +219,10 @@ export function EmojiPicker({
         pushRecent(it.emoji);
         onPick(it.emoji);
       }
+      // Shift-click keeps the picker open either way, as in Discord.
+      if (closeAfter && !shiftHeld.current) onClose();
     },
-    [onPick]
+    [onPick, onClose, closeAfter]
   );
 
   // One listener for the whole grid instead of one per cell.
@@ -250,17 +271,32 @@ export function EmojiPicker({
       style={{ left: pos.x, top: pos.y }}
     >
       <div className="shrink-0 space-y-3 border-b border-line p-3">
-        {tabs && (
-          <div className="flex gap-2 text-sm font-semibold">
-            <ComingSoon label="GIFs">
-              <span className="rounded-md px-3 py-1 text-fg-muted">GIFs</span>
-            </ComingSoon>
-            <ComingSoon label="Stickers">
-              <span className="rounded-md px-3 py-1 text-fg-muted">Stickers</span>
-            </ComingSoon>
-            <span className="rounded-md bg-active px-3 py-1 text-fg">Emoji</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          {tabs && (
+            <>
+              <ComingSoon label="GIFs">
+                <span className="rounded-md px-3 py-1 text-fg-muted">GIFs</span>
+              </ComingSoon>
+              <ComingSoon label="Stickers">
+                <span className="rounded-md px-3 py-1 text-fg-muted">Stickers</span>
+              </ComingSoon>
+              <span className="rounded-md bg-active px-3 py-1 text-fg">Emoji</span>
+            </>
+          )}
+          <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs font-medium text-fg-muted">
+            Close after selecting
+            <button
+              type="button"
+              role="switch"
+              aria-checked={closeAfter}
+              aria-label="Close after selecting"
+              onClick={() => saveCloseAfter(!closeAfter)}
+              className={clsx('relative h-5 w-8 shrink-0 rounded-full transition-colors', closeAfter ? 'bg-brand' : 'bg-fg-disabled')}
+            >
+              <span className={clsx('absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all', closeAfter ? 'left-[14px]' : 'left-0.5')} />
+            </button>
+          </label>
+        </div>
         <div className="relative flex items-center gap-2">
           <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md bg-void px-2.5 ring-1 ring-transparent focus-within:ring-brand-sky">
             <Search className="h-4 w-4 shrink-0 text-fg-subtle" />
@@ -322,6 +358,7 @@ export function EmojiPicker({
           onScroll={spy}
           onClick={(e) => {
             const it = itemFrom(e.target);
+            shiftHeld.current = e.shiftKey;
             if (it) pick(it);
           }}
           onMouseOver={(e) => {

@@ -66,7 +66,7 @@ export function spriteStyle(x: number, y: number, size: number): React.CSSProper
 export const Emoji = memo(function Emoji({ emoji, size = 22, className }: { emoji: string; size?: number; className?: string }) {
   const hit = findEmoji(emoji);
   if (!hit) return <span className={className}>{emoji}</span>;
-  return <span role="img" aria-label={`:${hit.entry.slug}:`} className={className} style={{ display: 'inline-block', verticalAlign: '-0.3em', ...spriteStyle(hit.x, hit.y, size) }} />;
+  return <span role="img" aria-label={`:${hit.entry.slug}:`} className={className} style={{ display: 'inline-block', verticalAlign: '-0.3em', margin: '0 0.05em 0 0.1em', ...spriteStyle(hit.x, hit.y, size) }} />;
 });
 
 /** Matches emoji sequences in text: flags, keycaps, and pictographs with modifiers / ZWJ joins. */
@@ -93,4 +93,10 @@ export function preloadEmojiSheet() {
   const img = new Image();
   img.decoding = 'async';
   img.src = sheetUrl;
+}
+
+/** The sprite as plain CSS values, for DOM elements built outside React (the message editor). */
+export function spriteCss(x: number, y: number, size: number) {
+  const s = spriteStyle(x, y, size);
+  return { backgroundImage: s.backgroundImage as string, backgroundSize: s.backgroundSize as string, backgroundPosition: s.backgroundPosition as string };
 }

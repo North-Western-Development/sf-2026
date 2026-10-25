@@ -21,7 +21,7 @@ test.describe('Mentions, unreads and ping markers', () => {
     await composer.pressSequentially(`hey @${crew.transmitter.username.slice(0, 6)}`);
     await expect(page.getByRole('option', { name: new RegExp(crew.transmitter.username) })).toBeVisible();
     await composer.press('Enter'); // picks the suggestion
-    await expect(composer).toHaveValue(new RegExp(`@${crew.transmitter.username}`));
+    await expect(composer).toHaveText(new RegExp(`@${crew.transmitter.username}`));
     await composer.press('Enter'); // sends
     await expect(page.getByRole('article').last().getByText(`@${crew.transmitter.username}`)).toBeVisible();
 

@@ -62,6 +62,8 @@ test.describe('End-to-end encrypted direct links', () => {
     await signIn(page, me, `/channels/@me/${linkId}`);
     await page.getByRole('button', { name: 'Turn On Encryption' }).click();
     await page.getByRole('dialog', { name: 'Turn on end-to-end encryption?' }).getByRole('button', { name: 'Turn On' }).click();
+    // Send only once encryption is on, or the message races the switch.
+    await expect(page.getByRole('button', { name: 'End-to-End Encrypted' })).toBeVisible();
     await send(page, 'only for the first device');
     await expect(first.getByRole('log')).toContainText('only for the first device', { timeout: 15_000 });
 

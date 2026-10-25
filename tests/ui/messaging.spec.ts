@@ -14,7 +14,7 @@ test.describe('Messaging', () => {
     await composer.fill('First transmission from the station');
     await composer.press('Enter');
     await expect(page.getByRole('article').filter({ hasText: 'First transmission from the station' })).toBeVisible();
-    await expect(composer).toHaveValue('');
+    await expect(composer).toHaveText('');
 
     // Persisted, not only optimistic.
     await page.reload();
