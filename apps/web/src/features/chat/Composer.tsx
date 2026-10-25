@@ -217,6 +217,13 @@ export function Composer({
 
   useEffect(() => setActive(0), [trigger?.query, trigger?.char]);
 
+  /** The latest text, for callbacks that run a frame later. */
+  const textNow = useRef(text);
+  textNow.current = text;
+  /** Put the caret at pos after the editor renders `expected`, unless typing got there first. */
+  const caretAfterRender = (expected: string, pos: number) =>
+    requestAnimationFrame(() => textNow.current === expected && area.current?.setCaret(pos));
+
   const applySuggestion = (sug: Suggestion) => {
     if (!trigger) return;
     const el = area.current!;
@@ -227,7 +234,7 @@ export function Composer({
     const next = before + insert + after;
     setText(next);
     setTrigger(null);
-    requestAnimationFrame(() => el.setCaret(before.length + insert.length));
+    caretAfterRender(next, before.length + insert.length);
   };
 
   const insertAtCaret = (value: string) => area.current?.insert(value);
@@ -250,12 +257,12 @@ export function Composer({
   const chooseCommand = (c: Command) => {
     const next = `/${c.name} `;
     setText(next);
-    requestAnimationFrame(() => area.current?.setCaret(next.length));
+    caretAfterRender(next, next.length);
   };
   const showCommands = () => {
     setText('/');
     setActive(0);
-    requestAnimationFrame(() => area.current?.setCaret(1));
+    caretAfterRender('/', 1);
   };
 
   const submit = async () => {

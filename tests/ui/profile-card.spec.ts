@@ -23,8 +23,10 @@ test.describe('Profile card, popout and badges', () => {
     await expect(badges.getByRole('listitem', { name: 'Subspace Command Staff' })).toBeVisible();
     await expect(badges.getByRole('listitem', { name: 'Early Transmitter' })).toBeVisible();
     await expect(badges.getByRole('listitem', { name: 'Ping' })).toBeVisible();
-    // Discord's extras without a backend are greyed placeholders; Member Since is not on the card.
-    await expect(card.locator('[data-coming-soon]')).toHaveCount(2);
+    // Clips and Switch Accounts are real now (no greyed placeholders); Member Since is not on the card.
+    await expect(card.locator('[data-coming-soon]')).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Clips' })).toBeEnabled();
+    await expect(card.getByRole('button', { name: 'Switch Accounts' })).toBeEnabled();
     await expect(card).not.toContainText('Member Since');
     if (SHOTS) await page.screenshot({ path: `${SHOTS}card-self.png` });
 

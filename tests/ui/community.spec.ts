@@ -22,7 +22,7 @@ test.describe('Events, Channels & Roles, and the Members page', () => {
     // Step 1: where. Step 2: what and when. Step 3: preview.
     let wizard = page.getByRole('dialog', { name: 'Where is your event?' });
     await expect(wizard.getByRole('radio', { name: /Comm-Link/ })).toHaveAttribute('aria-checked', 'true');
-    await expect(wizard.getByRole('radio', { name: /Stage/ })).toBeDisabled();
+    await expect(wizard.getByRole('radio', { name: /Stage/ })).toBeEnabled();
     await expect(wizard.getByRole('combobox', { name: /Select a Comm-Link/ })).toContainText('General');
     if (SHOTS) await page.screenshot({ path: `${SHOTS}events-location.png` });
     await wizard.getByRole('button', { name: 'Next' }).click();
