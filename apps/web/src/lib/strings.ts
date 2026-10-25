@@ -40,5 +40,5 @@ export const PRESENCE_LABELS: Record<string, { label: string; description?: stri
 };
 
 export const relayKindLabel = (type: string) =>
-  ({ text: TERMS.textRelay.one, comm_link: TERMS.commLink.one, archival: TERMS.archival.one, visual: TERMS.visual.one, category: TERMS.band.one })[type] ??
+  ({ text: TERMS.textRelay.one, comm_link: TERMS.commLink.one, stage: 'Stage', archival: TERMS.archival.one, visual: TERMS.visual.one, category: TERMS.band.one })[type] ??
   TERMS.relay.one;

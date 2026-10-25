@@ -86,12 +86,12 @@ export const eventRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       v.description = d || null;
     }
     const locationType = has('locationType') ? body.locationType : existing?.locationType;
-    if (locationType !== 'comm_link' && locationType !== 'external') return { error: 'Pick a Comm-Link or somewhere else' };
+    if (locationType !== 'comm_link' && locationType !== 'stage' && locationType !== 'external') return { error: 'Pick a Stage, a Comm-Link or somewhere else' };
     v.locationType = locationType;
-    if (locationType === 'comm_link') {
+    if (locationType === 'comm_link' || locationType === 'stage') {
       const relayId = has('relayId') ? body.relayId : existing?.relayId;
       const [relay] = relayId ? await db.select().from(relays).where(and(eq(relays.id, relayId), eq(relays.beaconId, beaconId))).limit(1) : [];
-      if (!relay || relay.type !== 'comm_link') return { error: 'Pick a Comm-Link in this beacon' };
+      if (!relay || relay.type !== locationType) return { error: locationType === 'stage' ? 'Pick a Stage in this beacon' : 'Pick a Comm-Link in this beacon' };
       v.relayId = relay.id;
       v.location = null;
     } else {

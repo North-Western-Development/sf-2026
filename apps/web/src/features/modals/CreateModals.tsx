@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
-import { ChevronRight, Hash, Image as ImageIcon, MessagesSquare, Search, Volume2, Check, Copy, Users, Lock } from 'lucide-react';
+import { ChevronRight, Hash, Image as ImageIcon, MessagesSquare, Podcast, Search, Volume2, Check, Copy, Users, Lock } from 'lucide-react';
 import { Button, Input, Modal } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, setState, getState } from '../../data/store';
@@ -152,6 +152,7 @@ export function CreateBeaconModal() {
 const RELAY_TYPES: Array<{ type: RelayKind; icon: React.ReactNode; label: string; description: string }> = [
   { type: 'text', icon: <Hash className="h-6 w-6" />, label: term('textRelay'), description: 'Send transmissions, images, GIFs, emoji, opinions, and puns' },
   { type: 'comm_link', icon: <Volume2 className="h-6 w-6" />, label: term('commLink'), description: 'Hang out together with voice, video, and Holo-Cast' },
+  { type: 'stage', icon: <Podcast className="h-6 w-6" />, label: 'Stage', description: 'Host talks and events: speakers talk, everyone else listens' },
   { type: 'archival', icon: <MessagesSquare className="h-6 w-6" />, label: term('archival'), description: 'Create a space for organized discussions' },
   { type: 'visual', icon: <ImageIcon className="h-6 w-6" />, label: term('visual'), description: 'Share photos, videos, and art in a gallery' },
 ];

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
-import { Bell, BellRing, CalendarDays, MapPin, MoreHorizontal, Users, Volume2 } from 'lucide-react';
+import { Bell, BellRing, CalendarDays, MapPin, MoreHorizontal, Podcast, Users, Volume2 } from 'lucide-react';
 import { Button, Modal, Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore } from '../../data/store';
 import { beaconPermissions, can, PERMISSIONS } from '../../data/permissions';
@@ -152,7 +152,7 @@ export function EventCard({ event: e, preview }: { event: BeaconEvent; preview?:
         {e.description && <p className="mt-1 line-clamp-3 whitespace-pre-line text-sm text-fg-muted">{e.description}</p>}
 
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-          {e.locationType === 'comm_link' ? (
+          {e.locationType !== 'external' ? (
             <button
               type="button"
               disabled={preview || !relay}
@@ -162,8 +162,8 @@ export function EventCard({ event: e, preview }: { event: BeaconEvent; preview?:
               }}
               className="flex min-w-0 items-center gap-1.5 text-sm text-fg-muted enabled:hover:text-fg enabled:hover:underline"
             >
-              <Volume2 className="h-4 w-4 shrink-0" />
-              <span className="truncate">{relay?.name ?? term('commLink')}</span>
+              {e.locationType === 'stage' ? <Podcast className="h-4 w-4 shrink-0" /> : <Volume2 className="h-4 w-4 shrink-0" />}
+              <span className="truncate">{relay?.name ?? (e.locationType === 'stage' ? 'Stage' : term('commLink'))}</span>
             </button>
           ) : (
             <span className="flex min-w-0 items-center gap-1.5 text-sm text-fg-muted">

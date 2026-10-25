@@ -22,7 +22,7 @@ export interface BeaconEvent {
   beaconId: string;
   name: string;
   description: string | null;
-  locationType: 'comm_link' | 'external';
+  locationType: 'comm_link' | 'stage' | 'external';
   relayId: string | null;
   location: string | null;
   coverUrl: string | null;

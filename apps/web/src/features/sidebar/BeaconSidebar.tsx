@@ -14,6 +14,7 @@ import {
   Settings,
   UserPlus,
   Volume2,
+  Podcast,
   MicOff,
   HeadphoneOff,
   Lock,
@@ -33,7 +34,7 @@ import { relayMenu, bandMenu } from './relayMenu';
 import { relayKindLabel } from '../../lib/strings';
 
 export function RelayIcon({ type, className = 'h-5 w-5', locked }: { type: Relay['type']; className?: string; locked?: boolean }) {
-  const Icon = { text: Hash, comm_link: Volume2, archival: MessagesSquare, visual: ImageIcon, category: Hash }[type] ?? Hash;
+  const Icon = { text: Hash, comm_link: Volume2, stage: Podcast, archival: MessagesSquare, visual: ImageIcon, category: Hash }[type] ?? Hash;
   return (
     <span className="relative inline-flex shrink-0">
       <Icon className={className} aria-hidden="true" />
@@ -130,7 +131,7 @@ function RelayRow({ relay }: { relay: Relay }) {
           <MentionBadge count={ind.mentions} />
         </span>
       </div>
-      {relay.type === 'comm_link' && <VoiceParticipants relayId={relay.id} beaconId={relay.beaconId} />}
+      {(relay.type === 'comm_link' || relay.type === 'stage') && <VoiceParticipants relayId={relay.id} beaconId={relay.beaconId} />}
     </div>
   );
 }

@@ -264,7 +264,7 @@ export async function authorizeVoiceRelay(
   relayId: string
 ): Promise<string | null> {
   const [relay] = await db.select().from(relays).where(eq(relays.id, relayId)).limit(1);
-  if (!relay || relay.type !== 'comm_link') return null;
+  if (!relay || (relay.type !== 'comm_link' && relay.type !== 'stage')) return null;
   const perms = await computeRelayPermissions(db, transmitterId, relayId);
   return hasPermission(perms, PERMISSIONS.CONNECT_AUDIO) ? relay.beaconId : null;
 }

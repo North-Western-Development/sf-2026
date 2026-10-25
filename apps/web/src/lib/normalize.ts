@@ -41,6 +41,7 @@ const RELAY_KINDS: Record<string, RelayKind> = {
   announcement: 'text',
   voice: 'comm_link',
   comm_link: 'comm_link',
+  stage: 'stage',
   archival: 'archival',
   archive: 'archival',
   forum: 'archival',

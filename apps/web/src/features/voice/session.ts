@@ -77,11 +77,14 @@ const setTrack = (identity: string, kind: keyof MediaTracks, track: Track | null
   useVoice.setState((s) => ({ tracks: { ...s.tracks, [identity]: { ...s.tracks[identity], [kind]: track } } }));
 
 let wired = false;
+/** Reconnecting the media on purpose (a Stage role change): not a disconnect. */
+let rejoining = false;
 function wire() {
   if (wired) return;
   wired = true;
   rtcManager.onSpeakingChanged((speaking) => useVoice.setState({ speaking }));
   rtcManager.onConnectionStateChanged((state) => {
+    if (rejoining) return;
     const map: Record<string, VoiceSession['state']> = { connected: 'connected', connecting: 'connecting', reconnecting: 'reconnecting', disconnected: 'idle' };
     const next = map[String(state)] ?? 'connecting';
     const s = useVoice.getState();
@@ -112,6 +115,29 @@ function wire() {
       gateway.updateVoiceState(room, muted, deafened, false);
     }
   });
+}
+
+/**
+ * Reconnect the media with a fresh token while staying in the room: a Stage speaker's token can
+ * publish and an audience member's cannot, and LiveKit only reports levels for a microphone
+ * published as the connection starts.
+ */
+export async function rejoinMedia() {
+  const { relayId, state } = useVoice.getState();
+  if (!relayId || state === 'idle' || rejoining) return;
+  rejoining = true;
+  try {
+    const { muted, deafened } = useAudioPrefs.getState();
+    const grant = await api.getCommLinkToken(relayId);
+    await rtcManager.disconnect();
+    useVoice.setState({ tracks: {}, speaking: [], cameraOn: false, screenOn: false });
+    await rtcManager.connect(grant.livekitUrl, grant.token, { canSpeak: grant.canSpeak, isMuted: muted, isDeafened: deafened });
+    useVoice.setState({ state: 'connected' });
+  } catch (err) {
+    toast(`Could not rejoin the Stage: ${(err as Error).message}`, 'error');
+  } finally {
+    rejoining = false;
+  }
 }
 
 export async function joinVoice(relayId: string, beaconId: string) {

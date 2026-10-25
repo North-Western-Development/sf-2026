@@ -180,3 +180,21 @@ export const test = base.extend<Fixtures>({
 });
 
 export { expect };
+
+/** The tracks LiveKit has for each participant in a room ('AUDIO/MICROPHONE', ...), straight from its RoomService. */
+export async function liveKitTracks(room: string): Promise<Record<string, string[]>> {
+  const { loadNativeEnv } = await importEsm(pathToFileURL(path.resolve(__dirname, '../../scripts/native/env.mjs')).href);
+  const env = loadNativeEnv({ test: true });
+  const { createHmac } = await import('node:crypto');
+  const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const unsigned = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ iss: env.LIVEKIT_API_KEY, sub: 'ui-test', nbf: now, exp: now + 60, video: { roomAdmin: true, room } })}`;
+  const token = `${unsigned}.${createHmac('sha256', env.LIVEKIT_API_SECRET).update(unsigned).digest('base64url')}`;
+  const res = await fetch('http://127.0.0.1:7880/twirp/livekit.RoomService/ListParticipants', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ room }),
+  });
+  const { participants = [] } = (await res.json()) as { participants?: Array<{ identity: string; tracks?: Array<{ type: string; source: string }> }> };
+  return Object.fromEntries(participants.map((p) => [p.identity, (p.tracks ?? []).map((t) => `${t.type}/${t.source}`)]));
+}

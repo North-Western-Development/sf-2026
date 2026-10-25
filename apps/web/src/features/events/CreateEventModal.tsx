@@ -53,14 +53,20 @@ const COVER_ASPECT = 2.5; // 800 x 320, as Discord recommends
 /** Discord's three-step event wizard: where, what and when, then a preview. Also edits. */
 export function CreateEventModal({ beaconId, eventId }: { beaconId: string; eventId?: string }) {
   const existing = useCommunity((s) => (eventId ? s.events[beaconId]?.find((e) => e.id === eventId) : undefined));
-  const commLinks = useStore(useShallow((s) => (s.relayIdsByBeacon[beaconId] ?? []).map((id) => s.relays[id]).filter((r): r is Relay => r?.type === 'comm_link')));
+  const voiceRelays = useStore(useShallow((s) => (s.relayIdsByBeacon[beaconId] ?? []).map((id) => s.relays[id]).filter((r): r is Relay => r?.type === 'comm_link' || r?.type === 'stage')));
   const me = useStore((s) => s.me);
   const start0 = existing ? new Date(existing.startAt) : defaultStart();
   const end0 = existing?.endAt ? new Date(existing.endAt) : null;
 
   const [step, setStep] = useState(0);
-  const [locationType, setLocationType] = useState<'comm_link' | 'external'>(existing?.locationType ?? 'comm_link');
-  const [relayId, setRelayId] = useState(existing?.relayId ?? commLinks[0]?.id ?? '');
+  const [locationType, setLocationType] = useState<'comm_link' | 'stage' | 'external'>(existing?.locationType ?? 'comm_link');
+  const [relayId, setRelayId] = useState(existing?.relayId ?? voiceRelays.find((r) => r.type === 'comm_link')?.id ?? '');
+  const choices = voiceRelays.filter((r) => r.type === locationType);
+  const place = locationType === 'stage' ? 'Stage' : term('commLink');
+  const pick = (t: 'comm_link' | 'stage' | 'external') => {
+    setLocationType(t);
+    if (t !== 'external') setRelayId(voiceRelays.find((r) => r.type === t)?.id ?? '');
+  };
   const [location, setLocation] = useState(existing?.location ?? '');
   const [name, setName] = useState(existing?.name ?? '');
   const [startDate, setStartDate] = useState(dateValue(start0));
@@ -81,7 +87,7 @@ export function CreateEventModal({ beaconId, eventId }: { beaconId: string; even
   // What each step needs before Next.
   const problem = useMemo(() => {
     if (step === 0) {
-      if (!external && !relayId) return `Pick a ${term('commLink')}`;
+      if (!external && !relayId) return `Pick a ${place}`;
       if (external && !location.trim()) return 'Say where it is';
     }
     if (step === 1) {
@@ -207,18 +213,18 @@ export function CreateEventModal({ beaconId, eventId }: { beaconId: string; even
       {step === 0 && (
         <div className="space-y-5">
           <div role="radiogroup" aria-label="Location" className="space-y-4">
-            <LocationOption disabled icon={<Podcast />} title="Stage" hint="Stages are coming soon." />
-            <LocationOption checked={!external} onSelect={() => setLocationType('comm_link')} icon={<Volume2 />} title={term('commLink')} hint="Hang out with voice, video and Holo-Cast." />
-            <LocationOption checked={external} onSelect={() => setLocationType('external')} icon={<MapPin />} title="Somewhere Else" hint="Text relay, external link, or in-person location." />
+            <LocationOption checked={locationType === 'stage'} onSelect={() => pick('stage')} icon={<Podcast />} title="Stage" hint="Great for talks and Q&A: speakers talk, the audience listens." />
+            <LocationOption checked={locationType === 'comm_link'} onSelect={() => pick('comm_link')} icon={<Volume2 />} title={term('commLink')} hint="Hang out with voice, video and Holo-Cast." />
+            <LocationOption checked={external} onSelect={() => pick('external')} icon={<MapPin />} title="Somewhere Else" hint="Text relay, external link, or in-person location." />
           </div>
           {!external ? (
             <Dropdown
-              label={`Select a ${term('commLink')}`}
+              label={`Select a ${place}`}
               required
               value={relayId}
-              placeholder={commLinks.length ? 'Select…' : `No ${term('commLink', true)} yet`}
+              placeholder={choices.length ? 'Select…' : locationType === 'stage' ? 'No Stages yet' : `No ${term('commLink', true)} yet`}
               onChange={setRelayId}
-              options={commLinks.map((r) => ({ value: r.id, label: r.name, icon: <Volume2 /> }))}
+              options={choices.map((r) => ({ value: r.id, label: r.name, icon: r.type === 'stage' ? <Podcast /> : <Volume2 /> }))}
             />
           ) : (
             <Field label="Enter a location" required>

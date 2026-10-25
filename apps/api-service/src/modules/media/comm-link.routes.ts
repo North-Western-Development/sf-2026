@@ -4,6 +4,7 @@ import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 import { requireSecret } from '@subspace/crypto';
 import { createLiveKitAccessToken } from './livekit.js';
+import { readStage } from './stage.routes.js';
 
 const LIVEKIT_API_KEY = requireSecret('LIVEKIT_API_KEY', 'subspace_api_key');
 const LIVEKIT_API_SECRET = requireSecret('LIVEKIT_API_SECRET', 'subspace_secret_key_frequency');
@@ -32,7 +33,7 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
 
     if (!targetRelay) return reply.status(404).send({ error: 'Relay not found' });
 
-    if (targetRelay.type !== 'comm_link') {
+    if (targetRelay.type !== 'comm_link' && targetRelay.type !== 'stage') {
       return reply.status(400).send({
         error: 'Target relay is not a Comm-Link relay',
         code: 'NOT_A_COMM_LINK_RELAY',
@@ -56,6 +57,9 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       });
     }
 
+    // On a Stage only its speakers publish; everyone else joins as the audience.
+    const audience = targetRelay.type === 'stage' && !(await readStage((app as any).redis, relayId)).speakers.includes(token.transmitterId);
+
     try {
       const roomToken = createLiveKitAccessToken({
         apiKey: LIVEKIT_API_KEY,
@@ -65,6 +69,7 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         roomName: relayId,
         permissions: actorContext.effectivePermissions,
         isOwner: actorContext.isOwner,
+        audience,
       });
 
       return reply.send({
@@ -72,12 +77,8 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         token: roomToken,
         livekitUrl: LIVEKIT_PUBLIC_URL,
         roomName: relayId,
-        canSpeak:
-          actorContext.isOwner ||
-          hasPermission(actorContext.effectivePermissions, PERMISSIONS.SPEAK_AUDIO),
-        canHoloCast:
-          actorContext.isOwner ||
-          hasPermission(actorContext.effectivePermissions, PERMISSIONS.BROADCAST_HOLO_CAST),
+        canSpeak: !audience && (actorContext.isOwner || hasPermission(actorContext.effectivePermissions, PERMISSIONS.SPEAK_AUDIO)),
+        canHoloCast: !audience && (actorContext.isOwner || hasPermission(actorContext.effectivePermissions, PERMISSIONS.BROADCAST_HOLO_CAST)),
       });
     } catch (err: any) {
       return reply.status(403).send({

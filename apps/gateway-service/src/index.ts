@@ -373,13 +373,14 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       is_speaking: !!sess.isSpeaking,
       timestamp: new Date().toISOString(),
     };
-    deliverVoice(event);
-    publish(CHANNELS.voice, event);
-    // Which comm-link each transmitter is in, for the API (activities check it).
+    // Which comm-link or stage each transmitter is in, for the API (activities and stages check
+    // it). Sent before the broadcast, so whoever hears they joined can already act on it.
     if (redisReady()) {
       if (relayId) redisPub!.hset(VOICE_HASH_KEY, sess.transmitterId!, relayId).catch(() => {});
       else redisPub!.hdel(VOICE_HASH_KEY, sess.transmitterId!).catch(() => {});
     }
+    deliverVoice(event);
+    publish(CHANNELS.voice, event);
     // Left a call (hung up, switched rooms, or the socket closed): end it if that emptied it.
     if (previous?.callType && previous.callId && !(call && call.id === previous.callId) && !callOccupied(previous.callType, previous.callId)) {
       endCall(previous.callType, previous.callId).catch((err) => console.warn('[Gateway] Ending call failed:', err?.message));

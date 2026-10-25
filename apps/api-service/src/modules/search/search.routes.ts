@@ -236,7 +236,7 @@ export const searchRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
           : [];
         const allowed: string[] = [];
         for (const r of candidates) {
-          if (r.type === 'comm_link') continue;
+          if (r.type === 'comm_link' || r.type === 'stage') continue;
           const actorCtx = await resolveRelayActorContext(db, token.transmitterId, r);
           if (actorCtx && hasPermission(actorCtx.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
             allowed.push(r.id);

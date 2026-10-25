@@ -120,7 +120,7 @@ export const beaconEvents = pgTable('beacon_events', {
   creatorId: uuid('creator_id').references(() => transmitters.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
   description: text('description'),
-  locationType: text('location_type').notNull(), // 'comm_link' | 'external'
+  locationType: text('location_type').notNull(), // 'comm_link' | 'stage' | 'external'
   relayId: uuid('relay_id').references(() => relays.id, { onDelete: 'set null' }),
   location: text('location'),
   coverUrl: text('cover_url'),

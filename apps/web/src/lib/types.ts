@@ -11,7 +11,7 @@ export const parseChannelKey = (key: ChannelKey) => {
   return { type: key.slice(0, i) as ChannelType, id: key.slice(i + 1) };
 };
 
-export type RelayKind = 'text' | 'comm_link' | 'archival' | 'visual' | 'category';
+export type RelayKind = 'text' | 'comm_link' | 'stage' | 'archival' | 'visual' | 'category';
 
 export interface DisplayNameStyle {
   font: string;
