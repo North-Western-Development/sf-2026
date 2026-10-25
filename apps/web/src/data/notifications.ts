@@ -142,7 +142,7 @@ export function maybeNotify(key: ChannelKey, t: Transmission, title: string, onO
   const me = s.me;
   if (!me || t.author.id === me.id) return;
   // Join lines and setup tips are not worth a ping.
-  if (t.type === 'system_join' || t.type === 'system_tips') return;
+  if (t.type === 'system_join' || t.type === 'system_tips' || t.type === 'system_automod') return;
   if (s.presence[me.id]?.status === 'dnd') return;
   const viewing = s.activeChannel === key && document.visibilityState === 'visible' && document.hasFocus();
   if (viewing) return;

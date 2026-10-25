@@ -239,6 +239,10 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
     const [beacon] = await db.select().from(beacons).where(eq(beacons.id, invite.beaconId)).limit(1);
     if (!beacon) return reply.status(404).send({ error: 'Invite not found or expired' });
+    // Security Actions: admins can pause joining for up to a day.
+    if (beacon.invitesPausedUntil && new Date(beacon.invitesPausedUntil) > new Date()) {
+      return reply.status(403).send({ error: 'Invites to this beacon are paused right now', code: 'INVITES_PAUSED' });
+    }
 
     const [ban] = await db
       .select()

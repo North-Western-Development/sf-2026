@@ -339,6 +339,12 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
     openEncrypted(key, [sent]);
     await ackChannel(key);
   } catch (err) {
+    // AutoMod stops it for good: say why, and do not offer to resend it.
+    if (err instanceof ApiError && err.code === 'AUTOMOD_BLOCKED') {
+      removeMessage(key, optimistic.id);
+      toast(err.message, 'error');
+      return;
+    }
     patchMessage(key, optimistic.id, { pending: false, failed: true });
     if (isEncryptedChannel(key)) toast(`Could not encrypt the transmission: ${(err as Error).message}`, 'error');
   }

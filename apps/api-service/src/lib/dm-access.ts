@@ -1,4 +1,4 @@
-import { and, eq, or, affiliations, transmissionRequests, beaconMembers } from '@subspace/database';
+import { and, eq, or, affiliations, transmissionRequests, beaconMembers, beacons } from '@subspace/database';
 
 export type DmAccess =
   | { ok: true; via: 'affiliation' | 'request' | 'beacon'; beaconId?: string }
@@ -42,12 +42,14 @@ export async function dmAccess(db: any, senderId: string, targetId: string): Pro
 
   const mine = await db.select({ beaconId: beaconMembers.beaconId }).from(beaconMembers).where(eq(beaconMembers.transmitterId, senderId));
   const theirs = await db
-    .select({ beaconId: beaconMembers.beaconId, allowDms: beaconMembers.allowDms })
+    .select({ beaconId: beaconMembers.beaconId, allowDms: beaconMembers.allowDms, dmsPausedUntil: beacons.dmsPausedUntil })
     .from(beaconMembers)
+    .innerJoin(beacons, eq(beacons.id, beaconMembers.beaconId))
     .where(eq(beaconMembers.transmitterId, targetId));
   const mineSet = new Set(mine.map((m: any) => m.beaconId));
   const shared = theirs.filter((t: any) => mineSet.has(t.beaconId));
-  const open = shared.find((t: any) => t.allowDms);
+  // A beacon whose admins paused DMs (Security Actions) does not count until the pause ends.
+  const open = shared.find((t: any) => t.allowDms && !(t.dmsPausedUntil && new Date(t.dmsPausedUntil) > new Date()));
   if (open) return { ok: true, via: 'beacon', beaconId: open.beaconId };
   if (shared.length) return { ok: false, code: 'DMS_DISABLED', error: 'This transmitter is not accepting direct links from members of your shared beacons' };
   return { ok: false, code: 'NO_SHARED_BEACON', error: 'Cannot initiate transmission link without sharing a mutual Beacon' };

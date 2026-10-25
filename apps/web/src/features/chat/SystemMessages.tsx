@@ -96,3 +96,31 @@ export function SetupTipsMessage({ m, beaconId }: { m: Transmission; beaconId?: 
     </div>
   );
 }
+
+/** AutoMod's alert in the relay a rule reports to: who, where, which rule and what it caught. */
+export function AutomodAlertMessage({ m, beaconId, onOpenProfile }: { m: Transmission; beaconId?: string; onOpenProfile: (e: React.MouseEvent) => void }) {
+  let info: { rule?: string; matched?: string; relayName?: string; content?: string; blocked?: boolean; timeoutSeconds?: number } = {};
+  try {
+    info = JSON.parse(m.content);
+  } catch {
+    /* keep defaults */
+  }
+  return (
+    <div id={`msg-${m.id}`} role="note" aria-label="AutoMod alert" className="mx-4 my-2 max-w-[600px] rounded-lg border-l-4 border-danger bg-raised p-3">
+      <p className="text-sm text-fg-muted">
+        <span className="font-semibold text-fg">AutoMod</span> has {info.blocked === false ? 'flagged' : 'blocked'} a transmission in <span className="font-semibold text-fg">#{info.relayName}</span>{' '}
+        <span className="text-xs text-fg-subtle">{formatMessageTime(m.createdAt)}</span>
+      </p>
+      <div className="mt-2 flex items-start gap-2">
+        <button className="text-sm font-semibold text-fg hover:underline" onClick={onOpenProfile}>
+          <UserName user={m.author} beaconId={beaconId} styled={false} />
+        </button>
+        <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm text-fg">{info.content}</p>
+      </div>
+      <p className="mt-2 text-xs text-fg-subtle">
+        Rule: {info.rule} · Matched: {info.matched}
+        {info.timeoutSeconds ? ` · Timed out for ${Math.round(info.timeoutSeconds / 60)} min` : ''}
+      </p>
+    </div>
+  );
+}

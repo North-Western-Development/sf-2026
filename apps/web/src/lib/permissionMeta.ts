@@ -26,6 +26,7 @@ export const PERMISSION_GROUPS: Array<{ title: string; items: PermissionMeta[] }
       p('MANAGE_CLEARANCES', 'Manage Clearances', 'Create and edit clearances lower than their highest clearance, and assign them.'),
       p('MANAGE_GLYPHS', 'Manage Signal Glyphs', 'Add, rename, and remove custom emoji.', false),
       p('MANAGE_BEACON', 'Manage Beacon', "Change the beacon's name, icon, and settings, and view all invites.", false),
+      p('VIEW_AUDIT_LOG', 'View Audit Log', 'Read the record of who changed what in this beacon.', false),
     ],
   },
   {
@@ -43,6 +44,7 @@ export const PERMISSION_GROUPS: Array<{ title: string; items: PermissionMeta[] }
     title: 'Text Relay Permissions',
     items: [
       p('SEND_TRANSMISSIONS', 'Send Transmissions', 'Send transmissions in text relays and archival threads.'),
+      p('CREATE_THREADS', 'Create Threads', 'Start threads from transmissions in text relays.'),
       p('EMBED_LINKS', 'Embed Links', 'Links shared by members show embedded previews.'),
       p('ATTACH_FILES', 'Attach Files', 'Upload files and media.'),
       p('ADD_REACTIONS', 'Add Reactions', 'Add new reactions to transmissions. Existing reactions can always be used.'),
@@ -59,6 +61,7 @@ export const PERMISSION_GROUPS: Array<{ title: string; items: PermissionMeta[] }
       p('CONNECT_AUDIO', 'Connect', 'Join Comm-Links and hear others.'),
       p('SPEAK_AUDIO', 'Speak', 'Talk in Comm-Links.'),
       p('BROADCAST_HOLO_CAST', 'Video & Holo-Cast', 'Share camera and screen in Comm-Links.'),
+      p('USE_SOUNDBOARD', 'Use Soundboard', "Play sounds from this beacon's soundboard in Comm-Links."),
       p('MUTE_MEMBERS', 'Mute Members', 'Server-mute other members in Comm-Links.'),
       p('MOVE_MEMBERS', 'Move Members', 'Disconnect or move members between Comm-Links.'),
     ],

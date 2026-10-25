@@ -29,6 +29,7 @@ import { parseMentions } from '../../lib/mentions.js';
 import { touchChannelLastTransmission, incrementMentionCounts } from '../../lib/read-state.js';
 import { linkIsEncrypted } from '../e2ee/e2ee.routes.js';
 import { queuePush } from '../../lib/push.js';
+import { runAutomod } from '../../lib/automod.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
@@ -329,6 +330,18 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       });
       if (replyPingTarget && !parsed.mentions.includes(replyPingTarget)) {
         parsed.mentions.push(replyPingTarget);
+      }
+
+      if ((channel.channelType === 'relay' || channel.channelType === 'thread') && access.actorContext && content) {
+        const verdict = await runAutomod(app, db, {
+          beaconId: channel.beaconId!,
+          relayId: channel.relayId!,
+          authorId: token.transmitterId,
+          content,
+          permissions: access.actorContext.effectivePermissions,
+          mentionCount: parsed.mentions.length + parsed.mentionRoles.length + (parsed.mentionEveryone ? 1 : 0),
+        });
+        if (verdict) return reply.status(403).send({ error: verdict.message, code: 'AUTOMOD_BLOCKED', rule: verdict.ruleName });
       }
 
       const [inserted] = await db

@@ -30,6 +30,15 @@ const MIGRATIONS: DataMigration[] = [
       await db.update(beaconClusters).set({ color: '#3B8EF2' }).where(eq(beaconClusters.color, '#00F0FF'));
     },
   },
+  {
+    // Use Soundboard and Create Threads came later; @everyone has them by default, as on Discord.
+    id: '2026-10-25-soundboard-threads-bits',
+    run: (db) =>
+      db
+        .update(clearances)
+        .set({ permissions: sql`${clearances.permissions} | ${((1n << 28n) | (1n << 30n)).toString()}::bigint` })
+        .where(eq(clearances.position, 0)),
+  },
 ];
 
 export async function runDataMigrations(db: any, log: { info: (...a: any[]) => void; warn: (...a: any[]) => void }) {

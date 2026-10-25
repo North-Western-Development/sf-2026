@@ -22,6 +22,7 @@ import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { beaconMembers as beaconMembersTable, subspaceMeshMembers as subspaceMeshMembersTable } from '@subspace/database';
 
 import { resolveVaultAttachments } from '../../lib/attachments.js';
+import { runAutomod } from '../../lib/automod.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
 import { MAX_ENCRYPTED_BYTES } from '../messaging/messaging.routes.js';
 const MAX_TRANSMISSION_LENGTH = 2000;
@@ -89,6 +90,16 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
         maxLength: MAX_TRANSMISSION_LENGTH,
       });
     }
+
+    const verdict = await runAutomod(app, db, {
+      beaconId: targetRelay.beaconId,
+      relayId,
+      authorId: token.transmitterId,
+      content: content.trim(),
+      permissions: actorContext.effectivePermissions,
+      mentionCount: content.match(/<@[!&]?[0-9a-f-]{36}>/g)?.length ?? 0,
+    });
+    if (verdict) return reply.status(403).send({ error: verdict.message, code: 'AUTOMOD_BLOCKED', rule: verdict.ruleName });
 
     const [newTransmission] = await db
       .insert(transmissions)
@@ -304,11 +315,13 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
     }
 
     let mentionEveryoneAllowed = false;
+    let editorPerms: bigint | null = null;
     if (channel?.beaconId) {
       const actorCtx = channel.relayId
         ? await resolveRelayActorContext(db, existing.transmitterId, { id: channel.relayId, beaconId: channel.beaconId })
         : await resolveBeaconActorContext(db, existing.transmitterId, channel.beaconId);
       mentionEveryoneAllowed = !!actorCtx && hasPermission(actorCtx.effectivePermissions, PERMISSIONS.MENTION_EVERYONE);
+      editorPerms = actorCtx?.effectivePermissions ?? null;
     }
 
     const parsed = await parseMentions(db, content.trim(), {
@@ -316,6 +329,19 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       validUserIds,
       authorHasMentionEveryone: mentionEveryoneAllowed,
     });
+
+    // AutoMod checks edits too, as on Discord.
+    if (channel?.beaconId && channel.relayId && editorPerms !== null) {
+      const verdict = await runAutomod(app, db, {
+        beaconId: channel.beaconId,
+        relayId: channel.relayId,
+        authorId: existing.transmitterId,
+        content: content.trim(),
+        permissions: editorPerms,
+        mentionCount: parsed.mentions.length + parsed.mentionRoles.length,
+      });
+      if (verdict) return reply.status(403).send({ error: verdict.message, code: 'AUTOMOD_BLOCKED', rule: verdict.ruleName });
+    }
 
     const [updated] = await db
       .update(transmissions)

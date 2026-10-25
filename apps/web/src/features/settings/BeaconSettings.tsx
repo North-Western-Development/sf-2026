@@ -49,6 +49,9 @@ import { loadGlyphs, type Glyph } from '../chat/EmojiPicker';
 import { RelaysTab } from './beacon/RelaysTab';
 import { OnboardingQuestionsEditor } from './beacon/OnboardingQuestionsEditor';
 import { EngagementTab } from './beacon/EngagementTab';
+import { AuditLogTab } from './beacon/AuditLogTab';
+import { AutoModTab } from './beacon/AutoModTab';
+import { SafetyTab } from './beacon/SafetyTab';
 
 // Stable fallbacks: a fresh {} / [] inside a selector would re-render forever.
 const EMPTY_MEMBERS: Record<string, Member> = {};
@@ -845,9 +848,8 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
         {
           heading: 'Moderation',
           items: [
-            { id: 'automod', icon: <Bot />, label: 'AutoMod', comingSoon: true },
-            { id: 'audit', icon: <ScrollText />, label: 'Audit Log', comingSoon: true },
-            { id: 'safety', icon: <ShieldAlert />, label: 'Safety Setup', comingSoon: true },
+            ...(manageBeacon ? [{ id: 'safety', icon: <ShieldAlert />, label: 'Safety Setup' }, { id: 'automod', icon: <Bot />, label: 'AutoMod' }] : []),
+            ...(can(perms, PERMISSIONS.VIEW_AUDIT_LOG) ? [{ id: 'audit', icon: <ScrollText />, label: 'Audit Log' }] : []),
           ],
         },
         {
@@ -902,6 +904,9 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
       {tab === 'bans' && <BansTab beaconId={beaconId} />}
       {tab === 'onboarding' && <OnboardingTab beaconId={beaconId} />}
       {tab === 'engagement' && <EngagementTab beaconId={beaconId} />}
+      {tab === 'audit' && <AuditLogTab beaconId={beaconId} />}
+      {tab === 'automod' && <AutoModTab beaconId={beaconId} />}
+      {tab === 'safety' && <SafetyTab beaconId={beaconId} onOpenAutoMod={() => setTab('automod')} />}
     </SettingsLayout>
   );
 }

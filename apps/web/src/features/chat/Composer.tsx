@@ -5,7 +5,7 @@ import { AtSign, CirclePlus, Cloud, Smile, Sticker, X, FileUp, Hash } from 'luci
 import { ComingSoon, Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore, getState } from '../../data/store';
 import { notifyTyping, sendMessage } from '../../data/actions';
-import { relayPermissions, can, PERMISSIONS, myTimeout } from '../../data/permissions';
+import { relayPermissions, can, PERMISSIONS, myTimeout, verificationPending } from '../../data/permissions';
 import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types';
 import { resolveName } from '../../lib/normalize';
 import { useUi, toast, openModal } from '../../app/ui';
@@ -97,6 +97,13 @@ export function Composer({
   const canEveryone = perms === null ? false : can(perms, PERMISSIONS.MENTION_EVERYONE);
   const needsOnboarding = useNeedsOnboarding(type === 'relay' ? beaconId : undefined);
   const timedOutUntil = useStore((s) => (type === 'relay' && beaconId ? myTimeout(s, beaconId) : null));
+  const verifying = useStore((s) => (type === 'relay' && beaconId ? verificationPending(s, beaconId) : null));
+  // The time-based levels pass on their own; check again each minute while waiting.
+  useEffect(() => {
+    if (!verifying) return;
+    const t = window.setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => window.clearInterval(t);
+  }, [verifying]);
   // Re-render when a timeout runs out so the composer comes back on its own.
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -294,7 +301,7 @@ export function Composer({
         <div className="flex h-11 items-center rounded-lg bg-raised px-4 text-sm text-fg-subtle">{disabledReason ||
             (timedOutUntil
               ? `You're timed out until ${new Date(timedOutUntil).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}. You can still read along.`
-              : 'You do not have permission to transmit in this relay.')}</div>
+              : verifying ?? 'You do not have permission to transmit in this relay.')}</div>
       </div>
     );
   }

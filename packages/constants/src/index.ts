@@ -59,6 +59,9 @@ export const PERMISSIONS = {
   CREATE_EVENTS: 1n << 24n,          // Schedule events; edit or cancel your own
   MANAGE_EVENTS: 1n << 25n,          // Edit, start, end or cancel anyone's events
   MODERATE_MEMBERS: 1n << 26n,       // Time out members below own rank
+  VIEW_AUDIT_LOG: 1n << 27n,         // Read the beacon's audit log
+  USE_SOUNDBOARD: 1n << 28n,         // Play soundboard sounds in Comm-Links
+  CREATE_THREADS: 1n << 30n,         // Start threads from transmissions
   ADMINISTRATOR: 1n << 29n,          // 0x20000000 - Bypass all relay permission checks
 } as const;
 
@@ -87,7 +90,9 @@ export const DEFAULT_EVERYONE_PERMISSIONS =
   PERMISSIONS.ADD_REACTIONS |
   PERMISSIONS.CREATE_INVITES |
   PERMISSIONS.CHANGE_NICKNAME |
-  PERMISSIONS.READ_HISTORY;
+  PERMISSIONS.READ_HISTORY |
+  PERMISSIONS.USE_SOUNDBOARD |
+  PERMISSIONS.CREATE_THREADS;
 
 /**
  * Calculate the effective permission bitfield for a member given their clearances and owner status
@@ -273,13 +278,43 @@ export const RESTRICTED_MASK =
   PERMISSIONS.BROADCAST_HOLO_CAST |
   PERMISSIONS.CREATE_INVITES |
   PERMISSIONS.CHANGE_NICKNAME |
-  PERMISSIONS.CREATE_EVENTS;
+  PERMISSIONS.CREATE_EVENTS |
+  PERMISSIONS.USE_SOUNDBOARD |
+  PERMISSIONS.CREATE_THREADS;
 
 /** Applies a timeout or quarantine to a permission set. Administrators are never restricted (they cannot be timed out). */
-export function restrictPermissions(perms: bigint, restriction: { timeoutUntil?: Date | string | null; quarantined?: boolean }, now = Date.now()): bigint {
+export function restrictPermissions(
+  perms: bigint,
+  restriction: { timeoutUntil?: Date | string | null; quarantined?: boolean; unverified?: boolean },
+  now = Date.now()
+): bigint {
   if ((perms & PERMISSIONS.ADMINISTRATOR) === PERMISSIONS.ADMINISTRATOR) return perms;
   const timedOut = !!restriction.timeoutUntil && new Date(restriction.timeoutUntil).getTime() > now;
-  return timedOut || restriction.quarantined ? perms & ~RESTRICTED_MASK : perms;
+  return timedOut || restriction.quarantined || restriction.unverified ? perms & ~RESTRICTED_MASK : perms;
+}
+
+export type VerificationLevel = 'none' | 'low' | 'medium' | 'high' | 'highest';
+
+/**
+ * Safety Setup's verification level (Discord's): until a member meets it they can read but not
+ * post, react or speak. Members with any clearance are exempt, as on Discord.
+ *   low: verified email; medium: and an account older than 5 minutes; high: and a member for
+ *   10 minutes; highest: and two-factor authentication on (Discord asks for a phone).
+ */
+export function meetsVerification(
+  level: string | null | undefined,
+  account: { isEmailVerified: boolean; createdAt: Date | string | number; is2faEnabled: boolean },
+  member: { joinedAt: Date | string | number; hasClearance: boolean },
+  now = Date.now()
+): boolean {
+  if (!level || level === 'none' || member.hasClearance) return true;
+  if (!account.isEmailVerified) return false;
+  if (level === 'low') return true;
+  if (now - new Date(account.createdAt).getTime() < 5 * 60_000) return false;
+  if (level === 'medium') return true;
+  if (now - new Date(member.joinedAt).getTime() < 10 * 60_000) return false;
+  if (level === 'high') return true;
+  return account.is2faEnabled;
 }
 
 /** Timeout lengths offered, in seconds (Discord's set). */

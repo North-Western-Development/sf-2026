@@ -177,7 +177,7 @@ export interface Transmission {
   encrypted?: unknown | null;
   e2ee?: 'pending' | 'ok' | 'other-device' | 'failed';
   encryptedAttachments?: Array<{ url: string; key: string; filename: string; mimeType: string; size: number }>;
-  type: 'default' | 'reply' | 'system_join' | 'system_tips' | 'system_pin' | 'system_call' | 'system_encryption';
+  type: 'default' | 'reply' | 'system_join' | 'system_tips' | 'system_automod' | 'system_pin' | 'system_call' | 'system_encryption';
   /** Client-only: optimistic send state. */
   pending?: boolean;
   failed?: boolean;

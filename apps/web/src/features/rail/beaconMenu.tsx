@@ -59,12 +59,11 @@ export function beaconMenu(beaconId: string, navigate: (path: string) => void, o
     ...(can(perms, PERMISSIONS.CREATE_INVITES) ? [{ label: 'Invites', onClick: settings('invites') }] : []),
     ...(manageRelays ? [{ label: term('relay', true), onClick: settings('relays') }] : []),
     ...(manageBeacon ? [{ label: 'Onboarding', onClick: settings('onboarding') }] : []),
-    soon('Safety Setup'),
-    soon('AutoMod'),
-    soon('Audit Log'),
+    ...(manageBeacon ? [{ label: 'Safety Setup', onClick: settings('safety') }, { label: 'AutoMod', onClick: settings('automod') }] : []),
+    ...(can(perms, PERMISSIONS.VIEW_AUDIT_LOG) ? [{ label: 'Audit Log', onClick: settings('audit') }] : []),
     ...(can(perms, PERMISSIONS.BAN_MEMBERS) ? [{ label: 'Bans', onClick: settings('bans') }] : []),
   ];
-  if (manageBeacon || manageRelays || can(perms, PERMISSIONS.MANAGE_CLEARANCES)) {
+  if (manageBeacon || manageRelays || can(perms, PERMISSIONS.MANAGE_CLEARANCES) || can(perms, PERMISSIONS.VIEW_AUDIT_LOG)) {
     // The header dropdown opens settings itself, as Discord's does; the right-click menu lists pages.
     items.push(
       opts.header
@@ -105,7 +104,7 @@ export function beaconMenu(beaconId: string, navigate: (path: string) => void, o
     items.push({ separator: true }, { label: 'Move to…', disabled: !others.length && !own, children: moves });
   }
 
-  if (manageBeacon) items.push({ separator: true }, { ...soon('Security Actions'), danger: true });
+  if (manageBeacon) items.push({ separator: true }, { label: 'Security Actions', danger: true, onClick: settings('safety') });
 
   if (!isOwner) {
     items.push(

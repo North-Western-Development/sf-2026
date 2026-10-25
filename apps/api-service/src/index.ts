@@ -113,6 +113,10 @@ export async function buildApp() {
     }
   }
 
+  // The Audit Log records admin routes from one hook (see lib/audit-hook.ts).
+  const { registerAuditHook } = await import('./lib/audit-hook.js');
+  registerAuditHook(app);
+
   // Import and register routes
   const { authRoutes } = await import('./modules/auth/auth.routes.js');
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
@@ -121,6 +125,8 @@ export async function buildApp() {
 
   const { beaconRoutes } = await import('./modules/beacons/beacons.routes.js');
   await app.register(beaconRoutes, { prefix: '/api/v1/beacons' });
+  const { moderationRoutes } = await import('./modules/moderation/moderation.routes.js');
+  await app.register(moderationRoutes, { prefix: '/api/v1/beacons' });
   const { memberSafetyRoutes } = await import('./modules/members/member-safety.routes.js');
   await app.register(memberSafetyRoutes, { prefix: '/api/v1/beacons' });
   const { communityRoutes } = await import('./modules/community/community.routes.js');

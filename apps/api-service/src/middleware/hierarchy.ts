@@ -4,6 +4,7 @@ import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto'
 import {
   computeMemberPermissions,
   restrictPermissions,
+  meetsVerification,
   getHighestRank,
   canModerate,
   hasPermission,
@@ -83,11 +84,17 @@ export async function resolveBeaconActorContext(
     (c) => assignedIds.has(c.id) || c.position === 0
   );
 
-  const [account] = await db.select({ quarantinedAt: transmitters.quarantinedAt }).from(transmitters).where(eq(transmitters.id, transmitterId)).limit(1);
-  // A timeout or a staff quarantine takes away posting, reacting and voice.
+  const [account] = await db
+    .select({ quarantinedAt: transmitters.quarantinedAt, isEmailVerified: transmitters.isEmailVerified, createdAt: transmitters.createdAt, is2faEnabled: transmitters.is2faEnabled })
+    .from(transmitters)
+    .where(eq(transmitters.id, transmitterId))
+    .limit(1);
+  // A timeout, a staff quarantine, or not yet meeting the verification level takes away posting, reacting and voice.
+  const unverified = !!member && !!account && !meetsVerification(beacon.verificationLevel, account, { joinedAt: member.joinedAt, hasClearance: assignedIds.size > 0 });
   const effectivePermissions = restrictPermissions(computeMemberPermissions(activeClearances, isOwner), {
     timeoutUntil: member?.timeoutUntil,
     quarantined: !!account?.quarantinedAt,
+    unverified,
   });
   const highestRank = getHighestRank(activeClearances, isOwner);
 
