@@ -30,6 +30,8 @@ export interface FullProfile {
   commendations: Array<{ code: string; name: string; iconUrl: string; description: string }>;
   mutualBeacons: Array<{ id: string; name: string; iconUrl: string | null; nickname?: string | null }>;
   mutualFriends: UserRef[];
+  /** Accounts they linked and chose to show (Connections). */
+  connections?: Array<{ provider: 'github' | 'google' | 'microsoft' | 'dropbox' | 'steam'; name: string; url: string | null }>;
   relationship: 'self' | 'friend' | 'incoming' | 'outgoing' | 'blocked' | 'none';
   note: string | null;
 }

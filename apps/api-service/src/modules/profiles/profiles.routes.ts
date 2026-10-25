@@ -15,6 +15,7 @@ import {
   commendations,
   resolveTransmitterBeaconIds,
   highestPerFamily,
+  accountConnections,
 } from '@subspace/database';
 import {
   isValidUsername,
@@ -373,6 +374,9 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       commendations: highestPerFamily(visibleCommendations).map(({ displayOrder, ...c }: any) => c),
       mutualBeacons: mutualBeaconRows.map((b: any) => ({ id: b.id, name: b.name, iconUrl: b.iconUrl })),
       mutualFriends: [],
+      connections: (
+        await db.select().from(accountConnections).where(and(eq(accountConnections.transmitterId, targetId), eq(accountConnections.visible, true))).orderBy(accountConnections.createdAt)
+      ).map((c: any) => ({ provider: c.provider, name: c.name, url: c.url })),
       relationship,
       note,
     });

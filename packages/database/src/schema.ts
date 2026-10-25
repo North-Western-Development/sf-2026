@@ -479,6 +479,23 @@ export const driveConnections = pgTable('drive_connections', {
 ]);
 
 /**
+ * Connections (User Settings › Connections): other accounts a transmitter linked, shown on
+ * their profile unless hidden. Only the public identity is kept, never the provider's tokens.
+ */
+export const accountConnections = pgTable('account_connections', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+  provider: text('provider').notNull(), // 'github' | 'google' | 'microsoft' | 'dropbox' | 'steam'
+  providerAccountId: text('provider_account_id').notNull(),
+  name: text('name').notNull(),
+  url: text('url'),
+  visible: boolean('visible').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('account_connections_unique').on(table.transmitterId, table.provider, table.providerAccountId),
+]);
+
+/**
  * Incident Reports (Incident Flare)
  */
 export const incidentReports = pgTable('incident_reports', {

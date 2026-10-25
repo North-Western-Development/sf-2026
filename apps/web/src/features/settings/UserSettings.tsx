@@ -61,6 +61,7 @@ import { KEYBINDS } from '../../lib/keybinds';
 import { AccessibilityTab, LanguageTimeTab, SafetySettings } from './user/DisplayTabs';
 import { MicTest } from './user/VoiceTools';
 import { ClipSettings } from '../voice/ClipsUI';
+import { ConnectionsTab } from './user/ConnectionsTab';
 import { CurrentPassword, usePasswordField, withPassword } from './user/passwordField';
 import { AccountStandingRow, DecorationPicker, EffectPicker, PhoneRow } from './user/AccountExtras';
 import { Markdown } from '../chat/markdown';
@@ -1770,7 +1771,6 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
               id: 'connections',
               icon: <Link2 />,
               label: 'Connections',
-              comingSoon: true,
             },
           ],
         },
@@ -1825,6 +1825,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
       {tab === 'privacy' && <PrivacyTab me={me as any} />}
       {tab === 'notifications' && <NotificationsTab />}
       {tab === 'devices' && <DevicesTab />}
+      {tab === 'connections' && <ConnectionsTab />}
       {tab === 'voice' && <VoiceTab />}
       {tab === 'chat' && <ChatTab />}
       {tab === 'appearance' && <AppearanceTab />}

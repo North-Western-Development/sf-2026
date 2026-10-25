@@ -11,6 +11,7 @@ import { http } from '../../lib/http';
 import { memberMenu } from '../members/memberMenu';
 import { useProfile, type FullProfile } from './useProfile';
 import { ProfileActivity } from '../voice/ActivityParts';
+import { ProfileConnections } from '../settings/user/ConnectionsTab';
 import { ProfileBio, ProfileClearances, ProfileEffectLayer, ProfileHeader, ProfileIdentity, ProfileMeta, ProfileNote, StatusBubble, profileHeading } from './ProfileParts';
 import { Avatar } from '../common/Avatar';
 import { term } from '../../lib/strings';
@@ -236,10 +237,7 @@ export function ProfileModal({ userId, beaconId }: { userId: string; beaconId?: 
                 <ProfileBio profile={profile} beaconId={beaconId} />
                 <ProfileMeta profile={profile} beaconId={beaconId} />
                 <ProfileClearances profile={profile} />
-                <section>
-                  <h4 className={profileHeading}>Connections</h4>
-                  <p className="text-sm text-fg-subtle">Connected accounts are coming soon.</p>
-                </section>
+                <ProfileConnections connections={'connections' in profile ? profile.connections : undefined} heading={profileHeading} />
                 {!self && <ProfileNote userId={userId} initial={profile.note} />}
               </>
             )}

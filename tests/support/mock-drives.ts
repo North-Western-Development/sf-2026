@@ -79,8 +79,36 @@ export async function startMockDrives(port = 0): Promise<MockDrives> {
       return send(res, 200, { data });
     }
 
+    // Steam OpenID 2.0 (Connections): sign in at once, then confirm the assertion when asked.
+    if (provider === 'steam' && path === '/openid/login') {
+      if (req.method === 'POST') {
+        const form = new URLSearchParams(await readBody(req));
+        const ok = form.get('openid.mode') === 'check_authentication' && form.get('openid.sig') === 'mock-sig';
+        res.writeHead(200, { 'content-type': 'text/plain' });
+        return res.end(`ns:http://specs.openid.net/auth/2.0\nis_valid:${ok}\n`);
+      }
+      const returnTo = url.searchParams.get('openid.return_to')!;
+      const back = new URL(returnTo);
+      const claimed = 'https://steamcommunity.com/openid/id/76561198000004242';
+      const reply: Record<string, string> = {
+        'openid.ns': 'http://specs.openid.net/auth/2.0',
+        'openid.mode': 'id_res',
+        'openid.op_endpoint': 'https://steamcommunity.com/openid/login',
+        'openid.claimed_id': claimed,
+        'openid.identity': claimed,
+        'openid.return_to': returnTo,
+        'openid.response_nonce': `${new Date().toISOString()}abc`,
+        'openid.assoc_handle': '1234567890',
+        'openid.signed': 'signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle',
+        'openid.sig': 'mock-sig',
+      };
+      for (const [k, v] of Object.entries(reply)) back.searchParams.set(k, v);
+      res.writeHead(302, { location: back.toString() });
+      return res.end();
+    }
+
     // Consent screens: approve immediately and bounce back with a code.
-    if (/\/(o\/oauth2\/v2\/auth|common\/oauth2\/v2\.0\/authorize|oauth2\/authorize)$/.test(path)) {
+    if (/\/(o\/oauth2\/v2\/auth|common\/oauth2\/v2\.0\/authorize|oauth2\/authorize|login\/oauth\/authorize)$/.test(path)) {
       const redirect = url.searchParams.get('redirect_uri')!;
       const code = `${provider}-code-${crypto.randomBytes(6).toString('hex')}`;
       codes.set(code, { challenge: url.searchParams.get('code_challenge')!, redirect });
@@ -89,7 +117,7 @@ export async function startMockDrives(port = 0): Promise<MockDrives> {
     }
 
     // Token endpoints: check PKCE and the redirect URI like the real ones do.
-    if (/\/(token|oauth2\/token|common\/oauth2\/v2\.0\/token)$/.test(path) && req.method === 'POST') {
+    if (/\/(token|oauth2\/token|common\/oauth2\/v2\.0\/token|login\/oauth\/access_token)$/.test(path) && req.method === 'POST') {
       const form = new URLSearchParams(await readBody(req));
       if (!form.get('client_id') || !form.get('client_secret')) return send(res, 401, { error: 'invalid_client' });
       if (form.get('grant_type') === 'refresh_token') {
@@ -113,6 +141,10 @@ export async function startMockDrives(port = 0): Promise<MockDrives> {
     }
 
     if (!authed(req)) return send(res, 401, { error: 'unauthorized' });
+
+    // Connections: who signed in.
+    if (provider === 'github' && path === '/user') return send(res, 200, { id: 4242, login: 'pilot-gh', html_url: 'https://github.com/pilot-gh' });
+    if (provider === 'google' && path === '/v1/userinfo') return send(res, 200, { sub: 'g-4242', name: 'Pilot Google', email: 'pilot@gmail.test' });
 
     if (provider === 'google') {
       if (path === '/drive/v3/about') return send(res, 200, { user: { emailAddress: 'pilot@gmail.test' } });

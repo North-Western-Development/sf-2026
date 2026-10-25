@@ -37,7 +37,7 @@ if (testStack) {
   env.GIPHY_API_BASE = 'http://127.0.0.1:4195/giphy';
   // Email goes to the SMTP sink Playwright starts (tests/support/mail-sink.ts).
   Object.assign(env, { SMTP_HOST: '127.0.0.1', SMTP_PORT: '4196', SMTP_SECURE: 'false', SMTP_INSECURE: 'true', SMTP_USER: '' });
-  for (const [id, secret] of [['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], ['ONEDRIVE_CLIENT_ID', 'ONEDRIVE_CLIENT_SECRET'], ['DROPBOX_APP_KEY', 'DROPBOX_APP_SECRET']]) {
+  for (const [id, secret] of [['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], ['ONEDRIVE_CLIENT_ID', 'ONEDRIVE_CLIENT_SECRET'], ['DROPBOX_APP_KEY', 'DROPBOX_APP_SECRET'], ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET']]) {
     env[id] ||= 'ui-test-client';
     env[secret] ||= 'ui-test-secret';
   }
