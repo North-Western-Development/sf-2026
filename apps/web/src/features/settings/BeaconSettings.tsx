@@ -14,7 +14,6 @@ import {
   LayoutGrid,
   Link2,
   Plus,
-  Rocket,
   ScrollText,
   Search,
   Shield,
@@ -834,7 +833,6 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           items: [
             ...(manageBeacon ? [{ id: 'onboarding', icon: <Flag />, label: 'Onboarding' }] : []),
             { id: 'insights', icon: <BarChart3 />, label: 'Beacon Insights', comingSoon: true },
-            { id: 'boost', icon: <Rocket />, label: 'Beacon Boost Status', comingSoon: true },
             { id: 'template', icon: <Copy />, label: 'Beacon Template', comingSoon: true },
           ],
         },

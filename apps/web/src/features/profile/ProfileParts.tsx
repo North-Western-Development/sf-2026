@@ -10,6 +10,7 @@ import { Markdown } from '../chat/markdown';
 import { useMarkdownResolvers } from '../chat/resolvers';
 import { PixelStar } from '../auth/PixelStar';
 import type { FullProfile } from './useProfile';
+import type { CustomStatus } from '../../lib/types';
 
 /** Discord-style section heading used across the popout, the self card and the full profile. */
 export const profileHeading = 'mb-1 text-xs font-semibold text-fg-muted';
@@ -20,14 +21,18 @@ export function StatusBubble({
   fallback,
   onClick,
   placeholder,
+  draft,
 }: {
   userId: string;
   fallback?: FullProfile['user']['customStatus'];
   onClick?: () => void;
   /** Shown when there is no status (the self card offers to set one). */
   placeholder?: string;
+  /** A status being typed (the status dialog's preview), shown instead of the saved one. */
+  draft?: CustomStatus | null;
 }) {
-  const status = useStore((s) => s.presence[userId]?.customStatus ?? fallback);
+  const saved = useStore((s) => s.presence[userId]?.customStatus ?? fallback);
+  const status = draft !== undefined ? draft : saved;
   const text = status?.text;
   if (!text && !placeholder) return null;
   const content = (

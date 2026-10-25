@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { AtSign, CirclePlus, Cloud, Gift, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
+import { AtSign, CirclePlus, Cloud, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
 import { ComingSoon, Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore, getState } from '../../data/store';
 import { notifyTyping, sendMessage } from '../../data/actions';
@@ -31,6 +31,18 @@ interface Trigger {
   char: '@' | '#' | ':';
   query: string;
   start: number;
+}
+
+/** A GIF glyph drawn like the lucide icons beside it (same box and stroke). */
+function GifIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <rect x="2.5" y="5" width="19" height="14" rx="3" />
+      <path d="M10 9.5H8.25A1.25 1.25 0 0 0 7 10.75v2.5A1.25 1.25 0 0 0 8.25 14.5H10V12H9" />
+      <path d="M12.5 9.5v5" />
+      <path d="M17 9.5h-2v5M15 12h1.5" />
+    </svg>
+  );
 }
 
 function findTrigger(text: string, caret: number): Trigger | null {
@@ -456,11 +468,8 @@ export function Composer({
           className="max-h-[50vh] min-h-[44px] flex-1 resize-none bg-transparent px-1 py-[11px] text-[15px] leading-[22px] text-fg outline-none placeholder:text-fg-subtle"
         />
         <div className="mt-2 flex items-center gap-1">
-          <ComingSoon label="Gifts">
-            <span className="flex h-7 w-7 items-center justify-center text-fg-muted"><Gift className="h-5 w-5" /></span>
-          </ComingSoon>
           <ComingSoon label="GIFs">
-            <span className="flex h-7 items-center justify-center rounded-xs border-2 border-fg-muted px-0.5 text-[10px] font-bold text-fg-muted">GIF</span>
+            <span className="flex h-7 w-7 items-center justify-center text-fg-muted"><GifIcon className="h-5 w-5" /></span>
           </ComingSoon>
           <ComingSoon label="Stickers">
             <span className="flex h-7 w-7 items-center justify-center text-fg-muted"><Sticker className="h-5 w-5" /></span>
@@ -484,6 +493,7 @@ export function Composer({
           anchor={emojiAnchor}
           beaconId={beaconId}
           placement="above"
+          tabs
           onClose={() => setEmojiAnchor(null)}
           onPick={(emoji, glyph) => {
             if (glyph) {

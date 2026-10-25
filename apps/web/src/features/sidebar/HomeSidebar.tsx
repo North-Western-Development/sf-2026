@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router';
 import { clsx } from 'clsx';
-import { Inbox, Plus, ShoppingBag, Swords, Users, X, HardDrive } from 'lucide-react';
-import { ComingSoon, Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
+import { Inbox, Plus, Users, X, HardDrive } from 'lucide-react';
+import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, setState } from '../../data/store';
 import { channelIndicator } from '../../data/selectors';
@@ -237,16 +237,6 @@ export function HomeSidebar() {
           <HardDrive className="h-5 w-5" />
           {term('vault')}
         </button>
-        <ComingSoon className="w-full" label="Shop">
-          <span className="flex h-10 w-full items-center gap-3 rounded-md px-2 text-[15px] font-medium text-fg-muted">
-            <ShoppingBag className="h-5 w-5" /> Shop
-          </span>
-        </ComingSoon>
-        <ComingSoon className="w-full" label="Quests">
-          <span className="flex h-10 w-full items-center gap-3 rounded-md px-2 text-[15px] font-medium text-fg-muted">
-            <Swords className="h-5 w-5" /> Quests
-          </span>
-        </ComingSoon>
 
         <div className="mt-4 mb-1 flex items-center justify-between px-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-fg-subtle hover:text-fg-muted">{term('link', true)}</span>

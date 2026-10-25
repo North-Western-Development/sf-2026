@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Award, ChevronRight, CircleUserRound, Clapperboard, IdCard, Orbit, Pencil } from 'lucide-react';
+import { Award, ChevronRight, CircleUserRound, Clapperboard, IdCard, Pencil } from 'lucide-react';
 import { ComingSoon, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { useStore } from '../../data/store';
 import { setMyPresence } from '../../data/actions';
@@ -74,7 +74,7 @@ export function SelfProfileCard({ anchor, onClose }: { anchor: DOMRect; onClose:
     >
       <ProfileHeader
         profile={profile}
-        bubble={<StatusBubble userId={me.id} fallback={me.customStatus} placeholder="Set a status" onClick={() => go('status')} />}
+        bubble={<StatusBubble userId={me.id} fallback={me.customStatus} placeholder="Set a status" onClick={() => (onClose(), openModal({ kind: 'status' }))} />}
       />
       <div className="px-4">
         <ProfileIdentity profile={profile} maxBadges={8} />
@@ -99,7 +99,6 @@ export function SelfProfileCard({ anchor, onClose }: { anchor: DOMRect; onClose:
             }}
           />
           <Placeholder icon={<Clapperboard />} label="Clips" />
-          <Placeholder icon={<Orbit />} label="Orbs" />
         </div>
         <div className="divide-y divide-line rounded-lg bg-void/60 p-1.5">
           <Placeholder icon={<CircleUserRound />} label="Switch Accounts" />

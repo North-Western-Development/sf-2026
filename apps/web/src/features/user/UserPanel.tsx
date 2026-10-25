@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { Headphones, HeadphoneOff, Mic, MicOff, MonitorUp, PhoneOff, Settings, Video, VideoOff } from 'lucide-react';
 import { useNavigate } from 'react-router';
@@ -10,6 +10,7 @@ import { openModal } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
 import { useVoice, leaveVoice, toggleCamera, toggleScreenShare } from '../voice/session';
 import { SelfProfileCard } from './SelfProfileCard';
+import { prefetchProfile } from '../profile/useProfile';
 
 /** Local audio device state (mirrored into the voice session when connected). */
 export const useAudioPrefs = create<{ muted: boolean; deafened: boolean }>()(() => ({ muted: false, deafened: false }));
@@ -33,6 +34,10 @@ export function UserPanel() {
   const anchor = useRef<HTMLButtonElement>(null);
   const [card, setCard] = useState<DOMRect | null>(null);
   const closeCard = useCallback(() => setCard(null), []);
+  // Load my profile up front so the account card opens with its badges in place.
+  useEffect(() => {
+    if (me?.id) prefetchProfile(me.id);
+  }, [me?.id]);
   if (!me) return null;
 
   return (

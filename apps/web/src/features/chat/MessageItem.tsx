@@ -20,6 +20,7 @@ import { Embeds } from './Embeds';
 import { SealedAttachments, SealedNotice } from './EncryptedBits';
 import { useChatPrefs } from '../../lib/chatPrefs';
 import { copyText } from '../../lib/clipboard';
+import { prefetchProfile } from '../profile/useProfile';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
@@ -155,6 +156,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
     e.stopPropagation();
     openPopout({ userId: m.author.id, beaconId, rect: (e.currentTarget as HTMLElement).getBoundingClientRect(), side: 'right' });
   };
+  const warmProfile = () => prefetchProfile(m.author.id, beaconId);
   const startEdit = () => useUi.setState({ editing: { key, messageId: m.id } });
   const stopEdit = () => useUi.setState({ editing: null });
   const react = (emoji: string) => void toggleReaction(key, m.id, emoji);
@@ -203,7 +205,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
       <div id={`msg-${m.id}`} role="note" className="flex items-center gap-4 py-1 pl-4 pr-12 text-sm text-fg-muted">
         <Lock className="ml-3 h-4 w-4 text-online" />
         <span>
-          <button className="font-semibold text-fg hover:underline" onClick={openProfile}>
+          <button className="font-semibold text-fg hover:underline" onClick={openProfile} onPointerEnter={warmProfile}>
             <UserName user={m.author} styled={false} />
           </button>{' '}
           turned on end-to-end encryption. Transmissions from here on can only be read on your devices.{' '}
@@ -222,7 +224,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
         <Icon className={clsx('ml-3 h-4 w-4', missed ? 'text-danger' : 'text-online')} />
         <span>
           {missed ? 'You missed a call from ' : null}
-          <button className="font-semibold text-fg hover:underline" onClick={openProfile}>
+          <button className="font-semibold text-fg hover:underline" onClick={openProfile} onPointerEnter={warmProfile}>
             <UserName user={m.author} styled={false} />
           </button>
           {missed ? '' : ' started a call'}
@@ -238,7 +240,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
       <div className="flex items-center gap-4 py-1 pl-4 pr-12 text-sm text-fg-muted">
         <Pin className="ml-3 h-4 w-4 text-fg-subtle" />
         <span>
-          <button className="font-semibold text-fg hover:underline" onClick={openProfile}>
+          <button className="font-semibold text-fg hover:underline" onClick={openProfile} onPointerEnter={warmProfile}>
             <UserName user={m.author} beaconId={beaconId} styled={false} />
           </button>{' '}
           pinned a transmission to this relay. <span className="text-xs text-fg-subtle">{formatMessageTime(m.createdAt)}</span>
@@ -288,11 +290,11 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
         </Tooltip>
       ) : (
         <>
-          <button type="button" aria-label="Open profile" onClick={openProfile} className="absolute left-4 mt-0.5 rounded-full">
+          <button type="button" aria-label="Open profile" onClick={openProfile} onPointerEnter={warmProfile} className="absolute left-4 mt-0.5 rounded-full">
             <Avatar user={m.author} size={40} />
           </button>
           <h3 className="flex items-baseline gap-2 leading-[22px]">
-            <button type="button" onClick={openProfile} className="min-w-0 font-medium hover:underline">
+            <button type="button" onClick={openProfile} onPointerEnter={warmProfile} className="min-w-0 font-medium hover:underline">
               <UserName user={m.author} beaconId={beaconId} />
             </button>
             {(m.author.staffRank ?? 0) >= 1 && (

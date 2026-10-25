@@ -16,6 +16,7 @@ export type ModalState =
   | { kind: 'quickScan' }
   | { kind: 'vault' }
   | { kind: 'badges' }
+  | { kind: 'status' }
   | { kind: 'drivePicker'; onPick: (file: { id: string; filename: string }) => void }
   | { kind: 'console' }
   | { kind: 'report'; targetType: 'transmission' | 'transmitter' | 'beacon'; targetId: string; context?: Record<string, unknown> };

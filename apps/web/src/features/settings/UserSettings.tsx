@@ -6,8 +6,6 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   Accessibility,
   Bell,
-  CreditCard,
-  Gift,
   Keyboard,
   KeyRound,
   Languages,
@@ -19,13 +17,11 @@ import {
   Monitor,
   Palette,
   Pencil,
-  Rocket,
   Shield,
   ShieldAlert,
   ShieldCheck,
   Smartphone,
   Smile,
-  Sparkles,
   User,
   UserPen,
   X,
@@ -40,7 +36,7 @@ import { userTag } from '../../lib/normalize';
 import { setChatPrefs, useChatPrefs } from '../../lib/chatPrefs';
 import { ensureDevice } from '../../lib/e2ee/client';
 import { term, PRESENCE_LABELS } from '../../lib/strings';
-import type { DisplayNameStyle, SelfUser, CustomStatus, Presence } from '../../lib/types';
+import type { DisplayNameStyle, SelfUser, Presence } from '../../lib/types';
 import { closeModal, confirmAction, openModal, promptText, toast } from '../../app/ui';
 import {
   ComingSoon,
@@ -57,6 +53,7 @@ import {
   useWideSettingsPage,
 } from './SettingsLayout';
 import { Avatar, PresenceDot } from '../common/Avatar';
+import { saveCustomStatus } from '../user/StatusModal';
 import { UserName } from '../common/UserName';
 import { Markdown } from '../chat/markdown';
 
@@ -1200,91 +1197,34 @@ function ProfilesTab({ me, view: initialView, initialBeacon }: { me: SelfUser; v
 // Custom status
 // ---------------------------------------------------------------------------
 
-const CLEAR_AFTER = [
-  { label: "Don't clear", ms: 0 },
-  { label: '30 minutes', ms: 30 * 60e3 },
-  { label: '1 hour', ms: 60 * 60e3 },
-  { label: '4 hours', ms: 4 * 60 * 60e3 },
-  { label: 'Today', ms: -1 },
-];
-
 const STATUSES: Presence[] = ['online', 'idle', 'dnd', 'invisible'];
 
 function StatusTab({ me }: { me: SelfUser }) {
   const current = useStore((s) => s.presence[me.id]?.customStatus ?? me.customStatus);
   const presence = useStore((s) => s.presence[me.id]?.status ?? 'online');
-  const [text, setText] = useState(current?.text ?? '');
-  const [emoji, setEmoji] = useState(current?.emoji ?? '');
-  const [clear, setClear] = useState(0);
-
-  const save = async (status: CustomStatus | null) => {
-    try {
-      await http.patch('/users/@me/status', { customStatus: status });
-      setState((s) => ({
-        presence: {
-          ...s.presence,
-          [me.id]: {
-            status: s.presence[me.id]?.status ?? 'online',
-            customStatus: status,
-          },
-        },
-      }));
-      if (!status) {
-        setText('');
-        setEmoji('');
-      }
-      toast(status ? 'Status set' : 'Status cleared', 'success');
-    } catch (err) {
-      toast((err as Error).message, 'error');
-    }
-  };
-
-  const submit = () => {
-    const option = CLEAR_AFTER[clear];
-    let expiresAt: string | null = null;
-    if (option.ms > 0) expiresAt = new Date(Date.now() + option.ms).toISOString();
-    if (option.ms < 0) {
-      const end = new Date();
-      end.setHours(23, 59, 59, 999);
-      expiresAt = end.toISOString();
-    }
-    void save(text.trim() || emoji ? { text: text.trim(), emoji: emoji || undefined, expiresAt } : null);
-  };
+  const has = !!(current?.text || current?.emoji);
 
   return (
     <>
       <SettingsSection id="custom-status" title="Custom Status" description="Shown under your name in member lists and on your profile.">
-        <Field label="What's cookin'?">
-          <div className="flex gap-2">
-            <input
-              value={emoji}
-              onChange={(e) => setEmoji(e.target.value.slice(0, 8))}
-              aria-label="Status emoji"
-              placeholder="🛰️"
-              className="h-10 w-14 rounded-md border border-line bg-void text-center text-xl outline-none focus:border-brand"
-            />
-            <div className="flex-1">
-              <Input value={text} maxLength={128} onChange={(e) => setText(e.target.value)} placeholder="Support has arrived!" aria-label="Status text" />
+        <SettingsRow
+          label={has ? <>{current?.emoji && !current.emoji.startsWith('custom:') && <span className="mr-1.5">{current.emoji}</span>}{current?.text}</> : 'No status set'}
+          description={
+            current?.expiresAt
+              ? `Clears ${new Date(current.expiresAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`
+              : has
+                ? "Won't clear on its own"
+                : undefined
+          }
+          action={
+            <div className="flex gap-2">
+              {has && (
+                <RowButton onClick={() => void saveCustomStatus(me.id, null).catch((e) => toast((e as Error).message, 'error'))}>Clear</RowButton>
+              )}
+              <RowButton onClick={() => openModal({ kind: 'status' })}>{has ? 'Edit' : 'Set Status'}</RowButton>
             </div>
-          </div>
-        </Field>
-        <Field label="Clear after">
-          <SelectField label="Clear after" value={clear} onChange={(v) => setClear(Number(v))}>
-            {CLEAR_AFTER.map((c, i) => (
-              <option key={c.label} value={i}>
-                {c.label}
-              </option>
-            ))}
-          </SelectField>
-        </Field>
-        <div className="flex gap-3">
-          <Button onClick={submit}>Save Status</Button>
-          {(current?.text || current?.emoji) && (
-            <Button variant="secondary" onClick={() => void save(null)}>
-              Clear Status
-            </Button>
-          )}
-        </div>
+          }
+        />
       </SettingsSection>
       <SettingsSection id="online-status" title="Online Status">
         <div role="radiogroup" aria-label="Online status" className="space-y-2">
@@ -1858,35 +1798,6 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
               id: 'connections',
               icon: <Link2 />,
               label: 'Connections',
-              comingSoon: true,
-            },
-          ],
-        },
-        {
-          heading: 'Billing',
-          items: [
-            {
-              id: 'nitro',
-              icon: <Sparkles />,
-              label: 'Subscriptions',
-              comingSoon: true,
-            },
-            {
-              id: 'boost',
-              icon: <Rocket />,
-              label: `${term('beacon')} Boost`,
-              comingSoon: true,
-            },
-            {
-              id: 'gifts',
-              icon: <Gift />,
-              label: 'Gift Inventory',
-              comingSoon: true,
-            },
-            {
-              id: 'billing',
-              icon: <CreditCard />,
-              label: 'Billing',
               comingSoon: true,
             },
           ],

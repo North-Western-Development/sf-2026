@@ -34,23 +34,51 @@ export interface FullProfile {
   note: string | null;
 }
 
-/** Loads GET /users/:id/profile, falling back to what the client already knows. */
+/** Recently loaded profiles, so popouts open with badges already in place. */
+const cache = new Map<string, { at: number; data: FullProfile }>();
+const inflight = new Map<string, Promise<FullProfile | null>>();
+const cacheKey = (userId: string, beaconId?: string) => `${userId}:${beaconId ?? ''}`;
+const FRESH_MS = 60_000;
+
+/** Fetches a profile unless one newer than maxAge is cached; concurrent callers share the request. */
+export function loadProfile(userId: string, beaconId?: string, maxAge = 0): Promise<FullProfile | null> {
+  const key = cacheKey(userId, beaconId);
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < maxAge) return Promise.resolve(hit.data);
+  const pending = inflight.get(key);
+  if (pending) return pending;
+  const q = beaconId ? `?beaconId=${beaconId}` : '';
+  const req = optional(http.get<FullProfile>(`/users/${userId}/profile${q}`), null)
+    .then((p) => {
+      if (!p) return null;
+      const data = { ...p, user: { ...toUserRef(p.user), ...p.user } };
+      cache.set(key, { at: Date.now(), data });
+      return data;
+    })
+    .catch(() => null)
+    .finally(() => inflight.delete(key));
+  inflight.set(key, req);
+  return req;
+}
+
+/** Warms the cache when a profile is about to be opened (hover, startup). */
+export const prefetchProfile = (userId: string, beaconId?: string) => void loadProfile(userId, beaconId, FRESH_MS);
+
+/** Loads GET /users/:id/profile (cached first, then refreshed), falling back to what the client already knows. */
 export function useProfile(userId: string, beaconId?: string) {
   const cachedUser = useStore((s) => s.users[userId]);
   const member = useStore((s) => (beaconId ? s.members[beaconId]?.[userId] : undefined));
   const clearances = useStore((s) => (beaconId ? s.clearances[beaconId] : undefined));
   const rel = useStore((s) => s.relationships[userId]);
   const meId = useStore((s) => s.me?.id);
-  const [profile, setProfile] = useState<FullProfile | null>(null);
+  const [profile, setProfile] = useState<FullProfile | null>(() => cache.get(cacheKey(userId, beaconId))?.data ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    const q = beaconId ? `?beaconId=${beaconId}` : '';
-    void optional(http.get<FullProfile>(`/users/${userId}/profile${q}`), null)
-      .then((p) => {
-        if (!cancelled && p) setProfile({ ...p, user: { ...toUserRef(p.user), ...p.user } });
-      })
-      .catch(() => {});
+    setProfile(cache.get(cacheKey(userId, beaconId))?.data ?? null);
+    void loadProfile(userId, beaconId).then((p) => {
+      if (!cancelled && p) setProfile(p);
+    });
     return () => {
       cancelled = true;
     };

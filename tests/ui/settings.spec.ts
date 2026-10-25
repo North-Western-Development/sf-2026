@@ -44,10 +44,21 @@ test.describe('User settings', () => {
     const theirs = await openAs(browser, other, `/channels/${beacon.id}/${relay.id}`);
 
     await signIn(page, me);
-    await openSettings(page, 'Status');
-    await page.getByLabel('Status text').fill('On the Defiant');
-    await page.getByRole('button', { name: 'Save Status' }).click();
-    await page.keyboard.press('Escape');
+    // Discord's flow: the bubble on the account card opens "Set your status".
+    await page.getByRole('button', { name: 'Open your profile' }).click();
+    await page.getByRole('dialog', { name: 'Your profile' }).getByRole('button', { name: 'Set a custom status' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Set your status' });
+    await dialog.getByRole('textbox', { name: 'Status', exact: true }).fill('On the Defiant');
+    // The emoji button opens the picker; search and pick.
+    await dialog.getByRole('button', { name: 'Pick a status emoji' }).click();
+    const picker = page.getByRole('dialog', { name: 'Emoji picker' });
+    await picker.getByRole('textbox', { name: 'Search emoji' }).fill('rocket');
+    await picker.getByRole('button', { name: 'rocket', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: /Status emoji 🚀/ })).toBeVisible();
+    // The preview card shows the draft before saving.
+    await expect(dialog.getByLabel('Custom status')).toContainText('On the Defiant');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open your profile' })).toContainText('On the Defiant');
 
     await expect(theirs.getByRole('complementary', { name: 'Members' })).toContainText('On the Defiant');

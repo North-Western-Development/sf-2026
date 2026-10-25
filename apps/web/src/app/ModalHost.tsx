@@ -7,6 +7,7 @@ import { QuickScanModal } from '../features/modals/QuickScanModal';
 import { NotificationSettingsModal } from '../features/modals/NotificationSettingsModal';
 import { ProfileModal } from '../features/profile/ProfilePopout';
 import { BadgesModal } from '../features/profile/BadgesModal';
+import { StatusModal } from '../features/user/StatusModal';
 import { UserSettings } from '../features/settings/UserSettings';
 import { BeaconSettings } from '../features/settings/BeaconSettings';
 import { VaultModal } from '../features/vault/VaultModal';
@@ -77,6 +78,9 @@ export function ModalHost() {
       );
       break;
     }
+    case 'status':
+      content = <StatusModal />;
+      break;
     case 'badges':
       content = <BadgesModal />;
       break;

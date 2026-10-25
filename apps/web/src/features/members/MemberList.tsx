@@ -1,3 +1,4 @@
+import { prefetchProfile } from '../profile/useProfile';
 import { useMemo } from 'react';
 import { clsx } from 'clsx';
 import { useShallow } from 'zustand/react/shallow';
@@ -19,6 +20,7 @@ function MemberRow({ member, beaconId, offline }: { member: Member; beaconId: st
       type="button"
       onClick={(e) => openPopout({ userId: member.transmitterId, beaconId, rect: e.currentTarget.getBoundingClientRect(), side: 'left' })}
       onContextMenu={(e) => openContextMenu(e, memberMenu(beaconId, member.transmitterId))}
+      onPointerEnter={() => prefetchProfile(member.transmitterId, beaconId)}
       className={clsx('flex h-11 w-full items-center gap-3 rounded-md px-2 text-left hover:bg-hover', offline && 'opacity-40 hover:opacity-100')}
     >
       <Avatar user={member.user} src={member.avatarUrl} size={32} showPresence={!offline} ring="var(--color-raised)" />

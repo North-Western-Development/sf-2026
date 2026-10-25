@@ -24,7 +24,7 @@ test.describe('Profile card, popout and badges', () => {
     await expect(badges.getByRole('listitem', { name: 'Early Transmitter' })).toBeVisible();
     await expect(badges.getByRole('listitem', { name: 'Ping' })).toBeVisible();
     // Discord's extras without a backend are greyed placeholders; Member Since is not on the card.
-    await expect(card.locator('[data-coming-soon]')).toHaveCount(3);
+    await expect(card.locator('[data-coming-soon]')).toHaveCount(2);
     await expect(card).not.toContainText('Member Since');
     if (SHOTS) await page.screenshot({ path: `${SHOTS}card-self.png` });
 

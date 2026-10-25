@@ -249,8 +249,9 @@ function Detail({ family: f, owned, progress }: { family: Family; owned: Record<
                   <li key={t.code} aria-label={`${t.name}${got ? '' : ', locked'}`} className={clsx('flex flex-col items-center text-center', !got && 'opacity-45')}>
                     <img src={t.iconUrl} alt="" className={clsx('h-8 w-8 [image-rendering:pixelated]', !got && 'grayscale-[60%]')} />
                     <span className="mt-1 text-xs font-semibold text-fg">{t.name}</span>
-                    <span className="flex items-center gap-0.5 text-[11px] text-fg-muted">
-                      {!got && <Lock className="h-2.5 w-2.5" aria-hidden />}
+                    {/* The lock hangs off the left edge so the requirement stays centred under the icon. */}
+                    <span className="relative text-[11px] text-fg-muted">
+                      {!got && <Lock className="absolute -left-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2" aria-hidden />}
                       {requirement(f.criteriaType, t.threshold)}
                     </span>
                   </li>
