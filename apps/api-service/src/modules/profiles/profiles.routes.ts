@@ -22,6 +22,8 @@ import {
   DISPLAY_NAME_STYLE_FONTS,
   DISPLAY_NAME_STYLE_EFFECTS,
   PROFILE_VISIBILITY_LEVELS,
+  AVATAR_DECORATIONS,
+  PROFILE_EFFECTS,
 } from '@subspace/constants';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
@@ -169,6 +171,20 @@ export async function applyProfileUpdate(
       }
     }
     updates.customStatus = status;
+  }
+
+  if (body.avatarDecoration !== undefined) {
+    if (body.avatarDecoration !== null && !(AVATAR_DECORATIONS as readonly string[]).includes(body.avatarDecoration)) {
+      return { status: 400, body: { error: 'Unknown avatar decoration', code: 'INVALID_DECORATION' } };
+    }
+    updates.avatarDecoration = body.avatarDecoration;
+  }
+
+  if (body.profileEffect !== undefined) {
+    if (body.profileEffect !== null && !(PROFILE_EFFECTS as readonly string[]).includes(body.profileEffect)) {
+      return { status: 400, body: { error: 'Unknown profile effect', code: 'INVALID_EFFECT' } };
+    }
+    updates.profileEffect = body.profileEffect;
   }
 
   if (body.profileVisibility !== undefined) {
@@ -350,6 +366,8 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         createdAt: target.createdAt,
         staffRank: target.staffRank,
         tagBeaconId: target.tagBeaconId,
+        avatarDecoration: target.avatarDecoration ?? null,
+        profileEffect: target.profileEffect ?? null,
       },
       member,
       commendations: highestPerFamily(visibleCommendations).map(({ displayOrder, ...c }: any) => c),

@@ -16,13 +16,13 @@ export function verificationPending(s: SubspaceState, beaconId: string): string 
   const me = s.me;
   const member = me ? s.members[beaconId]?.[me.id] : undefined;
   if (!beacon || !me || !member || beacon.ownerId === me.id) return null;
-  const account = { isEmailVerified: !!me.isEmailVerified, createdAt: me.createdAt ?? 0, is2faEnabled: !!me.is2faEnabled };
+  const account = { isEmailVerified: !!me.isEmailVerified, createdAt: me.createdAt ?? 0, is2faEnabled: !!me.is2faEnabled, phoneVerified: !!me.phone };
   const joined = { joinedAt: member.joinedAt ?? 0, hasClearance: member.clearanceIds.length > 0 };
   if (meetsVerification(beacon.verificationLevel, account, joined)) return null;
   if (!account.isEmailVerified) return 'This beacon needs a verified email before you can transmit. Verify it in User Settings.';
   if (Date.now() - new Date(account.createdAt).getTime() < 5 * 60_000) return 'Your account is too new to transmit here. Try again in a few minutes.';
   if (Date.now() - new Date(joined.joinedAt).getTime() < 10 * 60_000) return 'New members can transmit here after 10 minutes.';
-  return 'This beacon needs two-factor authentication on your account before you can transmit.';
+  return 'This beacon needs a verified phone or two-factor authentication on your account before you can transmit.';
 }
 
 /** Beacon-level permissions for the signed-in transmitter (owner = all), less a running timeout. */

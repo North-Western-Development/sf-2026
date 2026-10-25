@@ -30,6 +30,9 @@ export function toUserRef(raw: Raw | null | undefined, fallbackId = ''): UserRef
     displayNameStyle: r.displayNameStyle ?? null,
     staffRank: r.staffRank ?? 0,
     tagBeaconId: r.tagBeaconId ?? null,
+    // Partial payloads (message authors carry no profile effect) must not wipe what is known.
+    ...('avatarDecoration' in r ? { avatarDecoration: r.avatarDecoration ?? null } : {}),
+    ...('profileEffect' in r ? { profileEffect: r.profileEffect ?? null } : {}),
   };
 }
 

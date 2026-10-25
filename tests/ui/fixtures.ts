@@ -107,6 +107,20 @@ export async function promoteToStaff(session: Session, rank = 3) {
   await (await testDb()).query('UPDATE transmitters SET staff_rank = $1 WHERE id = $2', [rank, session.transmitter.id]);
 }
 
+/** Replace the pending phone code with a known one (the real one is only texted). */
+export async function setPhoneCode(session: Session, code: string) {
+  const { createHash } = await import('node:crypto');
+  await (await testDb()).query('UPDATE transmitters SET phone_code_hash = $1 WHERE id = $2', [createHash('sha256').update(code).digest('hex'), session.transmitter.id]);
+}
+
+/** File a resolved report against an account, as if staff acted on it. */
+export async function resolvedReportAgainst(session: Session, reporter: Session, reason = 'spam') {
+  await (await testDb()).query(
+    "INSERT INTO incident_reports (reporter_id, target_type, target_id, reason, status, resolved_at) VALUES ($1, 'transmitter', $2, $3, 'resolved', now())",
+    [reporter.transmitter.id, session.transmitter.id, reason]
+  );
+}
+
 let pool: Promise<{ query: (sql: string, params?: unknown[]) => Promise<unknown> }> | null = null;
 /** A connection to the test database for arranging state no API offers. Refuses any other database. */
 function testDb() {

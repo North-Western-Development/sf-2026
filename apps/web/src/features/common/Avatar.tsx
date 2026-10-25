@@ -2,6 +2,7 @@ import { clsx } from 'clsx';
 import { useStore } from '../../data/store';
 import type { Presence, UserRef } from '../../lib/types';
 import { PRESENCE_LABELS } from '../../lib/strings';
+import { AvatarDecoration } from './Decorations';
 
 const PRESENCE_COLOR: Record<Presence, string> = {
   online: 'bg-online',
@@ -38,18 +39,26 @@ export function Avatar({
   showPresence = false,
   ring,
   speaking,
+  decoration = true,
+  decorationName,
   className,
 }: {
-  user: Pick<UserRef, 'id' | 'username' | 'displayName' | 'avatarUrl'>;
+  user: Pick<UserRef, 'id' | 'username' | 'displayName' | 'avatarUrl'> & { avatarDecoration?: string | null };
   size?: number;
   /** Overrides user.avatarUrl (e.g. per-beacon avatar). */
   src?: string | null;
   showPresence?: boolean;
   ring?: string;
   speaking?: boolean;
+  /** Draw their avatar decoration (off for tiny avatars and pickers). */
+  decoration?: boolean;
+  /** A decoration to show instead of theirs (the settings preview). */
+  decorationName?: string | null;
   className?: string;
 }) {
   const status = useStore((s) => (showPresence ? s.presence[user.id]?.status ?? 'offline' : 'offline'));
+  const live = useStore((s) => (decoration && size >= 24 && decorationName === undefined ? (s.users[user.id]?.avatarDecoration ?? user.avatarDecoration ?? null) : null));
+  const deco = decorationName !== undefined ? decorationName : live;
   const url = src ?? user.avatarUrl;
   const initial = (user.displayName || user.username || '?').trim().charAt(0).toUpperCase();
   const dot = Math.max(8, Math.round(size * 0.3));
@@ -64,6 +73,7 @@ export function Avatar({
       >
         {url ? <img src={url} alt="" className="h-full w-full object-cover" draggable={false} /> : initial}
       </span>
+      <AvatarDecoration name={deco} size={size} />
       {showPresence && (
         <span className="absolute" style={{ right: -1, bottom: -1 }}>
           <PresenceDot status={status} size={dot} ring={ring} />

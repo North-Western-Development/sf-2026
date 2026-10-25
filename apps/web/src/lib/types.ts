@@ -38,6 +38,9 @@ export interface UserRef {
   staffRank?: number;
   /** The beacon whose Beacon Tag they wear. */
   tagBeaconId?: string | null;
+  /** Avatar decoration (AVATAR_DECORATIONS) and profile effect (PROFILE_EFFECTS). */
+  avatarDecoration?: string | null;
+  profileEffect?: string | null;
 }
 
 export interface SelfUser extends UserRef {
@@ -53,6 +56,8 @@ export interface SelfUser extends UserRef {
   isEmailVerified?: boolean;
   createdAt?: string;
   defaultAllowDms?: boolean;
+  /** Verified phone, masked to its last four digits. */
+  phone?: string | null;
 }
 
 export interface Beacon {

@@ -10,7 +10,7 @@ import { PRESENCE_LABELS } from '../../lib/strings';
 import type { Presence } from '../../lib/types';
 import { PresenceDot } from '../common/Avatar';
 import { useProfile, type FullProfile } from '../profile/useProfile';
-import { ProfileHeader, ProfileIdentity, StatusBubble } from '../profile/ProfileParts';
+import { ProfileEffectLayer, ProfileHeader, ProfileIdentity, StatusBubble } from '../profile/ProfileParts';
 import { themeStyle } from '../profile/ProfilePopout';
 
 const STATUSES: Presence[] = ['online', 'idle', 'dnd', 'invisible'];
@@ -72,6 +72,7 @@ export function SelfProfileCard({ anchor, onClose }: { anchor: DOMRect; onClose:
       className="fixed z-[1100] w-[340px] max-w-[calc(100vw-16px)] overflow-hidden rounded-xl bg-overlay shadow-pop ring-1 ring-line animate-[fade-in_100ms_ease-out]"
       style={{ left: Math.max(8, anchor.left), bottom: window.innerHeight - anchor.top + 8, ...themeStyle(profile as FullProfile) }}
     >
+      <ProfileEffectLayer profile={profile as FullProfile} />
       <ProfileHeader
         profile={profile}
         bubble={<StatusBubble userId={me.id} fallback={me.customStatus} placeholder="Set a status" onClick={() => (onClose(), openModal({ kind: 'status' }))} />}

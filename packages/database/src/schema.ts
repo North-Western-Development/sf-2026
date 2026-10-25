@@ -59,6 +59,15 @@ export const transmitters = pgTable('transmitters', {
   quarantineReason: text('quarantine_reason'),
   /** The beacon whose Beacon Tag they wear beside their name (Discord's server tags). */
   tagBeaconId: uuid('tag_beacon_id'),
+  /** A built-in avatar decoration and profile effect (AVATAR_DECORATIONS / PROFILE_EFFECTS), or null. */
+  avatarDecoration: text('avatar_decoration'),
+  profileEffect: text('profile_effect'),
+  /** A verified phone number (E.164), and a pending one waiting for its SMS code. */
+  phone: text('phone'),
+  phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }),
+  phonePending: text('phone_pending'),
+  phoneCodeHash: text('phone_code_hash'),
+  phoneCodeExpiresAt: timestamp('phone_code_expires_at', { withTimezone: true }),
   /** Privacy: whether members of beacons they join may DM them (each beacon's Privacy Settings starts from this). */
   defaultAllowDms: boolean('default_allow_dms').default(true).notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),

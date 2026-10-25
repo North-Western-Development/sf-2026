@@ -7,6 +7,7 @@ import { http } from '../../lib/http';
 import { userTag } from '../../lib/normalize';
 import { Avatar } from '../common/Avatar';
 import { BeaconTag } from '../common/BeaconTag';
+import { ProfileEffect } from '../common/Decorations';
 import { UserName } from '../common/UserName';
 import { Markdown } from '../chat/markdown';
 import { useMarkdownResolvers } from '../chat/resolvers';
@@ -60,6 +61,12 @@ export function StatusBubble({
       )}
     </div>
   );
+}
+
+/** Their profile effect over the whole card; follows live USER_UPDATEs. */
+export function ProfileEffectLayer({ profile }: { profile: FullProfile }) {
+  const live = useStore((s) => s.users[profile.user.id]?.profileEffect);
+  return <ProfileEffect name={live !== undefined ? live : profile.user.profileEffect} />;
 }
 
 /** Banner + avatar header shared by the popout, the self card and the full profile. */

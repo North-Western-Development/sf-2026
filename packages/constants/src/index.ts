@@ -259,6 +259,10 @@ export const DISPLAY_NAME_STYLE_FONTS = ['default', 'orbitron', 'rajdhani', 'spa
 export const DISPLAY_NAME_STYLE_EFFECTS = ['solid', 'gradient', 'neon', 'toon', 'pop'] as const;
 
 export const PROFILE_VISIBILITY_LEVELS = ['everyone', 'beacons', 'friends'] as const;
+
+/** Avatar decorations and profile effects everyone can use (Discord's, without the shop). */
+export const AVATAR_DECORATIONS = ['orbit', 'halo', 'nebula', 'signal', 'stars', 'pixel'] as const;
+export const PROFILE_EFFECTS = ['starfield', 'aurora', 'sparkle', 'scanlines', 'warp'] as const;
 export type ProfileVisibility = typeof PROFILE_VISIBILITY_LEVELS[number];
 
 /**
@@ -313,11 +317,11 @@ export type VerificationLevel = 'none' | 'low' | 'medium' | 'high' | 'highest';
  * Safety Setup's verification level (Discord's): until a member meets it they can read but not
  * post, react or speak. Members with any clearance are exempt, as on Discord.
  *   low: verified email; medium: and an account older than 5 minutes; high: and a member for
- *   10 minutes; highest: and two-factor authentication on (Discord asks for a phone).
+ *   10 minutes; highest: and a verified phone or two-factor authentication on.
  */
 export function meetsVerification(
   level: string | null | undefined,
-  account: { isEmailVerified: boolean; createdAt: Date | string | number; is2faEnabled: boolean },
+  account: { isEmailVerified: boolean; createdAt: Date | string | number; is2faEnabled: boolean; phoneVerified?: boolean },
   member: { joinedAt: Date | string | number; hasClearance: boolean },
   now = Date.now()
 ): boolean {
@@ -328,7 +332,7 @@ export function meetsVerification(
   if (level === 'medium') return true;
   if (now - new Date(member.joinedAt).getTime() < 10 * 60_000) return false;
   if (level === 'high') return true;
-  return account.is2faEnabled;
+  return account.is2faEnabled || !!account.phoneVerified;
 }
 
 /** Timeout lengths offered, in seconds (Discord's set). */

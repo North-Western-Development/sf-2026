@@ -10,7 +10,7 @@ import { channelKey } from '../../lib/types';
 import { http } from '../../lib/http';
 import { memberMenu } from '../members/memberMenu';
 import { useProfile, type FullProfile } from './useProfile';
-import { ProfileBio, ProfileClearances, ProfileHeader, ProfileIdentity, ProfileMeta, ProfileNote, StatusBubble, profileHeading } from './ProfileParts';
+import { ProfileBio, ProfileClearances, ProfileEffectLayer, ProfileHeader, ProfileIdentity, ProfileMeta, ProfileNote, StatusBubble, profileHeading } from './ProfileParts';
 import { Avatar } from '../common/Avatar';
 import { term } from '../../lib/strings';
 
@@ -85,6 +85,7 @@ function Popout({ userId, beaconId, rect, side }: { userId: string; beaconId?: s
       className="fixed z-[1100] w-[300px] overflow-hidden rounded-xl bg-overlay shadow-pop animate-[fade-in_100ms_ease-out]"
       style={{ left: pos.x, top: pos.y, ...themeStyle(profile) }}
     >
+      <ProfileEffectLayer profile={profile} />
       <ProfileHeader profile={profile} bubble={<StatusBubble userId={userId} fallback={(profile.user as FullProfile['user']).customStatus} />} />
       <div className="absolute right-2 top-2 flex gap-1">
         {profile.relationship === 'none' && (
@@ -175,7 +176,8 @@ export function ProfileModal({ userId, beaconId }: { userId: string; beaconId?: 
 
   return (
     <Modal isOpen onClose={closeModal} maxWidth="2xl" className="!bg-overlay">
-      <div className="-mx-6 -my-4" style={themeStyle(profile)}>
+      <div className="relative -mx-6 -my-4" style={themeStyle(profile)}>
+        <ProfileEffectLayer profile={profile} />
         <ProfileHeader profile={profile} avatarSize={120} bannerHeight={180} bubble={<StatusBubble userId={userId} fallback={(profile.user as FullProfile['user']).customStatus} />} />
         <div className="flex items-start justify-between gap-4 px-6">
           <ProfileIdentity profile={profile} beaconId={beaconId} />

@@ -169,6 +169,23 @@
   50% { opacity: 1; transform: scale(1); }
 }
 
+/* Avatar decorations and profile effects (features/common/Decorations.tsx). */
+@keyframes deco-spin { to { transform: rotate(360deg); } }
+@keyframes deco-ping {
+  from { opacity: 0.8; transform: scale(0.95); }
+  to { opacity: 0; transform: scale(1.12); }
+}
+@keyframes fx-drift { to { background-position: 160px -160px; } }
+@keyframes fx-aurora {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes fx-scan { to { background-position: 0 40px; } }
+@keyframes fx-warp {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 1ms !important;

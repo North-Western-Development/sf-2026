@@ -20,7 +20,6 @@ import {
   Pencil,
   Shield,
   ShieldAlert,
-  ShieldCheck,
   Smartphone,
   Smile,
   User,
@@ -56,10 +55,13 @@ import {
 import { Avatar, PresenceDot } from '../common/Avatar';
 import { saveCustomStatus } from '../user/StatusModal';
 import { UserName } from '../common/UserName';
+import { ProfileEffect } from '../common/Decorations';
 import { Dropdown } from '../common/Dropdown';
 import { KEYBINDS } from '../../lib/keybinds';
 import { AccessibilityTab, LanguageTimeTab, SafetySettings } from './user/DisplayTabs';
 import { MicTest } from './user/VoiceTools';
+import { CurrentPassword, usePasswordField, withPassword } from './user/passwordField';
+import { AccountStandingRow, DecorationPicker, EffectPicker, PhoneRow } from './user/AccountExtras';
 import { Markdown } from '../chat/markdown';
 
 const USERNAME_RE = /^(?!.*\.\.)(?!\.)(?!.*\.$)[a-z0-9_.]{2,32}$/;
@@ -69,18 +71,6 @@ const EFFECTS: DisplayNameStyle['effect'][] = ['solid', 'gradient', 'neon', 'too
 /** Footer strip shared by the settings dialogs (matches the app's prompt dialog). */
 function DialogFooter({ children }: { children: React.ReactNode }) {
   return <div className="-mx-6 -mb-4 mt-6 flex justify-end gap-3 bg-raised px-6 py-4">{children}</div>;
-}
-
-/** Greyed placeholder row for account features that have no backend yet. */
-function PlaceholderRow(props: React.ComponentProps<typeof SettingsRow> & { soon: string }) {
-  const { soon, ...row } = props;
-  return (
-    <ComingSoon label={soon} className="flex w-full [&>*]:flex-1">
-      <div>
-        <SettingsRow {...row} />
-      </div>
-    </ComingSoon>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -158,45 +148,6 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
       </form>
     </Modal>
   );
-}
-
-/** "Current Password" field for dialogs that change sensitive account details. */
-function CurrentPassword({ value, onChange, error, autoFocus }: { value: string; onChange: (v: string) => void; error: string | null; autoFocus?: boolean }) {
-  return (
-    <Input
-      label="Current Password"
-      type="password"
-      autoComplete="current-password"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      error={error ?? undefined}
-      autoFocus={autoFocus}
-      required
-    />
-  );
-}
-
-/** Runs a password-gated request: a wrong password shows under the field, anything else is a toast. */
-async function withPassword(run: () => Promise<void>, setPasswordError: (e: string | null) => void, setBusy: (b: boolean) => void) {
-  setBusy(true);
-  try {
-    await run();
-  } catch (err) {
-    if (err instanceof ApiError && err.code === 'PASSWORD_INCORRECT') setPasswordError('Password does not match.');
-    else toast((err as Error).message, 'error');
-  } finally {
-    setBusy(false);
-  }
-}
-
-function usePasswordField() {
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const onChange = (v: string) => {
-    setPassword(v);
-    setError(null);
-  };
-  return { password, error, setError, onChange };
 }
 
 function UsernameDialog({ me, onClose }: { me: SelfUser; onClose: () => void }) {
@@ -684,7 +635,7 @@ function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
           }
           action={<RowButton onClick={() => setDialog('email')}>Edit</RowButton>}
         />
-        <PlaceholderRow soon="Phone numbers" label="Phone Number" value={<span className="text-fg-subtle">Not added</span>} action={<RowButton>Add</RowButton>} />
+        <PhoneRow me={me} />
       </SettingsSection>
 
       <SettingsSection id="password-security" title="Password & Security">
@@ -700,13 +651,7 @@ function AccountTab({ me, go }: { me: SelfUser; go: (tab: string) => void }) {
       </SettingsSection>
 
       <SettingsSection id="account-status" title="Account Status">
-        <PlaceholderRow
-          soon="Account standing"
-          icon={<ShieldCheck className="text-online" />}
-          label="Account Standing"
-          description="Thank you for upholding the Subspace Directives. If you have a violation, it will appear here."
-          value="All good"
-        />
+        <AccountStandingRow />
         <div className="pt-4">
           <p className="text-[15px] font-semibold text-fg">Account Removal</p>
           <p className="mt-0.5 text-sm text-fg-muted">Disabling your account means you can recover it at any time after taking this action.</p>
@@ -743,6 +688,8 @@ interface ProfileDraft {
   themePrimary: string;
   themeAccent: string;
   style: DisplayNameStyle;
+  avatarDecoration: string | null;
+  profileEffect: string | null;
 }
 
 const draftFrom = (me: SelfUser & Record<string, any>): ProfileDraft => ({
@@ -754,6 +701,8 @@ const draftFrom = (me: SelfUser & Record<string, any>): ProfileDraft => ({
   bannerColor: me.bannerColor ?? '#3353D6',
   themePrimary: me.themePrimary ?? '',
   themeAccent: me.themeAccent ?? '',
+  avatarDecoration: me.avatarDecoration ?? null,
+  profileEffect: me.profileEffect ?? null,
   style: me.displayNameStyle ?? {
     font: me.displayFont ?? 'default',
     effect: 'solid',
@@ -848,6 +797,7 @@ function ProfilePreview({ me, d, tag }: { me: SelfUser; d: ProfileDraft; tag?: s
     displayName: d.displayName || null,
     avatarUrl: d.avatarUrl,
     displayNameStyle: d.style,
+    avatarDecoration: d.avatarDecoration,
   };
   const themed = d.themePrimary || d.themeAccent;
   const cardBg = themed
@@ -858,7 +808,8 @@ function ProfilePreview({ me, d, tag }: { me: SelfUser; d: ProfileDraft; tag?: s
   return (
     <div className="w-full shrink-0 md:sticky md:top-0 md:w-[300px]">
       <p className="mb-2 text-sm font-semibold text-fg">Preview</p>
-      <div className={clsx('overflow-hidden rounded-xl shadow-pop', !themed && 'bg-overlay', themed && 'p-[3px]')} style={cardBg}>
+      <div data-testid="profile-preview" className={clsx('relative overflow-hidden rounded-xl shadow-pop', !themed && 'bg-overlay', themed && 'p-[3px]')} style={cardBg}>
+        <ProfileEffect name={d.profileEffect} />
         <div className={clsx('overflow-hidden', themed && 'rounded-[10px] bg-black/45')}>
           <div
             className="h-[105px]"
@@ -867,7 +818,7 @@ function ProfilePreview({ me, d, tag }: { me: SelfUser; d: ProfileDraft; tag?: s
             }}
           />
           <div className="px-4 pb-4">
-            <Avatar user={user} size={80} showPresence className="-mt-10 rounded-full ring-[6px] ring-overlay" ring="var(--color-overlay)" />
+            <Avatar user={user} size={80} decorationName={d.avatarDecoration} showPresence className="-mt-10 rounded-full ring-[6px] ring-overlay" ring="var(--color-overlay)" />
             <UserName user={user} className="mt-2 block text-xl font-bold" />
             <p className="text-sm text-fg">
               {tag ?? userTag(me)}
@@ -936,6 +887,8 @@ function UserProfileForm({ me }: { me: SelfUser }) {
         themePrimary: HEX.test(d.themePrimary) ? d.themePrimary : null,
         themeAccent: HEX.test(d.themeAccent) ? d.themeAccent : null,
         displayNameStyle: d.style,
+        avatarDecoration: d.avatarDecoration,
+        profileEffect: d.profileEffect,
       });
       setState((s) => ({ me: s.me ? { ...s.me, ...res.transmitter } : s.me }));
       toast('Profile saved', 'success');
@@ -961,14 +914,10 @@ function UserProfileForm({ me }: { me: SelfUser }) {
             <ImageControls noun="Avatar" value={d.avatarUrl} onChange={(v) => set('avatarUrl', v)} purpose="avatar" />
           </FormBlock>
           <FormBlock label="Avatar Decoration">
-            <ComingSoon label="Avatar decorations">
-              <Button size="sm">Change Decoration</Button>
-            </ComingSoon>
+            <DecorationPicker me={me} avatarUrl={d.avatarUrl} value={d.avatarDecoration} onChange={(v) => set('avatarDecoration', v)} />
           </FormBlock>
           <FormBlock label="Profile Effect">
-            <ComingSoon label="Profile effects">
-              <Button size="sm">Change Effect</Button>
-            </ComingSoon>
+            <EffectPicker value={d.profileEffect} onChange={(v) => set('profileEffect', v)} />
           </FormBlock>
           <FormBlock label="Profile Banner">
             <ImageControls noun="Banner" value={d.bannerUrl} onChange={(v) => set('bannerUrl', v)} purpose="banner" />

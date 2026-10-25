@@ -1,3 +1,6 @@
+/** +15550100199 -> +1 ******0199: settings show only the last four digits. */
+export const maskPhone = (phone: string) => phone.slice(0, 2) + ' ' + '*'.repeat(Math.max(0, phone.length - 6)) + phone.slice(-4);
+
 /** Shape returned for `transmitter` in auth/profile responses (never includes passwordHash, totpSecret, etc). */
 export function serializeTransmitter(user: any) {
   return {
@@ -24,6 +27,9 @@ export function serializeTransmitter(user: any) {
     createdAt: user.createdAt,
     tagBeaconId: user.tagBeaconId ?? null,
     defaultAllowDms: user.defaultAllowDms ?? true,
+    avatarDecoration: user.avatarDecoration ?? null,
+    profileEffect: user.profileEffect ?? null,
+    phone: user.phone ? maskPhone(user.phone) : null,
   };
 }
 
@@ -48,5 +54,7 @@ export function serializePublicTransmitter(user: any) {
     displayNameStyle: full.displayNameStyle,
     customStatus: full.customStatus,
     tagBeaconId: full.tagBeaconId,
+    avatarDecoration: full.avatarDecoration,
+    profileEffect: full.profileEffect,
   };
 }

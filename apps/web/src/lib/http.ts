@@ -30,7 +30,7 @@ export const http = {
   post: <T>(path: string, body?: unknown) => send<T>('POST', path, body ?? {}),
   put: <T>(path: string, body?: unknown) => send<T>('PUT', path, body ?? {}),
   patch: <T>(path: string, body?: unknown) => send<T>('PATCH', path, body ?? {}),
-  delete: <T>(path: string) => send<T>('DELETE', path),
+  delete: <T>(path: string, body?: unknown) => send<T>('DELETE', path, body),
 };
 
 /** Resolve to `fallback` when an endpoint is not available yet (404/405/501). */

@@ -22,6 +22,7 @@ export const AUTHOR_FIELDS = {
   staffRank: transmitters.staffRank,
   /** The beacon whose tag they wear; clients look up the tag itself. */
   tagBeaconId: transmitters.tagBeaconId,
+  avatarDecoration: transmitters.avatarDecoration,
 };
 
 export function deriveChannel(row: {
