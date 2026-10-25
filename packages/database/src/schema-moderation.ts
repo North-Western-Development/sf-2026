@@ -95,3 +95,18 @@ export interface TemplateSnapshot {
   clearances: Array<{ name: string; color: string; position: number; permissions: string; hoist: boolean }>;
   settings: { defaultNotifications: string | null; verificationLevel: string; systemChannelKey: string | null; afkChannelKey: string | null; afkTimeout: number };
 }
+
+/** GIFs someone starred (Discord's GIF favorites), shown first in the GIF picker. */
+export const gifFavorites = pgTable(
+  'gif_favorites',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
+    url: text('url').notNull(),
+    previewUrl: text('preview_url').notNull(),
+    width: integer('width').default(0).notNull(),
+    height: integer('height').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('gif_favorites_owner_idx').on(t.transmitterId, t.createdAt)]
+);

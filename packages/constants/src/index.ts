@@ -213,7 +213,17 @@ export const MEDIA_PURPOSES = {
   beacon_banner: { maxBytes: 10 * 1024 * 1024 },
   glyph: { maxBytes: 256 * 1024 },
   mesh_icon: { maxBytes: 8 * 1024 * 1024 },
+  /** Beacon stickers (Discord caps them at 512 KB). */
+  sticker: { maxBytes: 512 * 1024 },
+  /** Soundboard clips (Discord: 512 KB, up to 5 seconds). */
+  sound: { maxBytes: 512 * 1024, mimes: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm'] },
 } as const;
+
+/** The types a purpose accepts: its own list, else the image types. */
+export function mediaMimesFor(purpose: MediaPurpose): readonly string[] {
+  const p = MEDIA_PURPOSES[purpose] as { mimes?: readonly string[] };
+  return p.mimes ?? MEDIA_ALLOWED_MIME_TYPES;
+}
 
 export type MediaPurpose = keyof typeof MEDIA_PURPOSES;
 
@@ -224,6 +234,10 @@ export const MEDIA_MIME_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/gif': 'gif',
   'image/webp': 'webp',
+  'audio/mpeg': 'mp3',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/webm': 'webm',
 };
 
 /**

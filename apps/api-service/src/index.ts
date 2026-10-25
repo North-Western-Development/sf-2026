@@ -125,6 +125,8 @@ export async function buildApp() {
 
   const { beaconRoutes } = await import('./modules/beacons/beacons.routes.js');
   await app.register(beaconRoutes, { prefix: '/api/v1/beacons' });
+  const { expressionRoutes } = await import('./modules/expression/expression.routes.js');
+  await app.register(expressionRoutes, { prefix: '/api/v1' });
   const { beaconExtrasRoutes } = await import('./modules/beacons/extras.routes.js');
   await app.register(beaconExtrasRoutes, { prefix: '/api/v1' });
   const { moderationRoutes } = await import('./modules/moderation/moderation.routes.js');

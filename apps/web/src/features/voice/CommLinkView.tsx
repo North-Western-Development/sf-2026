@@ -17,6 +17,8 @@ import { Composer } from '../chat/Composer';
 import { TypingIndicator } from '../chat/TypingIndicator';
 import { useUi } from '../../app/ui';
 import { MobileNavButton } from '../../app/mobile';
+import { SoundboardButton } from './SoundboardButton';
+import { ControlButton } from './ControlButton';
 
 function VideoSurface({ track, mirrored }: { track: Track; mirrored?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -65,25 +67,7 @@ export function Tile({ userId, beaconId }: { userId: string; beaconId?: string }
   );
 }
 
-export function ControlButton({ label, onClick, active, danger, children }: { label: string; onClick: () => void; active?: boolean; danger?: boolean; children: React.ReactNode }) {
-  return (
-    <Tooltip content={label}>
-      <button
-        type="button"
-        aria-label={label}
-        aria-pressed={active}
-        onClick={onClick}
-        className={clsx(
-          'flex h-12 w-12 items-center justify-center rounded-full transition-colors',
-          danger ? 'bg-danger text-white hover:brightness-110' : active ? 'bg-fg text-void' : 'bg-overlay text-fg hover:bg-hover'
-        )}
-      >
-        {children}
-      </button>
-    </Tooltip>
-  );
-}
-
+export { ControlButton } from './ControlButton';
 export function CommLinkView({ relay }: { relay: Relay }) {
   const participants = useStore(useShallow((s) => Object.values(s.voice).filter((v) => v.relayId === relay.id).map((v) => v.transmitterId)));
   const session = useVoice(useShallow((s) => ({ relayId: s.relayId, state: s.state, cameraOn: s.cameraOn, screenOn: s.screenOn, encrypted: s.encrypted })));
@@ -166,6 +150,7 @@ export function CommLinkView({ relay }: { relay: Relay }) {
                     </ControlButton>
                   </>
                 )}
+                <SoundboardButton relayId={relay.id} beaconId={relay.beaconId} />
                 <ComingSoon label="Activities">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-overlay text-fg">
                     <UsersIcon className="h-5 w-5" />

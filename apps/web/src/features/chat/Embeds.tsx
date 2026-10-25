@@ -1,4 +1,6 @@
-import { X } from 'lucide-react';
+import { useEffect } from 'react';
+import { Star, X } from 'lucide-react';
+import { loadGifFavorites, toggleGifFavorite, useGifFavorites } from './ExpressionPanels';
 import { Tooltip } from '@subspace/ui';
 import type { Embed } from '../../lib/types';
 import { useChatPrefs } from '../../lib/chatPrefs';
@@ -20,6 +22,24 @@ function hostOf(url: string) {
   }
 }
 
+const GIF_URL = /\.gif(\?|$)|giphy\.com/i;
+
+function GifStar({ url, preview }: { url: string; preview: string }) {
+  const fav = useGifFavorites((s) => !!s.list?.some((f) => f.url === url));
+  useEffect(() => void loadGifFavorites(), []);
+  return (
+    <button
+      type="button"
+      aria-label={fav ? 'Remove GIF from favorites' : 'Add GIF to favorites'}
+      aria-pressed={fav}
+      onClick={() => void toggleGifFavorite({ url, preview, width: 0, height: 0 }).then((on) => toast(on ? 'Added to GIF favorites' : 'Removed from GIF favorites'))}
+      className={`absolute right-1.5 top-1.5 rounded-md bg-void/70 p-1 transition-opacity ${fav ? 'text-star opacity-100' : 'text-fg opacity-0 group-hover/embed:opacity-100'}`}
+    >
+      <Star className="h-5 w-5" fill={fav ? 'currentColor' : 'none'} />
+    </button>
+  );
+}
+
 function EmbedCard({ embed, onRemove }: { embed: Embed; onRemove?: () => void }) {
   const remove = onRemove && (
     <Tooltip content="Remove all embeds">
@@ -34,13 +54,14 @@ function EmbedCard({ embed, onRemove }: { embed: Embed; onRemove?: () => void })
     </Tooltip>
   );
 
-  // A bare image link shows just the image, like Discord.
+  // A bare image link shows just the image, like Discord; GIFs can be starred for the GIF picker.
   if (embed.type === 'image' && embed.image) {
     return (
       <div className="group/embed relative w-fit">
         <a href={embed.url} target="_blank" rel="noreferrer noopener" className="block max-w-[400px] overflow-hidden rounded-md">
           <img src={embed.image.proxyUrl} alt="" loading="lazy" className="max-h-[300px] w-auto object-contain" />
         </a>
+        {GIF_URL.test(embed.url) && <GifStar url={embed.url} preview={embed.image.proxyUrl} />}
         {remove}
       </div>
     );

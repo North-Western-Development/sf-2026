@@ -71,7 +71,7 @@ test.describe('Link previews', () => {
 
     await signIn(page, me, `/channels/${beacon.id}/${general.id}`);
     const log = page.getByRole('log');
-    const photo = log.getByRole('article').filter({ hasText: 'photo.png' }).locator('img[src^="/api/v1/embed-proxy"]');
+    const photo = log.getByRole('article').locator('img[src^="/api/v1/embed-proxy"]');
     await expect(photo).toBeVisible({ timeout: 15_000 });
     await expect(log.getByRole('article', { name: /Link preview/ })).toHaveCount(0);
 
@@ -80,5 +80,7 @@ test.describe('Link previews', () => {
     await page.getByRole('switch', { name: 'Show embeds and preview website links pasted into chat' }).click();
     await page.keyboard.press('Escape');
     await expect(photo).toHaveCount(0);
+    // With previews off, the link itself shows again.
+    await expect(log.getByRole('link', { name: `${origin}/photo.png` })).toBeVisible();
   });
 });

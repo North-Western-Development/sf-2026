@@ -255,9 +255,15 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     }
   }
 
-  function deliverDispatch(event: { type: string; audience?: string[] }) {
+  function deliverDispatch(event: { type: string; audience?: string[]; voice_relay_id?: string; sender_id?: string }) {
     if (!Array.isArray(event.audience) || event.audience.length === 0) return; // fail closed
-    const audience = new Set(event.audience);
+    let audience = new Set(event.audience);
+    // Voice-room events (the soundboard) reach only people in that comm-link, and only when the
+    // sender is in it too: voice presence lives here, not in the API.
+    if (event.voice_relay_id) {
+      if (voiceStates.get(event.sender_id ?? '')?.relayId !== event.voice_relay_id) return;
+      audience = new Set([...audience].filter((id) => voiceStates.get(id)?.relayId === event.voice_relay_id));
+    }
     const { audience: _omit, ...payload } = event;
     for (const [ws, sess] of authedSessions()) {
       if (audience.has(sess.transmitterId!)) dispatch(ws, event.type, payload);

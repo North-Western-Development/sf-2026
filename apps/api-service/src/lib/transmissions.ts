@@ -149,6 +149,7 @@ export async function formatTransmission(
     createdAt: row.createdAt,
     editedAt: row.isEdited ? row.updatedAt : null,
     attachments: row.attachments || [],
+    stickers: (row as any).stickers || [],
     mentions: row.mentions || [],
     mentionRoles: row.mentionRoles || [],
     mentionEveryone: !!row.mentionEveryone,

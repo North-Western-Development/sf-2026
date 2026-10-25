@@ -4,8 +4,8 @@ import { eq, and, mediaUploads } from '@subspace/database';
 import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import {
   MEDIA_PURPOSES,
-  MEDIA_ALLOWED_MIME_TYPES,
   MEDIA_MIME_EXTENSIONS,
+  mediaMimesFor,
   type MediaPurpose,
 } from '@subspace/constants';
 import { SubspaceS3Storage } from '../s3.js';
@@ -55,12 +55,11 @@ export const mediaRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         sizeBytes: number;
       };
 
-      if (!MEDIA_ALLOWED_MIME_TYPES.includes(mimeType as any)) {
-        return reply.status(400).send({ error: 'Unsupported media type', code: 'UNSUPPORTED_MEDIA_TYPE' });
-      }
-
       const limit = MEDIA_PURPOSES[purpose];
       if (!limit) return reply.status(400).send({ error: 'Unknown media purpose' });
+      if (!mediaMimesFor(purpose).includes(mimeType)) {
+        return reply.status(400).send({ error: 'Unsupported media type', code: 'UNSUPPORTED_MEDIA_TYPE' });
+      }
       if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > limit.maxBytes) {
         return reply.status(400).send({
           error: `File exceeds maximum allowed size of ${limit.maxBytes} bytes for purpose ${purpose}`,

@@ -13,6 +13,7 @@ import {
   transmissionReactions,
   signalBlacklist,
   beaconEmojis,
+  beaconStickers,
   beaconMembers,
   vaultFiles,
   subspaceMeshMembers,
@@ -232,6 +233,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           properties: {
             content: { type: 'string', maxLength: MAX_TRANSMISSION_LENGTH },
             attachmentIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 10 },
+            stickerIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 3 },
             replyToId: { type: 'string', format: 'uuid' },
             replyPing: { type: 'boolean' },
             nonce: { type: 'string', maxLength: 100 },
@@ -255,6 +257,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       const body = request.body as {
         content?: string;
         attachmentIds?: string[];
+        stickerIds?: string[];
         replyToId?: string;
         replyPing?: boolean;
         nonce?: string;
@@ -275,8 +278,21 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         return reply.status(413).send({ error: 'Encrypted transmission is too large', code: 'TRANSMISSION_TOO_LARGE' });
       }
 
-      if (!content && attachmentIds.length === 0 && !body.encrypted) {
-        return reply.status(400).send({ error: 'content or attachmentIds is required' });
+      // Stickers come from beacons the sender is in (Discord without Nitro would limit this to the same beacon).
+      let stickers: Array<{ id: string; name: string; url: string }> = [];
+      if (body.stickerIds?.length) {
+        if (body.encrypted) return reply.status(400).send({ error: 'Stickers cannot be sent in an encrypted conversation' });
+        const rows = await db
+          .select({ id: beaconStickers.id, name: beaconStickers.name, url: beaconStickers.url })
+          .from(beaconStickers)
+          .innerJoin(beaconMembers, and(eq(beaconMembers.beaconId, beaconStickers.beaconId), eq(beaconMembers.transmitterId, token.transmitterId)))
+          .where(inArray(beaconStickers.id, body.stickerIds));
+        if (rows.length !== new Set(body.stickerIds).size) return reply.status(400).send({ error: 'Unknown sticker', code: 'INVALID_STICKER' });
+        stickers = body.stickerIds.map((id) => rows.find((r: any) => r.id === id)!);
+      }
+
+      if (!content && attachmentIds.length === 0 && !body.encrypted && !stickers.length) {
+        return reply.status(400).send({ error: 'content, attachmentIds or stickerIds is required' });
       }
 
       let attachments: Array<{ id: string; url: string; filename: string; size: number; mimeType: string }> = [];
@@ -351,6 +367,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           transmitterId: token.transmitterId,
           content: content || '',
           attachments,
+          stickers,
           replyToId,
           replyPing,
           mentions: parsed.mentions,

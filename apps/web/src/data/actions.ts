@@ -280,6 +280,9 @@ export interface SendOptions {
   replyToId?: string;
   replyPing?: boolean;
   attachmentIds?: string[];
+  /** Stickers to send; `stickers` shows them on the pending message. */
+  stickerIds?: string[];
+  stickers?: Array<{ id: string; name: string; url: string }>;
   /** Encrypted links: files sealed on this device, described inside the ciphertext. */
   encryptedAttachments?: Array<{ url: string; key: string; filename: string; mimeType: string; size: number }>;
 }
@@ -299,6 +302,7 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
     createdAt: new Date().toISOString(),
     editedAt: null,
     attachments: [],
+    stickers: opts.stickers ?? [],
     mentions: [],
     mentionRoles: [],
     mentionEveryone: false,
@@ -325,7 +329,7 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
       raw = (await http.post<{ transmission: Raw }>(`/channels/${type}/${id}/transmissions`, { encrypted, nonce, replyToId: opts.replyToId, replyPing: opts.replyPing })).transmission;
       await rememberSent(raw.id, plain);
     } else {
-      const { encryptedAttachments: _sealed, ...plainOpts } = opts;
+      const { encryptedAttachments: _sealed, stickers: _shown, ...plainOpts } = opts;
       const body = { content, nonce, ...plainOpts };
       try {
         raw = (await http.post<{ transmission: Raw }>(`/channels/${type}/${id}/transmissions`, body)).transmission;

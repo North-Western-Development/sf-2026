@@ -2,9 +2,9 @@ import { Emoji } from '../../lib/emoji';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { AtSign, CirclePlus, Cloud, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
-import { ComingSoon, Tooltip, useContextMenu } from '@subspace/ui';
+import { Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore, getState } from '../../data/store';
-import { notifyTyping, sendMessage } from '../../data/actions';
+import { notifyTyping, sendMessage, type SendOptions } from '../../data/actions';
 import { relayPermissions, can, PERMISSIONS, myTimeout, verificationPending } from '../../data/permissions';
 import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types';
 import { resolveName } from '../../lib/normalize';
@@ -80,6 +80,17 @@ export function Composer({
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [active, setActive] = useState(0);
   const [emojiAnchor, setEmojiAnchor] = useState<DOMRect | null>(null);
+  const [pickerTab, setPickerTab] = useState<'gifs' | 'stickers' | 'emoji'>('emoji');
+  /** A sticker or GIF goes out on its own, as Discord sends them, replying if a reply is open. */
+  const sendNow = (content: string, extra: SendOptions = {}) => {
+    const r = useUi.getState().replyingTo[key];
+    useUi.setState((s) => ({ replyingTo: { ...s.replyingTo, [key]: undefined } }));
+    void sendMessage(key, content, { ...extra, replyToId: r?.messageId, replyPing: r?.ping });
+  };
+  const openPicker = (e: React.MouseEvent<HTMLElement>, tab: 'gifs' | 'stickers' | 'emoji') => {
+    setPickerTab(tab);
+    setEmojiAnchor(e.currentTarget.getBoundingClientRect());
+  };
   const [glyphs, setGlyphs] = useState<Glyph[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [attachmentIds, setAttachmentIds] = useState<Array<{ id: string; name: string; sealed?: SealedAttachment }>>([]);
@@ -466,14 +477,22 @@ export function Composer({
           className="max-h-[50vh] min-h-[44px] px-1 py-[11px] text-[15px] leading-[22px]"
         />
         <div className="mt-2 flex items-center gap-1">
-          <ComingSoon label="GIFs">
-            <span className="flex h-7 w-7 items-center justify-center text-fg-muted"><GifIcon className="h-5 w-5" /></span>
-          </ComingSoon>
-          <ComingSoon label="Stickers">
-            <span className="flex h-7 w-7 items-center justify-center text-fg-muted"><Sticker className="h-5 w-5" /></span>
-          </ComingSoon>
+          {!encrypted && (
+            <>
+              <Tooltip content="Open GIF picker">
+                <button type="button" aria-label="Open GIF picker" onClick={(e) => openPicker(e, 'gifs')} className="flex h-7 w-7 items-center justify-center text-fg-muted hover:text-fg">
+                  <GifIcon className="h-5 w-5" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Open sticker picker">
+                <button type="button" aria-label="Open sticker picker" onClick={(e) => openPicker(e, 'stickers')} className="flex h-7 w-7 items-center justify-center text-fg-muted hover:text-fg">
+                  <Sticker className="h-5 w-5" />
+                </button>
+              </Tooltip>
+            </>
+          )}
           <Tooltip content="Select emoji">
-            <button type="button" aria-label="Select emoji" onClick={(e) => setEmojiAnchor(e.currentTarget.getBoundingClientRect())} className="flex h-7 w-7 items-center justify-center text-fg-muted hover:text-fg">
+            <button type="button" aria-label="Select emoji" onClick={(e) => openPicker(e, 'emoji')} className="flex h-7 w-7 items-center justify-center text-fg-muted hover:text-fg">
               <Smile className="h-5 w-5" />
             </button>
           </Tooltip>
@@ -492,6 +511,9 @@ export function Composer({
           beaconId={beaconId}
           placement="above"
           tabs
+          initialTab={pickerTab}
+          onSticker={encrypted ? undefined : (s) => sendNow('', { stickerIds: [s.id], stickers: [{ id: s.id, name: s.name, url: s.url }] })}
+          onGif={encrypted ? undefined : (g) => sendNow(g.url)}
           onClose={() => setEmojiAnchor(null)}
           onPick={(emoji, glyph) => {
             insertAtCaret(glyph ? `<:${glyph.name}:${glyph.id}>` : emoji);

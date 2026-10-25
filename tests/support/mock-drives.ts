@@ -9,6 +9,8 @@ import crypto from 'node:crypto';
  */
 
 export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+/** A 1x1 GIF. */
+const GIF = Buffer.from('R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==', 'base64');
 const LOG = Buffer.from('Stardate 2026.10: all systems nominal.\n');
 const PDF = Buffer.from('%PDF-1.4\n% mock export\n');
 
@@ -62,6 +64,20 @@ export async function startMockDrives(port = 0): Promise<MockDrives> {
     const [, provider, ...rest] = url.pathname.split('/');
     const path = `/${rest.join('/')}`;
     log.push(`${req.method} /${provider}${path}`);
+
+    // GIPHY: search and trending return the same few GIFs, served from here.
+    if (provider === 'giphy') {
+      if (path === '/gif.gif') return send(res, 200, GIF, { 'content-type': 'image/gif' });
+      if (!url.searchParams.get('api_key')) return send(res, 401, { message: 'No API key' });
+      const q = url.searchParams.get('q') ?? 'trending';
+      // The test stack lets link previews fetch this host (UNFURL_ALLOW_PRIVATE_HOSTS).
+      const origin = `http://127.0.0.1:${(server.address() as any).port}`;
+      const data = ['wave', 'party', 'cat'].map((name, i) => {
+        const img = { url: `${origin}/giphy/gif.gif?n=${name}-${q}`, width: '200', height: '150' };
+        return { id: `${name}-${i}`, title: `${name} ${q}`, images: { original: img, fixed_width: img } };
+      });
+      return send(res, 200, { data });
+    }
 
     // Consent screens: approve immediately and bounce back with a code.
     if (/\/(o\/oauth2\/v2\/auth|common\/oauth2\/v2\.0\/authorize|oauth2\/authorize)$/.test(path)) {

@@ -152,6 +152,7 @@ export function toTransmission(t: Raw): Transmission {
     createdAt: t.createdAt,
     editedAt: t.editedAt ?? (t.isEdited ? t.updatedAt : null) ?? null,
     attachments: Array.isArray(t.attachments) ? t.attachments : [],
+    stickers: Array.isArray(t.stickers) ? t.stickers : [],
     mentions: t.mentions ?? [],
     mentionRoles: t.mentionRoles ?? [],
     mentionEveryone: !!t.mentionEveryone,

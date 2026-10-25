@@ -54,6 +54,7 @@ import { AuditLogTab } from './beacon/AuditLogTab';
 import { AutoModTab } from './beacon/AutoModTab';
 import { SafetyTab } from './beacon/SafetyTab';
 import { TagTab } from './beacon/TagTab';
+import { StickersTab, SoundboardTab } from './beacon/ExpressionTabs';
 import { InsightsTab } from './beacon/InsightsTab';
 import { WidgetTab } from './beacon/WidgetTab';
 import { TemplateTab } from './beacon/TemplateTab';
@@ -830,8 +831,12 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           heading: 'Expression',
           items: [
             ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ id: 'glyphs', icon: <Smile />, label: term('glyph', true) }] : []),
-            { id: 'stickers', icon: <Sticker />, label: 'Stickers', comingSoon: true },
-            { id: 'soundboard', icon: <AudioLines />, label: 'Soundboard', comingSoon: true },
+            ...(can(perms, PERMISSIONS.MANAGE_GLYPHS)
+              ? [
+                  { id: 'stickers', icon: <Sticker />, label: 'Stickers' },
+                  { id: 'soundboard', icon: <AudioLines />, label: 'Soundboard' },
+                ]
+              : []),
           ],
         },
         {
@@ -916,6 +921,8 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
       {tab === 'engagement' && <EngagementTab beaconId={beaconId} />}
       {tab === 'audit' && <AuditLogTab beaconId={beaconId} />}
       {tab === 'tag' && <TagTab beaconId={beaconId} />}
+      {tab === 'stickers' && <StickersTab beaconId={beaconId} />}
+      {tab === 'soundboard' && <SoundboardTab beaconId={beaconId} />}
       {tab === 'insights' && <InsightsTab beaconId={beaconId} />}
       {tab === 'widget' && <WidgetTab beaconId={beaconId} />}
       {tab === 'template' && <TemplateTab beaconId={beaconId} />}

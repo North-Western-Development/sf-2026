@@ -10,7 +10,8 @@ import { term } from '../../lib/strings';
 import { HeaderButton } from '../chat/ChannelView';
 import { Avatar } from '../common/Avatar';
 import { useAudioPrefs, toggleMute, toggleDeafen } from './audioPrefs';
-import { Tile, ControlButton } from './CommLinkView';
+import { Tile } from './CommLinkView';
+import { ControlButton } from './ControlButton';
 import { useVoice, joinCall, leaveVoice, declineCall, ringAgain, toggleCamera, toggleScreenShare } from './session';
 
 /** How long an unanswered call keeps ringing someone. */

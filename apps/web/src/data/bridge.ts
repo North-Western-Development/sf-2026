@@ -27,6 +27,8 @@ import {
 import { openEncrypted } from './e2ee';
 import { openSignal } from '../lib/e2ee/client';
 import { onRoomKeySignal } from '../features/voice/roomKeys';
+import { loadSounds, onSoundboardPlay, useSounds } from '../features/voice/soundboard';
+import { invalidateStickers } from '../features/chat/ExpressionPanels';
 import { ackChannel, applyReaction, loadBeacon, loadCalls, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 import { removeEvent, upsertEvent } from './community';
@@ -262,6 +264,13 @@ const handlers: Record<string, (d: Raw) => void> = {
       beacons: { ...s.beacons, [b.id]: b },
       beaconOrder: s.beaconOrder.includes(b.id) ? s.beaconOrder : [...s.beaconOrder, b.id],
     }));
+  },
+  BEACON_EXPRESSIONS_UPDATE(d) {
+    if (d.kind === 'stickers') invalidateStickers();
+    else if (d.kind === 'sounds' && useSounds.getState()[d.beaconId]) void loadSounds(d.beaconId, true);
+  },
+  SOUNDBOARD_PLAY(d) {
+    onSoundboardPlay(d as any);
   },
   BEACON_UPDATE(d) {
     const b = toBeacon(d.beacon ?? d);

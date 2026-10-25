@@ -10,8 +10,6 @@ import { term } from '../../lib/strings';
 import { copyText } from '../../lib/clipboard';
 import { addToCluster } from './railOrder';
 
-const soon = (label: string): ContextMenuItem => ({ label, disabled: true, sublabel: 'Coming soon' });
-
 /** Right-click / header-dropdown menu for a beacon (Discord's server menu). */
 export function beaconMenu(beaconId: string, navigate: (path: string) => void, opts: { header?: boolean } = {}): ContextMenuItem[] {
   const s = getState();
@@ -52,8 +50,7 @@ export function beaconMenu(beaconId: string, navigate: (path: string) => void, o
     ...(manageBeacon ? [{ label: `${term('beacon')} Tag`, onClick: settings('tag') }] : []),
     ...(manageBeacon ? [{ label: 'Engagement', onClick: settings('engagement') }] : []),
     ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ label: term('glyph', true), onClick: settings('glyphs') }] : []),
-    soon('Stickers'),
-    soon('Soundboard'),
+    ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ label: 'Stickers', onClick: settings('stickers') }, { label: 'Soundboard', onClick: settings('soundboard') }] : []),
     { label: 'Members', onClick: () => navigate(`/channels/${beaconId}/member-safety`) },
     ...(can(perms, PERMISSIONS.MANAGE_CLEARANCES) ? [{ label: term('clearance', true), onClick: settings('clearances') }] : []),
     ...(can(perms, PERMISSIONS.CREATE_INVITES) ? [{ label: 'Invites', onClick: settings('invites') }] : []),

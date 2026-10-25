@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { ChevronDown, Clock, Dog, Flag, Gamepad2, Heart, Lightbulb, Lock, Plane, Pizza, Search, Smile, Hand, X } from 'lucide-react';
-import { ComingSoon } from '@subspace/ui';
+import { GifPanel, StickerPanel, type Gif, type Sticker } from './ExpressionPanels';
 import { useStore } from '../../data/store';
 import { http, optional } from '../../lib/http';
 import { EMOJI, EMOJI_CATEGORIES, findEmoji, spriteStyle, type EmojiEntry } from '../../lib/emoji';
@@ -95,6 +95,9 @@ export function EmojiPicker({
   placement = 'auto',
   tabs = false,
   glyphs: glyphMode = 'current',
+  initialTab = 'emoji',
+  onSticker,
+  onGif,
 }: {
   anchor: DOMRect;
   beaconId?: string;
@@ -104,7 +107,12 @@ export function EmojiPicker({
   /** Show the GIFs / Stickers / Emoji tabs (the composer). */
   tabs?: boolean;
   glyphs?: 'current' | 'none';
+  /** With `tabs`: which tab opens first. */
+  initialTab?: 'gifs' | 'stickers' | 'emoji';
+  onSticker?: (s: Sticker) => void;
+  onGif?: (g: Gif) => void;
 }) {
+  const [tab, setTab] = useState(initialTab);
   const [query, setQuery] = useState('');
   const [glyphsByBeacon, setGlyphsByBeacon] = useState<Record<string, Glyph[]>>({});
   const [hovered, setHovered] = useState<Item | null>(null);
@@ -273,15 +281,22 @@ export function EmojiPicker({
       <div className="shrink-0 space-y-3 border-b border-line p-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           {tabs && (
-            <>
-              <ComingSoon label="GIFs">
-                <span className="rounded-md px-3 py-1 text-fg-muted">GIFs</span>
-              </ComingSoon>
-              <ComingSoon label="Stickers">
-                <span className="rounded-md px-3 py-1 text-fg-muted">Stickers</span>
-              </ComingSoon>
-              <span className="rounded-md bg-active px-3 py-1 text-fg">Emoji</span>
-            </>
+            <div role="tablist" aria-label="Expression picker" className="flex gap-1">
+              {([['gifs', 'GIFs', onGif], ['stickers', 'Stickers', onSticker], ['emoji', 'Emoji', true]] as const)
+                .filter(([, , on]) => on)
+                .map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === key}
+                    onClick={() => setTab(key)}
+                    className={clsx('rounded-md px-3 py-1', tab === key ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg')}
+                  >
+                    {label}
+                  </button>
+                ))}
+            </div>
           )}
           <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs font-medium text-fg-muted">
             Close after selecting
@@ -297,6 +312,7 @@ export function EmojiPicker({
             </button>
           </label>
         </div>
+        {tab === 'emoji' && (
         <div className="relative flex items-center gap-2">
           <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md bg-void px-2.5 ring-1 ring-transparent focus-within:ring-brand-sky">
             <Search className="h-4 w-4 shrink-0 text-fg-subtle" />
@@ -330,8 +346,25 @@ export function EmojiPicker({
             </div>
           )}
         </div>
+        )}
       </div>
 
+      {tab === 'stickers' && onSticker ? (
+        <StickerPanel
+          onPick={(s) => {
+            onSticker(s);
+            onClose();
+          }}
+        />
+      ) : tab === 'gifs' && onGif ? (
+        <GifPanel
+          onPick={(g) => {
+            onGif(g);
+            onClose();
+          }}
+        />
+      ) : (
+      <>
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Emoji categories" className="flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-line bg-raised py-2 [scrollbar-width:none]">
           {sections.map((s, i) => (
@@ -390,6 +423,8 @@ export function EmojiPicker({
           <span className="text-sm text-fg-subtle">Pick an emoji</span>
         )}
       </div>
+      </>
+      )}
     </div>,
     document.body
   );

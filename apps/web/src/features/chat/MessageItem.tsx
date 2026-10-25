@@ -142,6 +142,9 @@ export interface MessageItemProps {
 export const MessageItem = memo(function MessageItem({ message: m, channelKey: key, beaconId, grouped, onReply, onJumpTo }: MessageItemProps) {
   const me = useStore((s) => s.me);
   const authorTag = useStore((s) => s.users[m.author.id]?.tagBeaconId ?? m.author.tagBeaconId);
+  // A link that is only an image or GIF shows just the picture, as Discord does (the link comes back with previews off).
+  const showEmbeds = useChatPrefs((p) => p.showEmbeds);
+  const mediaOnly = showEmbeds && !m.encrypted && m.embeds.length === 1 && m.embeds[0].type === 'image' && m.content.trim() === m.embeds[0].url;
   const pingsMe = useStore((s) => explicitlyMentionsMe(s, key, m));
   const { type: chType, id: chId } = parseChannelKey(key);
   const perms = useStore((s) => (chType === 'relay' ? relayPermissions(s, chId) : null));
@@ -330,7 +333,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
         />
       ) : (
         <div className={clsx('text-[15px] leading-[22px] text-fg', m.failed && 'text-danger')}>
-          {m.encrypted && m.e2ee !== 'ok' ? <SealedNotice state={m.e2ee} /> : <Markdown content={m.content} resolvers={resolvers} />}
+          {m.encrypted && m.e2ee !== 'ok' ? <SealedNotice state={m.e2ee} /> : mediaOnly ? null : <Markdown content={m.content} resolvers={resolvers} />}
           {m.editedAt && (
             <Tooltip content={formatFullDate(m.editedAt)}>
               <span className="ml-1 text-[11px] text-fg-subtle">(edited)</span>
@@ -339,6 +342,15 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
         </div>
       )}
 
+      {!!m.stickers?.length && (
+        <div className="mt-1 flex gap-2">
+          {m.stickers.map((s, i) => (
+            <Tooltip key={`${s.id}-${i}`} content={s.name}>
+              <img src={s.url} alt={`Sticker ${s.name}`} className="h-40 w-40 object-contain" draggable={false} />
+            </Tooltip>
+          ))}
+        </div>
+      )}
       <Attachments items={m.attachments} />
       <SealedAttachments items={m.encryptedAttachments} />
       <Embeds embeds={m.embeds} messageId={m.id} canRemove={isMine || (chType !== 'link' && chType !== 'mesh' && canManage)} />

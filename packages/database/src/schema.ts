@@ -343,6 +343,8 @@ export const transmissions = pgTable('transmissions', {
   transmitterId: uuid('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   content: text('content').notNull(), // Max 2000 chars default
   attachments: jsonb('attachments').$type<Array<{ id: string; url: string; filename: string; size: number; mimeType?: string; width?: number; height?: number }>>().default([]).notNull(),
+  /** Stickers sent with it (Discord's sticker_items); kept as sent, so a deleted sticker still shows. */
+  stickers: jsonb('stickers').$type<Array<{ id: string; name: string; url: string }>>().default([]).notNull(),
   isEdited: boolean('is_edited').default(false).notNull(),
   encryptedPayload: text('encrypted_payload'),
   replyToId: uuid('reply_to_id'),

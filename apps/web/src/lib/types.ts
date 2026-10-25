@@ -165,6 +165,7 @@ export interface Transmission {
   createdAt: string;
   editedAt: string | null;
   attachments: Attachment[];
+  stickers?: Array<{ id: string; name: string; url: string }>;
   mentions: string[];
   mentionRoles: string[];
   mentionEveryone: boolean;

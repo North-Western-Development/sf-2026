@@ -29,9 +29,12 @@ const env = loadNativeEnv({ test: testStack });
 if (testStack) {
   Object.assign(env, { API_PORT: '4001', GATEWAY_PORT: '4002', FILE_PORT: '4003', WEB_PORT: '4173', REGISTER_RATE_LIMIT: '10000' });
   // Link-preview tests serve their fake websites on localhost.
-  env.UNFURL_ALLOW_PRIVATE_HOSTS = 'localhost';
+  env.UNFURL_ALLOW_PRIVATE_HOSTS = 'localhost,127.0.0.1';
   // Cloud drive tests talk to the mock providers Playwright starts (tests/support/mock-drives.ts).
   env.DRIVE_MOCK_ORIGIN = 'http://127.0.0.1:4195';
+  // GIF search goes to the same mock server (tests/support/mock-drives.ts).
+  env.GIPHY_API_KEY = 'test-key';
+  env.GIPHY_API_BASE = 'http://127.0.0.1:4195/giphy';
   // Email goes to the SMTP sink Playwright starts (tests/support/mail-sink.ts).
   Object.assign(env, { SMTP_HOST: '127.0.0.1', SMTP_PORT: '4196', SMTP_SECURE: 'false', SMTP_INSECURE: 'true', SMTP_USER: '' });
   for (const [id, secret] of [['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], ['ONEDRIVE_CLIENT_ID', 'ONEDRIVE_CLIENT_SECRET'], ['DROPBOX_APP_KEY', 'DROPBOX_APP_SECRET']]) {
