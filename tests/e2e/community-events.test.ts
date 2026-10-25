@@ -173,6 +173,33 @@ describe('Beacon community: members page, channels & roles, events', () => {
       expect((await call('GET', `/${beaconId}/events`, owner)).json().events).toHaveLength(0);
     });
 
+    it('starts and ends on its own at the scheduled times, then schedules the next weekly occurrence', async () => {
+      if (!db) return;
+      const start = new Date(Date.now() + 3_600_000);
+      const end = new Date(start.getTime() + 7_200_000);
+      const created = await call('POST', `/${beaconId}/events`, owner, { name: 'Weekly ops', locationType: 'comm_link', relayId: commId, startAt: start.toISOString(), endAt: end.toISOString(), recurrence: 'weekly' });
+      expect(created.json().event.recurrence).toBe('weekly');
+      expect((await call('POST', `/${beaconId}/events`, owner, { name: 'x', locationType: 'comm_link', relayId: commId, startAt: start.toISOString(), recurrence: 'hourly' })).statusCode).toBe(400);
+      const id = created.json().event.id;
+      await call('PUT', `/${beaconId}/events/${id}/interest`, pilot);
+
+      const { runEventTick } = await import('../../apps/api-service/src/modules/events/events.routes.js');
+      await runEventTick!(new Date(start.getTime() + 1000));
+      let list = (await call('GET', `/${beaconId}/events`, owner)).json().events;
+      expect(list.find((e: any) => e.id === id).status).toBe('active');
+
+      await runEventTick!(new Date(end.getTime() + 1000));
+      list = (await call('GET', `/${beaconId}/events`, pilot)).json().events;
+      expect(list.find((e: any) => e.id === id)).toBeUndefined();
+      const next = list.find((e: any) => e.name === 'Weekly ops');
+      expect(next.status).toBe('scheduled');
+      expect(new Date(next.startAt).getTime() - start.getTime()).toBe(7 * 86_400_000);
+      expect(new Date(next.endAt).getTime() - new Date(next.startAt).getTime()).toBe(7_200_000);
+      // Interest carries over to the next occurrence.
+      expect(next).toMatchObject({ meInterested: true, interestedCount: 2 });
+      await call('DELETE', `/${beaconId}/events/${next.id}`, owner);
+    });
+
     it('external events need an end, and the host can delete', async () => {
       if (!db) return;
       const start = new Date(Date.now() + 3_600_000);

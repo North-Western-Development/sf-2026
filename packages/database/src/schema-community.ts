@@ -127,6 +127,8 @@ export const beaconEvents = pgTable('beacon_events', {
   startAt: timestamp('start_at', { withTimezone: true }).notNull(),
   endAt: timestamp('end_at', { withTimezone: true }),
   status: text('status').default('scheduled').notNull(),
+  /** 'none' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'weekdays'; the next occurrence is created when one ends. */
+  recurrence: text('recurrence').default('none').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

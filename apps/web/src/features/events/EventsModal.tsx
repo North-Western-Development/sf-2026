@@ -10,6 +10,7 @@ import { closeModal, confirmAction, openModal, toast } from '../../app/ui';
 import { http } from '../../lib/http';
 import { term } from '../../lib/strings';
 import { PixelStar } from '../auth/PixelStar';
+import { Avatar } from '../common/Avatar';
 
 const EMPTY: BeaconEvent[] = [];
 
@@ -24,6 +25,23 @@ export function eventWhen(iso: string) {
   const date = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   return `${date} · ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
 }
+
+/** "Starting in 48m" / "Starting in 3h" within a day of the start; null further out. */
+function soon(iso: string): string | null {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return 'Starting now';
+  if (ms >= 86_400_000) return null;
+  const m = Math.round(ms / 60_000);
+  return m < 60 ? `Starting in ${m}m` : `Starting in ${Math.round(m / 60)}h`;
+}
+
+const REPEATS: Record<string, string> = {
+  weekly: 'Repeats weekly',
+  biweekly: 'Repeats every other week',
+  monthly: 'Repeats monthly',
+  yearly: 'Repeats yearly',
+  weekdays: 'Repeats every weekday',
+};
 
 /** Can the viewer edit, start, end or cancel this event? */
 export function useCanEditEvent(beaconId: string) {
@@ -103,18 +121,33 @@ export function EventCard({ event: e, preview }: { event: BeaconEvent; preview?:
     <article aria-label={e.name} className={clsx('overflow-hidden rounded-xl bg-raised ring-1', live ? 'ring-online/60' : 'ring-line')}>
       {e.coverUrl && <img src={e.coverUrl} alt="" className="h-32 w-full object-cover" />}
       <div className="p-4">
-        <p className={clsx('flex items-center gap-1.5 text-xs font-semibold', live ? 'text-online' : 'text-fg-muted')}>
-          {live ? (
-            <>
-              <span className="h-2 w-2 animate-pulse rounded-full bg-online" /> Happening now
-            </>
-          ) : (
-            <>
-              <CalendarDays className="h-3.5 w-3.5" /> {eventWhen(e.startAt)}
-              {e.endAt && <span className="font-normal"> – {new Date(e.endAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>}
-            </>
+        <div className="flex items-center gap-2">
+          <p className={clsx('flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold', live ? 'text-online' : soon(e.startAt) ? 'text-brand-sky' : 'text-fg-muted')}>
+            {live ? (
+              <>
+                <span className="h-2 w-2 animate-pulse rounded-full bg-online" /> Happening now
+              </>
+            ) : (
+              <>
+                <CalendarDays className="h-4 w-4 shrink-0" /> {soon(e.startAt) ?? eventWhen(e.startAt)}
+                {e.endAt && !soon(e.startAt) && <span className="font-normal"> – {new Date(e.endAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>}
+              </>
+            )}
+          </p>
+          {e.creator && (
+            <Tooltip content={`Created by ${e.creator.displayName || e.creator.username}`}>
+              <span>
+                <Avatar user={{ ...e.creator, displayName: e.creator.displayName ?? null }} size={20} />
+              </span>
+            </Tooltip>
           )}
-        </p>
+          <Tooltip content={`${e.interestedCount} interested`}>
+            <span className="flex items-center gap-1 rounded-full bg-void px-2 py-0.5 text-xs font-semibold text-fg" aria-label={`${e.interestedCount} interested`}>
+              <Users className="h-3.5 w-3.5" /> {e.interestedCount}
+            </span>
+          </Tooltip>
+        </div>
+        {e.recurrence && e.recurrence !== 'none' && <p className="mt-0.5 text-xs text-fg-subtle">{REPEATS[e.recurrence]}</p>}
         <h3 className="mt-1 text-lg font-bold leading-snug text-fg">{e.name}</h3>
         {e.description && <p className="mt-1 line-clamp-3 whitespace-pre-line text-sm text-fg-muted">{e.description}</p>}
 
@@ -138,11 +171,6 @@ export function EventCard({ event: e, preview }: { event: BeaconEvent; preview?:
               <span className="truncate">{e.location}</span>
             </span>
           )}
-          <Tooltip content={`${e.interestedCount} interested`}>
-            <span className="flex items-center gap-1 text-sm text-fg-muted" aria-label={`${e.interestedCount} interested`}>
-              <Users className="h-4 w-4" /> {e.interestedCount}
-            </span>
-          </Tooltip>
           {!preview && (
             <div className="ml-auto flex items-center gap-2">
               {canEdit && e.status === 'scheduled' && (

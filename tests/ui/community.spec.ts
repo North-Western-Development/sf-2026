@@ -1,6 +1,9 @@
+import { PNG } from '../support/mock-drives';
 import { test, expect, register, signIn, openAs } from './fixtures';
 
 const SHOTS = process.env.COMMUNITY_SHOTS ? 'screenshots/' : null;
+/** A valid PNG for the cover image. */
+const COVER = PNG;
 
 test.describe('Events, Channels & Roles, and the Members page', () => {
   test('the owner schedules an event; a member marks interest and sees it go live', async ({ page, browser }) => {
@@ -17,15 +20,32 @@ test.describe('Events, Channels & Roles, and the Members page', () => {
     await events.getByRole('button', { name: 'Create Event' }).click();
 
     // Step 1: where. Step 2: what and when. Step 3: preview.
-    let wizard = page.getByRole('dialog', { name: "Where's your event?" });
+    let wizard = page.getByRole('dialog', { name: 'Where is your event?' });
     await expect(wizard.getByRole('radio', { name: /Comm-Link/ })).toHaveAttribute('aria-checked', 'true');
+    await expect(wizard.getByRole('radio', { name: /Stage/ })).toBeDisabled();
+    await expect(wizard.getByRole('combobox', { name: /Select a Comm-Link/ })).toContainText('General');
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}events-location.png` });
     await wizard.getByRole('button', { name: 'Next' }).click();
     wizard = page.getByRole('dialog', { name: "What's your event about?" });
-    await wizard.getByLabel('Event Topic').fill('Raid Night');
-    await wizard.getByLabel('Description').fill('Bring snacks.');
+    await wizard.getByRole('textbox', { name: 'Event Topic' }).fill('Raid Night');
+    await wizard.getByRole('textbox', { name: 'Description' }).fill('Bring snacks.');
+    await wizard.getByRole('combobox', { name: /Event Frequency/ }).click();
+    await wizard.getByRole('option', { name: /^Weekly on / }).click();
+    // Cover image: pick a file, crop it in Edit Image, apply.
+    const chooser = page.waitForEvent('filechooser');
+    await wizard.getByRole('button', { name: 'Upload Cover Image' }).click();
+    await (await chooser).setFiles({ name: 'cover.png', mimeType: 'image/png', buffer: COVER });
+    const crop = page.getByRole('dialog', { name: 'Edit Image' });
+    await crop.getByRole('slider', { name: 'Zoom' }).fill('1.5');
+    await crop.getByRole('button', { name: 'Rotate' }).click();
+    await crop.getByRole('button', { name: 'Apply' }).click();
+    await expect(wizard.getByRole('img', { name: 'Cover' })).toBeVisible();
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}events-details.png` });
     await wizard.getByRole('button', { name: 'Next' }).click();
     wizard = page.getByRole('dialog', { name: "Here's a preview of your event" });
     await expect(wizard.getByRole('article', { name: 'Raid Night' })).toBeVisible();
+    await expect(wizard).toContainText('Repeats weekly');
+    await expect(wizard).toContainText('This event will auto start');
     if (SHOTS) await page.screenshot({ path: `${SHOTS}events-preview.png` });
     await wizard.getByRole('button', { name: 'Create Event' }).click();
 

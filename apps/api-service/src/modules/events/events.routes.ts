@@ -4,6 +4,7 @@ import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { validateMediaUrl } from '../../lib/media.js';
+import { RECURRENCES, spawnNext, startEventScheduler, tickEvents } from '../../lib/event-schedule.js';
 
 const STATUSES = ['scheduled', 'active', 'completed', 'canceled'] as const;
 type Status = (typeof STATUSES)[number];
@@ -21,6 +22,9 @@ const userRef = { id: transmitters.id, username: transmitters.username, discrimi
  *   PUT    /api/v1/beacons/:id/events/:eventId/interest   / DELETE
  *   GET    /api/v1/beacons/:id/events/:eventId/interested
  */
+/** The scheduler tick of the most recently built app (tests call it instead of waiting). */
+export let runEventTick: ((now?: Date) => Promise<{ started: number; ended: number }>) | null = null;
+
 export const eventRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
 
@@ -59,6 +63,7 @@ export const eventRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       coverUrl: e.coverUrl,
       startAt: e.startAt,
       endAt: e.endAt,
+      recurrence: e.recurrence ?? 'none',
       status: effectiveStatus(e),
       creator: e.creatorId ? byId.get(e.creatorId) ?? null : null,
       interestedCount: n.get(e.id) ?? 0,
@@ -108,6 +113,10 @@ export const eventRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (end && (Number.isNaN(end.getTime()) || end <= start)) return { error: 'The end time must be after the start' };
     if (!end && locationType === 'external') return { error: 'Events somewhere else need an end time' };
     v.endAt = end;
+    if (has('recurrence')) {
+      if (!RECURRENCES.includes(body.recurrence)) return { error: 'Pick how often the event repeats' };
+      v.recurrence = body.recurrence;
+    }
     return { values: v };
   }
 
@@ -155,7 +164,7 @@ export const eventRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (!canEdit(ctx, e)) return reply.status(403).send({ error: 'You cannot edit this event' });
     const body = (request.body as any) ?? {};
     const values: Record<string, unknown> = {};
-    const fields = ['name', 'description', 'locationType', 'relayId', 'location', 'coverUrl', 'startAt', 'endAt'];
+    const fields = ['name', 'description', 'locationType', 'relayId', 'location', 'coverUrl', 'startAt', 'endAt', 'recurrence'];
     if (fields.some((f) => Object.prototype.hasOwnProperty.call(body, f))) {
       const parsed = await parse(ctx.beaconId, ctx.me, body, e);
       if ('error' in parsed) return reply.status(400).send({ error: parsed.error });
@@ -172,6 +181,11 @@ export const eventRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (!Object.keys(values).length) return reply.status(400).send({ error: 'Nothing to change' });
     const [row] = await db.update(beaconEvents).set(values).where(eq(beaconEvents.id, e.id)).returning();
     await broadcast(ctx.beaconId, row);
+    // Ending a repeating event schedules its next occurrence.
+    if (values.status === 'completed') {
+      const next = await spawnNext(db, row);
+      if (next) await broadcast(ctx.beaconId, next);
+    }
     const [event] = await serialize([row], ctx.me);
     return reply.send({ event });
   });
@@ -209,4 +223,8 @@ export const eventRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const users = await db.select(userRef).from(eventInterests).innerJoin(transmitters, eq(eventInterests.transmitterId, transmitters.id)).where(eq(eventInterests.eventId, e.id)).orderBy(asc(eventInterests.createdAt));
     return reply.send({ users });
   });
+
+  // Auto start / end; tests drive it through runEventTick.
+  runEventTick = (now?: Date) => tickEvents(app, (rows) => serialize(rows), now);
+  if (process.env.NODE_ENV !== 'test') startEventScheduler(app, (rows) => serialize(rows));
 };

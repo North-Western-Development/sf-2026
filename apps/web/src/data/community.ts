@@ -15,6 +15,8 @@ export interface RelayPrefs {
   activity: Record<string, string>;
 }
 
+export type Recurrence = 'none' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'weekdays';
+
 export interface BeaconEvent {
   id: string;
   beaconId: string;
@@ -27,6 +29,7 @@ export interface BeaconEvent {
   startAt: string;
   endAt: string | null;
   status: 'scheduled' | 'active' | 'completed' | 'canceled';
+  recurrence?: Recurrence;
   creator: Pick<UserRef, 'id' | 'username' | 'displayName' | 'avatarUrl'> | null;
   interestedCount: number;
   meInterested?: boolean;
