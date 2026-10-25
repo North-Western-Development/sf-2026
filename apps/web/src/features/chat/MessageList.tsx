@@ -15,6 +15,22 @@ function shouldGroup(prev: Transmission | undefined, cur: Transmission): boolean
   return new Date(cur.createdAt).getTime() - new Date(prev.createdAt).getTime() < GROUP_WINDOW_MS;
 }
 
+function HistorySkeleton({ fill }: { fill?: boolean }) {
+  return (
+    <div className={clsx('flex flex-col justify-end space-y-5 px-4 py-4', fill && 'min-h-full')} aria-busy="true" aria-label="Loading transmissions">
+      {Array.from({ length: fill ? 8 : 4 }, (_, i) => (
+        <div key={i} className="flex gap-4">
+          <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-hover" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-40 animate-pulse rounded bg-hover" />
+            <div className="h-3 animate-pulse rounded bg-hover" style={{ width: `${40 + (i % 4) * 12}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function MessageList({
   channelKey: key,
   beaconId,
@@ -154,21 +170,10 @@ export function MessageList({
 
       <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto overflow-x-hidden pb-6" role="log" aria-live="polite" aria-relevant="additions">
         <div ref={topSentinel} className="h-px" />
-        {channel?.loaded && !channel.hasMoreBefore && header}
-        {channel?.loading && (
-          <div className="space-y-5 px-4 py-4" aria-busy="true">
-            {Array.from({ length: 4 }, (_, i) => (
-              <div key={i} className="flex gap-4">
-                <div className="h-10 w-10 animate-pulse rounded-full bg-hover" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 w-40 animate-pulse rounded bg-hover" />
-                  <div className="h-3 animate-pulse rounded bg-hover" style={{ width: `${40 + i * 12}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {channel?.error && !messages.length && (
+        {/* Like Discord, placeholders stand above the history while there is more to load, so the
+            list never shifts when they go; before the first page arrives they are all that shows. */}
+        {channel?.loaded ? (channel.hasMoreBefore ? <HistorySkeleton /> : header) : !channel?.error && <HistorySkeleton fill />}
+        {channel?.error && !channel.loaded && (
           <p className="px-4 py-6 text-sm text-danger">
             Could not load transmissions: {channel.error}{' '}
             <button className="text-brand-sky hover:underline" onClick={() => void loadMessages(key)}>
@@ -176,7 +181,7 @@ export function MessageList({
             </button>
           </p>
         )}
-        {messages.map((m, i) => {
+        {channel?.loaded && messages.map((m, i) => {
           const prev = messages[i - 1];
           const newDay = !prev || !isSameDay(prev.createdAt, m.createdAt);
           const isFirstUnread = i === firstUnreadIndex;

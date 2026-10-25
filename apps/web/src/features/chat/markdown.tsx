@@ -3,6 +3,7 @@ import { withTwemoji } from '../../lib/emoji';
 import React, { useEffect, useState } from 'react';
 import { Tooltip } from '@subspace/ui';
 import { isTrustedLink, openLeavingDialog } from '../../lib/links';
+import { highlightNow, loadHljs } from '../../lib/highlight';
 
 // ---------------------------------------------------------------------------
 // AST
@@ -269,19 +270,14 @@ function Spoiler({ children }: { children: React.ReactNode }) {
   );
 }
 
-type Hljs = typeof import('highlight.js/lib/common').default;
-let hljsLoad: Promise<Hljs> | null = null;
-/** highlight.js loads the first time a code block names a language. */
-const loadHljs = () => (hljsLoad ??= import('highlight.js/lib/common').then((m) => m.default));
-
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
-  const [html, setHtml] = useState<string | null>(null);
+  const [html, setHtml] = useState<string | null>(() => highlightNow(code, lang));
   useEffect(() => {
-    setHtml(null);
+    setHtml(highlightNow(code, lang));
     if (!lang) return;
     let live = true;
-    void loadHljs().then((hljs) => {
-      if (live && hljs.getLanguage(lang)) setHtml(hljs.highlight(code, { language: lang, ignoreIllegals: true }).value);
+    void loadHljs().then(() => {
+      if (live) setHtml(highlightNow(code, lang));
     });
     return () => {
       live = false;

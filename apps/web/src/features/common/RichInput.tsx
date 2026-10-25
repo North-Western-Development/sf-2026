@@ -2,14 +2,15 @@ import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, us
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { Bold, Code, EyeOff, Italic, Strikethrough, TextQuote, type LucideIcon } from 'lucide-react';
-import { EMOJI_RE, findEmoji, spriteCss } from '../../lib/emoji';
-import { glyphUrl } from '../chat/resolvers';
+import { hljsReady, loadHljs } from '../../lib/highlight';
+import { build, findFences, offsetOf, positionOf, serializeRoot } from './richMarkup';
 
 /**
  * Discord-style message editor. The value is plain text (what is sent: unicode emoji and
  * `<:name:id>` glyph tokens); the editor shows every emoji and glyph as an inline image with
- * Discord's spacing, which a textarea cannot. Typing, IME, paste, cut/copy, Shift+Enter,
- * undo/redo and the caret (as a plain-text offset) all work on that text.
+ * Discord's spacing, and previews markdown as you type (see richMarkup), which a textarea
+ * cannot. Typing, IME, paste, cut/copy, Shift+Enter, undo/redo and the caret (as a plain-text
+ * offset) all work on that text.
  */
 
 export interface RichInputHandle {
@@ -20,116 +21,6 @@ export interface RichInputHandle {
   /** Replaces the selection (or inserts at the caret) and reports the change. */
   insert(text: string): void;
   readonly element: HTMLDivElement | null;
-}
-
-const GLYPH_SRC = '<a?:[A-Za-z0-9_]{2,32}:[0-9a-f-]{36}>';
-const TOKEN_RE = new RegExp(`${GLYPH_SRC}|${EMOJI_RE.source}`, 'gu');
-const GLYPH_RE = /^<a?:([A-Za-z0-9_]{2,32}):([0-9a-f-]{36})>$/;
-const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-const EMOJI_PX = 22;
-
-/** An emoji or glyph image for raw text, or null when it should stay as text. */
-function tokenImage(raw: string): HTMLImageElement | null {
-  const glyph = GLYPH_RE.exec(raw);
-  const img = document.createElement('img');
-  img.draggable = false;
-  img.dataset.raw = raw;
-  img.className = 'rich-emoji';
-  if (glyph) {
-    const url = glyphUrl(glyph[2]);
-    if (!url) return null;
-    img.src = url;
-    img.alt = `:${glyph[1]}:`;
-    return img;
-  }
-  const hit = findEmoji(raw);
-  if (!hit) return null;
-  img.src = BLANK;
-  img.alt = raw;
-  Object.assign(img.style, spriteCss(hit.x, hit.y, EMOJI_PX));
-  return img;
-}
-
-function build(value: string): Node[] {
-  const out: Node[] = [];
-  let last = 0;
-  for (const m of value.matchAll(TOKEN_RE)) {
-    const img = tokenImage(m[0]);
-    if (!img) continue;
-    if (m.index! > last) out.push(document.createTextNode(value.slice(last, m.index)));
-    out.push(img);
-    last = m.index! + m[0].length;
-  }
-  if (last < value.length) out.push(document.createTextNode(value.slice(last)));
-  // A trailing newline needs something after it to show the empty last line.
-  if (value.endsWith('\n')) {
-    const br = document.createElement('br');
-    br.dataset.trail = '1';
-    out.push(br);
-  }
-  return out;
-}
-
-/** Plain-text length a node stands for. */
-function lengthOf(n: Node): number {
-  if (n.nodeType === Node.TEXT_NODE) return (n.nodeValue ?? '').length;
-  const el = n as HTMLElement;
-  if (el.tagName === 'IMG') return (el.dataset.raw ?? (el as HTMLImageElement).alt ?? '').length;
-  if (el.tagName === 'BR') return el.dataset.trail ? 0 : 1;
-  let len = 0;
-  el.childNodes.forEach((c) => (len += lengthOf(c)));
-  // Browser-made line containers start a new line.
-  if ((el.tagName === 'DIV' || el.tagName === 'P') && el.previousSibling) len += 1;
-  return len;
-}
-
-function serialize(n: Node): string {
-  if (n.nodeType === Node.TEXT_NODE) return n.nodeValue ?? '';
-  const el = n as HTMLElement;
-  if (el.tagName === 'IMG') return el.dataset.raw ?? (el as HTMLImageElement).alt ?? '';
-  if (el.tagName === 'BR') return el.dataset.trail ? '' : '\n';
-  let s = '';
-  el.childNodes.forEach((c) => (s += serialize(c)));
-  if ((el.tagName === 'DIV' || el.tagName === 'P') && el.previousSibling) s = `\n${s}`;
-  return s;
-}
-
-/** Plain-text offset of a DOM position inside root. */
-function offsetOf(root: Node, node: Node, offset: number): number {
-  let total = 0;
-  let found = false;
-  const walk = (n: Node) => {
-    if (found) return;
-    if (n === node) {
-      if (n.nodeType === Node.TEXT_NODE) total += offset;
-      else for (let i = 0; i < offset && i < n.childNodes.length; i++) total += lengthOf(n.childNodes[i]);
-      found = true;
-      return;
-    }
-    if (n !== root && (n.nodeType === Node.TEXT_NODE || (n as HTMLElement).tagName === 'IMG' || (n as HTMLElement).tagName === 'BR')) {
-      total += lengthOf(n);
-      return;
-    }
-    if (n !== root && ((n as HTMLElement).tagName === 'DIV' || (n as HTMLElement).tagName === 'P') && n.previousSibling) total += 1;
-    n.childNodes.forEach(walk);
-  };
-  walk(root);
-  return total;
-}
-
-/** Whether the DOM differs from what `build` makes (pasted spans, typed emoji, browser divs). */
-function needsRebuild(root: HTMLElement): boolean {
-  for (const c of Array.from(root.childNodes)) {
-    if (c.nodeType === Node.TEXT_NODE) {
-      for (const m of (c.nodeValue ?? '').matchAll(TOKEN_RE)) if (GLYPH_RE.test(m[0]) ? glyphUrl(GLYPH_RE.exec(m[0])![2]) : findEmoji(m[0])) return true;
-      continue;
-    }
-    const el = c as HTMLElement;
-    if (el.tagName === 'IMG' && el.dataset.raw) continue;
-    if (el.tagName === 'BR' && el.dataset.trail && !el.nextSibling) continue;
-    return true;
-  }
-  return false;
 }
 
 const SHORTCUTS: Record<string, string> = { b: '**', i: '*', u: '__' };
@@ -156,10 +47,9 @@ function wrappedInside(text: string, s: number, e: number, m: string): boolean {
   return m !== '*' || (text[s + 1] !== '*' && text[e - 2] !== '*');
 }
 
-const fences = (s: string) => s.match(/```/g)?.length ?? 0;
-/** The message has an unclosed ``` and the caret is inside that block. */
-export function inOpenCodeBlock(text: string, caret: number): boolean {
-  return fences(text) % 2 === 1 && fences(text.slice(0, caret)) % 2 === 1;
+/** An odd number of ``` before the caret means it is inside a code block (closed or not). */
+export function inCodeBlock(text: string, caret: number): boolean {
+  return (text.slice(0, caret).match(/```/g)?.length ?? 0) % 2 === 1;
 }
 
 type Props = {
@@ -195,6 +85,26 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
   const render = (v: string) => {
     root.current!.replaceChildren(...build(v));
     shown.current = v;
+    colourLater(v);
+  };
+  /** Code blocks colour once highlight.js has loaded. */
+  const colourLater = (v: string) => {
+    if (!hljsReady() && findFences(v).some((f) => f.lang)) void loadHljs().then(() => refresh());
+  };
+  /** Redraws the current value in place, keeping the selection. */
+  const refresh = () => {
+    const el = root.current;
+    const v = shown.current;
+    if (!el || v === null) return;
+    const focused = document.activeElement === el;
+    const [a, b] = focused ? getSelection() : [0, 0];
+    const next = build(v);
+    const probe = document.createElement('div');
+    probe.append(...next);
+    colourLater(v);
+    if (probe.innerHTML === el.innerHTML) return;
+    el.replaceChildren(...probe.childNodes);
+    if (focused) selectRange(a, b);
   };
   const getSelection = (): [number, number] => {
     const el = root.current;
@@ -209,28 +119,7 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
     const el = root.current;
     if (!el) return;
     const range = document.createRange();
-    let left = Math.max(0, pos);
-    let placed = false;
-    const kids = Array.from(el.childNodes);
-    for (let i = 0; i < kids.length && !placed; i++) {
-      const c = kids[i];
-      const len = lengthOf(c);
-      if (c.nodeType === Node.TEXT_NODE && left <= len) {
-        range.setStart(c, left);
-        placed = true;
-      } else if (c.nodeType !== Node.TEXT_NODE && left < len) {
-        // Inside an image's text: snap to after it.
-        range.setStart(el, i + 1);
-        placed = true;
-      } else if (c.nodeType !== Node.TEXT_NODE && left === 0) {
-        range.setStart(el, i);
-        placed = true;
-      } else left -= len;
-    }
-    if (!placed) {
-      const trail = el.lastChild as HTMLElement | null;
-      range.setStart(el, trail?.dataset?.trail ? kids.length - 1 : kids.length);
-    }
+    range.setStart(...positionOf(el, pos));
     range.collapse(true);
     const sel = window.getSelection();
     sel?.removeAllRanges();
@@ -381,12 +270,12 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
   const onInput = () => {
     const el = root.current!;
     if (composing.current) return;
-    const v = serialize(el);
+    const v = serializeRoot(el);
     const [, caret] = getSelection();
-    if (needsRebuild(el)) {
-      render(v);
-      setCaret(caret);
-    } else shown.current = v;
+    // Redraw only when the browser's DOM differs from ours (new emoji, a mark opened or closed,
+    // pasted spans, the <br> left in an emptied box), so plain typing keeps its native caret.
+    shown.current = v;
+    refresh();
     commit(v, caret, true);
   };
 
@@ -432,8 +321,8 @@ export const RichInput = forwardRef<RichInputHandle, Props>(function RichInput(
             format(shortcut);
             return;
           }
-          // Inside an unclosed ``` block, Enter is a new line rather than send.
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && inOpenCodeBlock(shown.current ?? '', getSelection()[0])) {
+          // Inside a ``` block, Enter is a new line rather than send.
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && inCodeBlock(shown.current ?? '', getSelection()[0])) {
             e.preventDefault();
             insert('\n');
             return;

@@ -39,10 +39,11 @@ export const EMOJI: EmojiEntry[] = (data.emoji as unknown as Row[]).map(([emoji,
 
 /** Looks up an emoji (or a skin-tone variant) by its characters, with or without U+FE0F. */
 const strip = (s: string) => s.replace(/️/g, '');
-const BY_CHARS = new Map<string, { entry: EmojiEntry; x: number; y: number }>();
+/** `chars` is the set's own spelling, which names the emoji's image file. */
+const BY_CHARS = new Map<string, { entry: EmojiEntry; x: number; y: number; chars: string }>();
 for (const e of EMOJI) {
-  BY_CHARS.set(strip(e.emoji), { entry: e, x: e.x, y: e.y });
-  for (const t of Object.values(e.tones ?? {})) BY_CHARS.set(strip(t.emoji), { entry: e, x: t.x, y: t.y });
+  BY_CHARS.set(strip(e.emoji), { entry: e, x: e.x, y: e.y, chars: e.emoji });
+  for (const t of Object.values(e.tones ?? {})) BY_CHARS.set(strip(t.emoji), { entry: e, x: t.x, y: t.y, chars: t.emoji });
 }
 export const findEmoji = (chars: string) => BY_CHARS.get(strip(chars));
 export const BY_SLUG = new Map(EMOJI.flatMap((e) => [e.slug, ...e.aliases].map((s) => [s, e] as const)));
@@ -62,11 +63,31 @@ export function spriteStyle(x: number, y: number, size: number): React.CSSProper
   };
 }
 
+/**
+ * One emoji's own image (served at /emoji/64 by the twemoji-files Vite plugin), named by its
+ * code points like the files in the package. Messages use these, as Discord does: a few KB each
+ * and cached, instead of waiting on the picker's 3 MB sheet.
+ */
+export function emojiUrl(chars: string): string {
+  return `/emoji/64/${[...chars].map((c) => c.codePointAt(0)!.toString(16)).join('-')}.png`;
+}
+
 /** One emoji as a Twemoji image; falls back to the characters if the set lacks it. */
 export const Emoji = memo(function Emoji({ emoji, size = 22, className }: { emoji: string; size?: number; className?: string }) {
   const hit = findEmoji(emoji);
   if (!hit) return <span className={className}>{emoji}</span>;
-  return <span role="img" aria-label={`:${hit.entry.slug}:`} className={className} style={{ display: 'inline-block', verticalAlign: '-0.3em', margin: '0 0.05em 0 0.1em', ...spriteStyle(hit.x, hit.y, size) }} />;
+  return (
+    <img
+      src={emojiUrl(hit.chars)}
+      alt={emoji}
+      aria-label={`:${hit.entry.slug}:`}
+      draggable={false}
+      className={className}
+      width={size}
+      height={size}
+      style={{ display: 'inline-block', width: size, height: size, verticalAlign: '-0.3em', margin: '0 0.05em 0 0.1em', objectFit: 'contain' }}
+    />
+  );
 });
 
 /** Matches emoji sequences in text: flags, keycaps, and pictographs with modifiers / ZWJ joins. */
@@ -93,10 +114,4 @@ export function preloadEmojiSheet() {
   const img = new Image();
   img.decoding = 'async';
   img.src = sheetUrl;
-}
-
-/** The sprite as plain CSS values, for DOM elements built outside React (the message editor). */
-export function spriteCss(x: number, y: number, size: number) {
-  const s = spriteStyle(x, y, size);
-  return { backgroundImage: s.backgroundImage as string, backgroundSize: s.backgroundSize as string, backgroundPosition: s.backgroundPosition as string };
 }

@@ -58,6 +58,59 @@ test.describe('Message editor', () => {
     await expect(box).toHaveText('');
   });
 
+  test('previews markdown while typing, keeps Enter as a new line inside code, and an emptied box stays empty', async ({ page }) => {
+    const me = await register('preview', 'Preview Pilot');
+    const { beacon, relays } = await me.api.createBeacon('Preview Beacon');
+    const text = relays.find((r) => r.type === 'text')!;
+    await signIn(page, me, `/channels/${beacon.id}/${text.id}`);
+    const box = page.getByRole('textbox', { name: /^Transmit to #/ });
+    const last = async () => (await me.api.get(`/channels/relay/${text.id}/transmissions?limit=1`)).transmissions[0]?.content;
+
+    // Deleting the only character leaves nothing behind (no stray new line).
+    await box.click();
+    await page.keyboard.type('x');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type('y');
+    await expect(box).toHaveText('y');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('after');
+    await expect(box).toHaveText('after');
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Backspace');
+
+    // Spoilers, bold and inline code show while typing, characters kept.
+    await page.keyboard.type('a ||secret|| and **loud** and `code`');
+    await expect(box.locator('.md-spoiler')).toHaveText('||secret||');
+    await expect(box.locator('.md-b')).toHaveText('**loud**');
+    await expect(box.locator('.md-code')).toHaveText('`code`');
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Backspace');
+
+    // A closed code block is coloured in the box; Enter inside it is still a new line.
+    await page.keyboard.type('```cpp');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('int d = 5;');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('```');
+    await expect(box.locator('.md-codeblock .hljs-type, .md-codeblock .hljs-keyword').first()).toHaveText('int');
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}editor-preview.png` });
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('int e = 6;');
+    await expect(box).toHaveText('```cpp\nint d = 5;\nint e = 6;\n```');
+    await page.keyboard.press('Control+End');
+    await page.keyboard.press('Enter');
+    await expect.poll(last).toBe('```cpp\nint d = 5;\nint e = 6;\n```');
+
+    // Emoji in messages are their own small images, not the picker's sheet.
+    await box.click();
+    await page.keyboard.insertText('🚀');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('log').locator('img[src="/emoji/64/1f680.png"]').last()).toBeVisible();
+  });
+
   test('formatting menu, shortcuts, Enter inside a code block, highlighted code and the leaving-site check', async ({ page }) => {
     const me = await register('format', 'Format Pilot');
     const { beacon, relays } = await me.api.createBeacon('Format Beacon');

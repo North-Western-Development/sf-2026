@@ -199,3 +199,21 @@
 .hljs-link { color: #56b6c2; text-decoration: underline; }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 700; }
+
+/* Live markdown preview in the message editor (see features/common/richMarkup.ts). */
+.md-b { font-weight: 700; }
+.md-i { font-style: italic; }
+.md-u { text-decoration: underline; }
+.md-s { text-decoration: line-through; }
+.md-us { text-decoration: underline line-through; }
+.md-code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-raised);
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+  padding: 0.1em 0.2em;
+}
+.md-spoiler { background: rgb(0 0 0 / 0.45); border-radius: 3px; }
+.md-codeblock { font-family: var(--font-mono); font-size: 0.875rem; }
+.md-fence { color: var(--color-fg-muted); }

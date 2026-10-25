@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { parseInline, parseMarkdown, Markdown, isJumboEmoji, toPlainText } from '../features/chat/markdown';
-import { inOpenCodeBlock } from '../features/common/RichInput';
+import { inCodeBlock } from '../features/common/RichInput';
 
 const U = '11111111-1111-1111-1111-111111111111';
 const R = '22222222-2222-2222-2222-222222222222';
@@ -121,11 +121,11 @@ describe('<Markdown />', () => {
 });
 
 describe('helpers', () => {
-  it('knows when the caret is inside an unclosed code block', () => {
-    expect(inOpenCodeBlock('```js\nconst', 11)).toBe(true);
-    expect(inOpenCodeBlock('```js\nx\n```', 12)).toBe(false);
-    expect(inOpenCodeBlock('```js\nx\n```', 3)).toBe(false);
-    expect(inOpenCodeBlock('plain', 5)).toBe(false);
+  it('knows when the caret is inside a code block', () => {
+    expect(inCodeBlock('```js\nconst', 11)).toBe(true);
+    expect(inCodeBlock('```js\nx\n```', 7)).toBe(true);
+    expect(inCodeBlock('```js\nx\n```', 12)).toBe(false);
+    expect(inCodeBlock('plain', 5)).toBe(false);
   });
 
   it('detects emoji-only messages', () => {

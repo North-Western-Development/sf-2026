@@ -1,4 +1,7 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
@@ -21,8 +24,32 @@ const sandboxUserContent = (proxy: any) => {
   });
 };
 
+// Twemoji as one small image per emoji at /emoji/64/<codepoints>.png (what messages and the editor
+// use; the picker keeps the sprite sheet). Served from the package in dev, copied into builds.
+const EMOJI_DIR = path.join(path.dirname(createRequire(import.meta.url).resolve('emoji-datasource-twitter/package.json')), 'img/twitter/64');
+const twemojiFiles = (): Plugin => ({
+  name: 'twemoji-files',
+  configureServer(server) {
+    server.middlewares.use('/emoji/64', (req, res, next) => {
+      const name = decodeURIComponent((req.url ?? '').split('?')[0]).replace(/^\//, '');
+      if (!/^[0-9a-f-]+\.png$/.test(name)) return next();
+      fs.readFile(path.join(EMOJI_DIR, name), (err, buf) => {
+        if (err) return next();
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.end(buf);
+      });
+    });
+  },
+  generateBundle() {
+    for (const name of fs.readdirSync(EMOJI_DIR)) {
+      this.emitFile({ type: 'asset', fileName: `emoji/64/${name}`, source: fs.readFileSync(path.join(EMOJI_DIR, name)) });
+    }
+  },
+});
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), twemojiFiles()],
   resolve: {
     // Consume workspace packages from source: they build to CommonJS for Node services.
     alias: {
