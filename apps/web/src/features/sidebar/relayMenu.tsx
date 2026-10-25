@@ -9,6 +9,7 @@ import { channelKey, type NotificationLevel } from '../../lib/types';
 import { http } from '../../lib/http';
 import { confirmAction, openModal, promptText, toast } from '../../app/ui';
 import { term } from '../../lib/strings';
+import { copyText } from '../../lib/clipboard';
 
 const LEVELS: Array<{ level: NotificationLevel; label: string }> = [
   { level: 'inherit', label: 'Use Default' },
@@ -56,8 +57,7 @@ export function relayMenu(relayId: string, navigate: (p: string) => void): Conte
   items.push({
     label: 'Copy Link',
     onClick: () => {
-      void navigator.clipboard?.writeText(`${window.location.origin}/channels/${relay.beaconId}/${relayId}`);
-      toast('Link copied');
+      void copyText(`${window.location.origin}/channels/${relay.beaconId}/${relayId}`, 'Link copied');
     },
   });
   items.push({ separator: true }, ...notificationItems('relay', relayId, term('relay')));
@@ -95,7 +95,7 @@ export function relayMenu(relayId: string, navigate: (p: string) => void): Conte
       }
     );
   }
-  items.push({ separator: true }, { label: `Copy ${term('relay')} ID`, onClick: () => void navigator.clipboard?.writeText(relayId) });
+  items.push({ separator: true }, { label: `Copy ${term('relay')} ID`, onClick: () => void copyText(relayId) });
   return items;
 }
 
@@ -152,6 +152,6 @@ export function bandMenu(bandId: string, collapsed: boolean, toggle: () => void)
       }
     );
   }
-  items.push({ separator: true }, { label: `Copy ${term('band')} ID`, onClick: () => void navigator.clipboard?.writeText(bandId) });
+  items.push({ separator: true }, { label: `Copy ${term('band')} ID`, onClick: () => void copyText(bandId) });
   return items;
 }

@@ -70,7 +70,7 @@ test.describe('Shell layout', () => {
     const relay = relays.find((r) => r.type === 'text')!;
     await signIn(page, me, `/channels/${beacon.id}/${relay.id}`);
     const placeholders = page.locator('[data-coming-soon]');
-    expect(await placeholders.count()).toBeGreaterThan(0);
+    await expect(placeholders.first()).toBeVisible();
     const first = placeholders.first();
     await expect(first).toHaveAttribute('aria-disabled', 'true');
     await first.hover();

@@ -19,6 +19,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { Embeds } from './Embeds';
 import { SealedAttachments, SealedNotice } from './EncryptedBits';
 import { useChatPrefs } from '../../lib/chatPrefs';
+import { copyText } from '../../lib/clipboard';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
@@ -181,20 +182,19 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
       { label: 'Forward', disabled: true, sublabel: 'Coming soon' },
       { label: 'Create Thread', disabled: true, sublabel: 'Coming soon' },
       { separator: true },
-      { label: 'Copy Text', onClick: () => void navigator.clipboard?.writeText(m.content) }
+      { label: 'Copy Text', onClick: () => void copyText(m.content) }
     );
     if (canPin && !m.pending) items.push({ label: m.pinned ? 'Unpin Transmission' : 'Pin Transmission', onClick: () => void setPinned(key, m.id, !m.pinned).catch(() => toast('Could not update pin', 'error')) });
     items.push({
       label: 'Copy Transmission Link',
       onClick: () => {
         const base = beaconId ? `/channels/${beaconId}/${chId}` : `/channels/@me/${chId}`;
-        void navigator.clipboard?.writeText(`${window.location.origin}${base}?m=${m.id}`);
-        toast('Link copied');
+        void copyText(`${window.location.origin}${base}?m=${m.id}`, 'Link copied');
       },
     });
     if ((isMine || canManage) && !m.pending) items.push({ separator: true }, { label: 'Delete Transmission', danger: true, onClick: remove });
     if (!isMine) items.push({ separator: true }, { label: 'Report Transmission', danger: true, onClick: () => openModal({ kind: 'report', targetType: 'transmission', targetId: m.id, context: { channel: key } }) });
-    items.push({ separator: true }, { label: 'Copy Transmission ID', onClick: () => void navigator.clipboard?.writeText(m.id) });
+    items.push({ separator: true }, { label: 'Copy Transmission ID', onClick: () => void copyText(m.id) });
     return items;
   };
 

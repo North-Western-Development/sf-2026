@@ -12,6 +12,7 @@ import { channelKey, type RelayKind, type UserRef } from '../../lib/types';
 import { term } from '../../lib/strings';
 import { closeModal, toast } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
+import { copyText } from '../../lib/clipboard';
 
 // ---------------------------------------------------------------------------
 // Create / join beacon
@@ -326,8 +327,7 @@ export function InviteModal({ beaconId, relayId }: { beaconId: string; relayId?:
             size="sm"
             disabled={!url}
             onClick={() => {
-              void navigator.clipboard?.writeText(url);
-              toast('Invite link copied', 'success');
+              void copyText(url, 'Invite link copied');
             }}
           >
             <Copy className="h-4 w-4" /> Copy

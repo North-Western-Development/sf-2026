@@ -7,6 +7,7 @@ import { userTag } from '../../lib/normalize';
 import { confirmAction, openModal, promptText, toast } from '../../app/ui';
 import { channelKey } from '../../lib/types';
 import { joinCall } from '../voice/session';
+import { copyText } from '../../lib/clipboard';
 
 /** Context menu for a transmitter (member list, author lines, DM rows). */
 export function memberMenu(beaconId: string | undefined, userId: string, navigate?: (p: string) => void): ContextMenuItem[] {
@@ -167,6 +168,6 @@ export function memberMenu(beaconId: string | undefined, userId: string, navigat
       { label: 'Report Transmitter', danger: true, onClick: () => openModal({ kind: 'report', targetType: 'transmitter', targetId: userId }) }
     );
   }
-  items.push({ separator: true }, { label: 'Copy Transmitter ID', onClick: () => void navigator.clipboard?.writeText(userId) });
+  items.push({ separator: true }, { label: 'Copy Transmitter ID', onClick: () => void copyText(userId) });
   return items;
 }

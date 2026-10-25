@@ -211,6 +211,15 @@ export interface ContextMenuProviderProps {
   children: React.ReactNode;
   /** Shown on right-click where nothing more specific handled the event. */
   fallbackItems?: ContextMenuItem[];
+  /** Reads the clipboard for Paste. Defaults to the Clipboard API, which browsers may refuse. */
+  readClipboard?: () => Promise<string>;
+  /** Called when Paste could not read the clipboard (the field stays focused for Ctrl+V). */
+  onPasteBlocked?: () => void;
+}
+
+interface ClipboardHooks {
+  read: () => Promise<string>;
+  blocked?: () => void;
 }
 
 const isEditable = (el: EventTarget | null): el is HTMLInputElement | HTMLTextAreaElement | HTMLElement => {
@@ -223,7 +232,7 @@ const isEditable = (el: EventTarget | null): el is HTMLInputElement | HTMLTextAr
 };
 
 /** Cut / Copy / Paste / Select All for text fields, Copy for selected page text. */
-function textActions(target: EventTarget | null): ContextMenuItem[] {
+function textActions(target: EventTarget | null, clipboard: ClipboardHooks): ContextMenuItem[] {
   const selection = window.getSelection()?.toString() ?? '';
   if (isEditable(target)) {
     const field = target as HTMLInputElement | HTMLTextAreaElement;
@@ -254,12 +263,16 @@ function textActions(target: EventTarget | null): ContextMenuItem[] {
         shortcut: 'Ctrl+V',
         onClick: async () => {
           field.focus();
+          let text: string;
           try {
-            const text = await navigator.clipboard.readText();
-            document.execCommand('insertText', false, text);
+            text = await clipboard.read();
           } catch {
-            /* clipboard permission denied: nothing to paste */
+            // Reading the clipboard needs a permission the browser may refuse; Ctrl+V still works.
+            clipboard.blocked?.();
+            return;
           }
+          field.focus();
+          document.execCommand('insertText', false, text);
         },
       },
       { separator: true },
@@ -279,16 +292,22 @@ function textActions(target: EventTarget | null): ContextMenuItem[] {
       {
         label: 'Copy',
         shortcut: 'Ctrl+C',
-        onClick: () => void navigator.clipboard?.writeText(selection),
+        onClick: () => {
+          navigator.clipboard?.writeText(selection).catch(() => document.execCommand('copy'));
+        },
       },
     ];
   }
   return [];
 }
 
-export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ children, fallbackItems }) => {
+const defaultRead = () => navigator.clipboard.readText();
+
+export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ children, fallbackItems, readClipboard, onPasteBlocked }) => {
   const [menu, setMenu] = useState<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
   const handledRef = useRef(false);
+  const clipboardRef = useRef<ClipboardHooks>({ read: defaultRead });
+  clipboardRef.current = { read: readClipboard ?? defaultRead, blocked: onPasteBlocked };
 
   const closeContextMenu = useCallback(() => setMenu(null), []);
 
@@ -299,7 +318,7 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ childr
     }
     // Specific menus get text actions prepended when the click landed on a field or selection.
     const target = 'target' in event ? (event.target as EventTarget) : null;
-    const text = textActions(target);
+    const text = textActions(target, clipboardRef.current);
     const merged = text.length && items.length ? [...text, { separator: true }, ...items] : text.length ? text : items;
     if (!merged.length) return;
     handledRef.current = true;
@@ -321,7 +340,7 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ childr
       e.preventDefault();
       if (handledRef.current) return;
       if ((e.target as HTMLElement | null)?.closest?.('[data-context-menu]')) return;
-      const text = textActions(e.target);
+      const text = textActions(e.target, clipboardRef.current);
       const items = text.length ? text : fallbackItems ?? [];
       if (items.length) setMenu({ items, x: e.clientX, y: e.clientY });
       else setMenu(null);

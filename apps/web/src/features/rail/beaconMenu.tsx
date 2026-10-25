@@ -5,8 +5,9 @@ import { beaconIndicator } from '../../data/selectors';
 import { beaconPermissions, can, PERMISSIONS } from '../../data/permissions';
 import { isMuted, settingFor } from '../../data/notifications';
 import { setNotificationSetting, muteDurations } from '../../data/notificationActions';
-import { confirmAction, openModal, toast } from '../../app/ui';
+import { confirmAction, openModal } from '../../app/ui';
 import { term } from '../../lib/strings';
+import { copyText } from '../../lib/clipboard';
 
 /** Right-click / header-dropdown menu for a beacon (Discord's server menu). */
 export function beaconMenu(beaconId: string, navigate: (path: string) => void, opts: { header?: boolean } = {}): ContextMenuItem[] {
@@ -79,8 +80,7 @@ export function beaconMenu(beaconId: string, navigate: (path: string) => void, o
     {
       label: 'Copy Beacon ID',
       onClick: () => {
-        void navigator.clipboard?.writeText(beaconId);
-        toast('Beacon ID copied');
+        void copyText(beaconId, 'Beacon ID copied');
       },
     }
   );

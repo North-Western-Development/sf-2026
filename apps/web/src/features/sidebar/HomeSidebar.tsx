@@ -16,6 +16,7 @@ import { openModal, confirmAction } from '../../app/ui';
 import { Avatar, MentionBadge } from '../common/Avatar';
 import { http } from '../../lib/http';
 import { joinCall } from '../voice/session';
+import { copyText } from '../../lib/clipboard';
 
 function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
   return (
@@ -108,7 +109,7 @@ function ConversationRow({ conv }: { conv: Conversation }) {
         },
         { label: 'Close Link', onClick: () => void hide() },
         { separator: true },
-        { label: 'Copy Transmitter ID', onClick: () => void navigator.clipboard?.writeText(u.id) }
+        { label: 'Copy Transmitter ID', onClick: () => void copyText(u.id) }
       );
     } else {
       items.push(
@@ -140,7 +141,7 @@ function ConversationRow({ conv }: { conv: Conversation }) {
             }),
         },
         { separator: true },
-        { label: `Copy ${term('mesh')} ID`, onClick: () => void navigator.clipboard?.writeText(id) }
+        { label: `Copy ${term('mesh')} ID`, onClick: () => void copyText(id) }
       );
     }
     return items;

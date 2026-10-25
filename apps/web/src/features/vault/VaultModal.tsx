@@ -7,6 +7,7 @@ import { uploadToVault } from '../../lib/uploads';
 import { term } from '../../lib/strings';
 import { confirmAction, toast } from '../../app/ui';
 import { DriveBrowser } from './DriveBrowser';
+import { copyText } from '../../lib/clipboard';
 
 type Filter = 'all' | 'image' | 'video' | 'audio' | 'other';
 const FILTERS: Array<{ id: Filter; label: string }> = [
@@ -87,8 +88,8 @@ export function VaultModal({ onClose }: { onClose: () => void }) {
       },
     });
 
-  const copy = (f: VaultFile) => {
-    void navigator.clipboard?.writeText(`${window.location.origin}${linkFor(f)}`);
+  const copy = async (f: VaultFile) => {
+    if (!(await copyText(`${window.location.origin}${linkFor(f)}`))) return;
     setCopied(f.id);
     setTimeout(() => setCopied((c) => (c === f.id ? null : c)), 2000);
   };

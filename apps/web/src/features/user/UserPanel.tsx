@@ -7,12 +7,13 @@ import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { create } from 'zustand';
 import { useStore } from '../../data/store';
 import { setMyPresence, signOut } from '../../data/actions';
-import { openModal, toast } from '../../app/ui';
+import { openModal } from '../../app/ui';
 import { PRESENCE_LABELS } from '../../lib/strings';
 import { userTag } from '../../lib/normalize';
 import { Avatar, PresenceDot } from '../common/Avatar';
 import type { Presence } from '../../lib/types';
 import { useVoice, leaveVoice, toggleCamera, toggleScreenShare } from '../voice/session';
+import { copyText } from '../../lib/clipboard';
 
 /** Local audio device state (mirrored into the voice session when connected). */
 export const useAudioPrefs = create<{ muted: boolean; deafened: boolean }>()(() => ({ muted: false, deafened: false }));
@@ -55,8 +56,7 @@ export function UserPanel() {
     {
       label: 'Copy Tag',
       onClick: () => {
-        void navigator.clipboard?.writeText(userTag(me));
-        toast('Tag copied');
+        void copyText(userTag(me), 'Tag copied');
       },
     },
     { label: 'Log Out', danger: true, onClick: () => void signOut() },
