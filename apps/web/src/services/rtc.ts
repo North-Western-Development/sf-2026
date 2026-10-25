@@ -295,6 +295,20 @@ export class LiveKitRoomManager {
   public getLocalScreenTrack(): LocalVideoTrack | null {
     return this.localScreenTrack;
   }
+
+  /** What a clip records: my Holo-Cast, and the room's audio (my microphone and everyone I hear). */
+  public getClipSources(): { video: MediaStreamTrack | null; audio: MediaStreamTrack[] } {
+    const audio: MediaStreamTrack[] = [];
+    const mic = this.localAudioTrack?.mediaStreamTrack;
+    if (mic && !this.isMuted) audio.push(mic);
+    this.room?.remoteParticipants.forEach((p) =>
+      p.audioTrackPublications.forEach((pub) => {
+        const t = pub.track?.mediaStreamTrack;
+        if (t) audio.push(t);
+      })
+    );
+    return { video: this.localScreenTrack?.mediaStreamTrack ?? null, audio };
+  }
 }
 
 export const rtcManager = new LiveKitRoomManager();

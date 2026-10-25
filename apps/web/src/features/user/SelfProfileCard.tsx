@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Award, ChevronRight, CircleUserRound, Clapperboard, IdCard, Pencil } from 'lucide-react';
-import { ComingSoon, useContextMenu, type ContextMenuItem } from '@subspace/ui';
+import { useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { useStore } from '../../data/store';
 import { setMyPresence } from '../../data/actions';
 import { openModal } from '../../app/ui';
@@ -99,7 +99,14 @@ export function SelfProfileCard({ anchor, onClose }: { anchor: DOMRect; onClose:
               openModal({ kind: 'badges' });
             }}
           />
-          <Placeholder icon={<Clapperboard />} label="Clips" />
+          <CardRow
+            icon={<Clapperboard />}
+            label="Clips"
+            onClick={() => {
+              onClose();
+              openModal({ kind: 'clips' });
+            }}
+          />
         </div>
         <div className="divide-y divide-line rounded-lg bg-void/60 p-1.5">
           <CardRow
@@ -148,21 +155,6 @@ function CardRow({
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {chevron && <ChevronRight className="h-4 w-4" />}
       </button>
-    </div>
-  );
-}
-
-/** A Discord feature Subspace does not have yet. */
-function Placeholder({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="py-0.5 last:pb-0">
-      <ComingSoon label={label} placement="right" className="flex w-full">
-        <span className={rowClass}>
-          <span className="flex w-[18px] justify-center [&>svg]:h-[18px] [&>svg]:w-[18px]">{icon}</span>
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          <ChevronRight className="h-4 w-4" />
-        </span>
-      </ComingSoon>
     </div>
   );
 }

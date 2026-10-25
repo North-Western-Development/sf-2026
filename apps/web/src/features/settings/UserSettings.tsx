@@ -60,6 +60,7 @@ import { Dropdown } from '../common/Dropdown';
 import { KEYBINDS } from '../../lib/keybinds';
 import { AccessibilityTab, LanguageTimeTab, SafetySettings } from './user/DisplayTabs';
 import { MicTest } from './user/VoiceTools';
+import { ClipSettings } from '../voice/ClipsUI';
 import { CurrentPassword, usePasswordField, withPassword } from './user/passwordField';
 import { AccountStandingRow, DecorationPicker, EffectPicker, PhoneRow } from './user/AccountExtras';
 import { Markdown } from '../chat/markdown';
@@ -1385,6 +1386,9 @@ function VoiceTab() {
       </SettingsSection>
       <SettingsSection id="video" title="Video">
         {pick('videoinput', 'videoInput', 'Camera')}
+      </SettingsSection>
+      <SettingsSection id="clips" title="Clips">
+        <ClipSettings />
       </SettingsSection>
     </>
   );

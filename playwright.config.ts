@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Browser tests drive the real UI against an isolated native stack
 // (`node scripts/native/dev.mjs --test-stack`: test database, Redis /1, web on :4173).
-const MEDIA_SPECS = ['**/voice.spec.ts', '**/calls.spec.ts', '**/e2ee-media.spec.ts', '**/soundboard.spec.ts', '**/mic.spec.ts'];
+const MEDIA_SPECS = ['**/voice.spec.ts', '**/calls.spec.ts', '**/e2ee-media.spec.ts', '**/soundboard.spec.ts', '**/mic.spec.ts', '**/activities.spec.ts', '**/clips.spec.ts'];
 
 export default defineConfig({
   testDir: 'tests/ui',

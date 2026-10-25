@@ -20,6 +20,7 @@ import { MobileNavButton } from '../../app/mobile';
 import { SoundboardButton } from './SoundboardButton';
 import { ControlButton } from './ControlButton';
 import { ActivitiesButton, ActivityBanner, ActivityStage } from './ActivityParts';
+import { ClipButton } from './ClipsUI';
 
 function VideoSurface({ track, mirrored }: { track: Track; mirrored?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -157,6 +158,7 @@ export function CommLinkView({ relay }: { relay: Relay }) {
                 )}
                 <SoundboardButton relayId={relay.id} beaconId={relay.beaconId} />
                 <ActivitiesButton relayId={relay.id} />
+                <ClipButton />
                 <ControlButton label="Disconnect" danger onClick={() => void leaveVoice()}>
                   <PhoneOff className="h-5 w-5" />
                 </ControlButton>

@@ -18,6 +18,7 @@ export type ModalState =
   | { kind: 'vault' }
   | { kind: 'badges' }
   | { kind: 'switchAccounts' }
+  | { kind: 'clips' }
   | { kind: 'status' }
   | { kind: 'events'; beaconId: string }
   | { kind: 'beaconPrivacy'; beaconId: string }

@@ -8,6 +8,7 @@ import { NotificationSettingsModal } from '../features/modals/NotificationSettin
 import { ProfileModal } from '../features/profile/ProfilePopout';
 import { BadgesModal } from '../features/profile/BadgesModal';
 import { SwitchAccountsModal } from '../features/user/SwitchAccountsModal';
+import { ClipsModal } from '../features/voice/ClipsUI';
 import { StatusModal } from '../features/user/StatusModal';
 import { EventsModal } from '../features/events/EventsModal';
 import { BeaconPrivacyModal } from '../features/modals/BeaconPrivacyModal';
@@ -107,6 +108,9 @@ export function ModalHost() {
       break;
     case 'switchAccounts':
       content = <SwitchAccountsModal />;
+      break;
+    case 'clips':
+      content = <ClipsModal />;
       break;
     case 'console':
       content = <ConsoleModal staffRank={staffRank} />;
