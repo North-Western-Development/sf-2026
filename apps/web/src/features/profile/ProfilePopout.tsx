@@ -10,6 +10,7 @@ import { channelKey } from '../../lib/types';
 import { http } from '../../lib/http';
 import { memberMenu } from '../members/memberMenu';
 import { useProfile, type FullProfile } from './useProfile';
+import { ProfileActivity } from '../voice/ActivityParts';
 import { ProfileBio, ProfileClearances, ProfileEffectLayer, ProfileHeader, ProfileIdentity, ProfileMeta, ProfileNote, StatusBubble, profileHeading } from './ProfileParts';
 import { Avatar } from '../common/Avatar';
 import { term } from '../../lib/strings';
@@ -115,6 +116,7 @@ function Popout({ userId, beaconId, rect, side }: { userId: string; beaconId?: s
         <ProfileIdentity profile={profile} beaconId={beaconId} maxBadges={8} />
         <ProfileBio profile={profile} beaconId={beaconId} />
         <ProfileClearances profile={profile} />
+        <ProfileActivity userId={userId} beaconId={beaconId} onJoined={closePopout} />
         {!self && <ProfileNote userId={userId} initial={profile.note} />}
         {self ? (
           <button

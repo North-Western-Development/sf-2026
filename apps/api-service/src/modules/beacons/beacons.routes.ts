@@ -855,7 +855,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
     const { id: beaconId } = request.params as { id: string };
     const [member] = await db
-      .select({ allowDms: beaconMembers.allowDms })
+      .select({ allowDms: beaconMembers.allowDms, messageRequests: beaconMembers.messageRequests, shareActivity: beaconMembers.shareActivity, activityJoining: beaconMembers.activityJoining })
       .from(beaconMembers)
       .where(and(eq(beaconMembers.beaconId, beaconId), eq(beaconMembers.transmitterId, token.transmitterId)))
       .limit(1);
@@ -883,6 +883,9 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
             themeAccent: { type: ['string', 'null'] },
             displayNameStyle: { type: ['object', 'null'] },
             allowDms: { type: 'boolean' },
+            messageRequests: { type: 'boolean' },
+            shareActivity: { type: 'boolean' },
+            activityJoining: { type: 'boolean' },
           },
         },
       },
@@ -922,7 +925,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       if (body.themePrimary !== undefined) updates.themePrimary = body.themePrimary;
       if (body.themeAccent !== undefined) updates.themeAccent = body.themeAccent;
       if (body.displayNameStyle !== undefined) updates.displayNameStyle = body.displayNameStyle;
-      if (body.allowDms !== undefined) updates.allowDms = body.allowDms;
+      for (const k of ['allowDms', 'messageRequests', 'shareActivity', 'activityJoining'] as const) if (body[k] !== undefined) updates[k] = body[k];
 
       if (Object.keys(updates).length === 0) {
         return reply.send({ member: actorContext.member });

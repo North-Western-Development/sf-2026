@@ -1,32 +1,47 @@
 import { useEffect, useState } from 'react';
-import { Button, ComingSoon, Modal } from '@subspace/ui';
+import { Button, Modal } from '@subspace/ui';
 import { useStore } from '../../data/store';
 import { closeModal, toast } from '../../app/ui';
 import { http } from '../../lib/http';
 import { term } from '../../lib/strings';
 import { Switch } from '../settings/SettingsLayout';
 
-/** Discord's per-server Privacy Settings, from the beacon's menu. */
+interface Privacy {
+  allowDms: boolean;
+  messageRequests: boolean;
+  shareActivity: boolean;
+  activityJoining: boolean;
+}
+
+/** Discord's per-server Privacy Settings, from the beacon's menu. Each switch saves at once. */
 export function BeaconPrivacyModal({ beaconId }: { beaconId: string }) {
   const name = useStore((s) => s.beacons[beaconId]?.name ?? '');
-  const [allowDms, setAllowDms] = useState<boolean | null>(null);
+  const [p, setP] = useState<Privacy | null>(null);
 
   useEffect(() => {
     http
-      .get<{ privacy: { allowDms: boolean } }>(`/beacons/${beaconId}/members/@me/privacy`)
-      .then((r) => setAllowDms(r.privacy.allowDms))
+      .get<{ privacy: Privacy }>(`/beacons/${beaconId}/members/@me/privacy`)
+      .then((r) => setP(r.privacy))
       .catch((e) => toast((e as Error).message, 'error'));
   }, [beaconId]);
 
-  const saveDms = async (v: boolean) => {
-    setAllowDms(v);
+  const save = async (key: keyof Privacy, v: boolean) => {
+    setP((x) => (x ? { ...x, [key]: v } : x));
     try {
-      await http.patch(`/beacons/${beaconId}/members/@me`, { allowDms: v });
+      await http.patch(`/beacons/${beaconId}/members/@me`, { [key]: v });
     } catch (e) {
-      setAllowDms(!v);
+      setP((x) => (x ? { ...x, [key]: !v } : x));
       toast((e as Error).message, 'error');
     }
   };
+
+  const links = term('link', true).toLowerCase();
+  const beacon = term('beacon').toLowerCase();
+  // Message requests only matter while DMs are allowed; joining only while the activity is shown.
+  const locked = (key: keyof Privacy) => !p || (key === 'messageRequests' && !p.allowDms) || (key === 'activityJoining' && !p.shareActivity);
+  const row = (key: keyof Privacy, label: string, description: string) => (
+    <Switch label={label} description={description} checked={p?.[key] ?? false} disabled={locked(key)} onChange={(v) => void save(key, v)} />
+  );
 
   return (
     <Modal
@@ -40,21 +55,14 @@ export function BeaconPrivacyModal({ beaconId }: { beaconId: string }) {
         </Button>
       }
     >
-      <Switch
-        label={term('link', true)}
-        description={`Allow ${term('link', true).toLowerCase()} from other members of this ${term('beacon').toLowerCase()}. ${term('affiliate', true)} can always reach you.`}
-        checked={allowDms ?? true}
-        disabled={allowDms === null}
-        onChange={(v) => void saveDms(v)}
-      />
-      {/* Discord has these too; nothing behind them yet. */}
-      <ComingSoon className="block w-full">
-        <div className="w-full">
-          <Switch label="Message requests" description={`Filter ${term('link', true).toLowerCase()} from members you may not know.`} checked onChange={() => {}} />
-          <Switch label="Share my activity" description="Share activity information from games and connected apps you use." checked={false} onChange={() => {}} />
-          <Switch label="Activity joining" description={`Allow members to join your activity in this ${term('beacon').toLowerCase()}.`} checked={false} onChange={() => {}} />
-        </div>
-      </ComingSoon>
+      {row('allowDms', term('link', true), `Allow ${links} from other members of this ${beacon}. ${term('affiliate', true)} can always reach you.`)}
+      {row(
+        'messageRequests',
+        'Message requests',
+        `Send first ${links} from members who are not ${term('affiliate', true).toLowerCase()} to Message Requests, where you can accept or ignore them.`
+      )}
+      {row('shareActivity', 'Share my activity', `Show members of this ${beacon} the activity you are in.`)}
+      {row('activityJoining', 'Activity joining', `Let members of this ${beacon} join your activity from your profile.`)}
     </Modal>
   );
 }

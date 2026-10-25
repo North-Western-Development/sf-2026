@@ -102,7 +102,15 @@ export function SelfProfileCard({ anchor, onClose }: { anchor: DOMRect; onClose:
           <Placeholder icon={<Clapperboard />} label="Clips" />
         </div>
         <div className="divide-y divide-line rounded-lg bg-void/60 p-1.5">
-          <Placeholder icon={<CircleUserRound />} label="Switch Accounts" />
+          <CardRow
+            icon={<CircleUserRound />}
+            label="Switch Accounts"
+            chevron
+            onClick={() => {
+              onClose();
+              openModal({ kind: 'switchAccounts' });
+            }}
+          />
           <CardRow
             icon={<IdCard />}
             label="Copy User ID"

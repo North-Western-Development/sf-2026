@@ -289,6 +289,8 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       )
       .limit(1);
 
+    // Everyone else goes through a request here (this is also where a DM turned away by the
+    // recipient's Message Requests is sent).
     const isAuthorizedDM = Boolean(friendship || acceptedRequest);
 
     if (isAuthorizedDM) {

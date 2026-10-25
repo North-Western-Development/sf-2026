@@ -1,4 +1,4 @@
-import { and, eq, or, affiliations, transmissionRequests, beaconMembers, beacons, transmitters } from '@subspace/database';
+import { and, eq, or, affiliations, transmissionRequests, beaconMembers, beacons, transmitters, transmissions, pointToPointLinks } from '@subspace/database';
 
 /** A beacon's Privacy Settings start from the member's default (Data & Privacy). */
 export async function defaultAllowDms(db: any, transmitterId: string): Promise<boolean> {
@@ -7,7 +7,7 @@ export async function defaultAllowDms(db: any, transmitterId: string): Promise<b
 }
 
 export type DmAccess =
-  | { ok: true; via: 'affiliation' | 'request' | 'beacon'; beaconId?: string }
+  | { ok: true; via: 'affiliation' | 'request' | 'beacon'; beaconId?: string; /** Their first DM goes to Message Requests. */ requests?: boolean }
   | { ok: false; code: 'NO_SHARED_BEACON' | 'DMS_DISABLED'; error: string };
 
 export async function areAffiliated(db: any, a: string, b: string): Promise<boolean> {
@@ -48,15 +48,46 @@ export async function dmAccess(db: any, senderId: string, targetId: string): Pro
 
   const mine = await db.select({ beaconId: beaconMembers.beaconId }).from(beaconMembers).where(eq(beaconMembers.transmitterId, senderId));
   const theirs = await db
-    .select({ beaconId: beaconMembers.beaconId, allowDms: beaconMembers.allowDms, dmsPausedUntil: beacons.dmsPausedUntil })
+    .select({ beaconId: beaconMembers.beaconId, allowDms: beaconMembers.allowDms, messageRequests: beaconMembers.messageRequests, dmsPausedUntil: beacons.dmsPausedUntil })
     .from(beaconMembers)
     .innerJoin(beacons, eq(beacons.id, beaconMembers.beaconId))
     .where(eq(beaconMembers.transmitterId, targetId));
   const mineSet = new Set(mine.map((m: any) => m.beaconId));
   const shared = theirs.filter((t: any) => mineSet.has(t.beaconId));
   // A beacon whose admins paused DMs (Security Actions) does not count until the pause ends.
-  const open = shared.find((t: any) => t.allowDms && !(t.dmsPausedUntil && new Date(t.dmsPausedUntil) > new Date()));
-  if (open) return { ok: true, via: 'beacon', beaconId: open.beaconId };
+  const open = shared.filter((t: any) => t.allowDms && !(t.dmsPausedUntil && new Date(t.dmsPausedUntil) > new Date()));
+  // Any open beacon without Message Requests lets the DM straight through; otherwise it is a request.
+  const direct = open.find((t: any) => !t.messageRequests);
+  if (direct) return { ok: true, via: 'beacon', beaconId: direct.beaconId, requests: false };
+  if (open.length) return { ok: true, via: 'beacon', beaconId: open[0].beaconId, requests: true };
   if (shared.length) return { ok: false, code: 'DMS_DISABLED', error: 'This transmitter is not accepting direct links from members of your shared beacons' };
   return { ok: false, code: 'NO_SHARED_BEACON', error: 'Cannot initiate transmission link without sharing a mutual Beacon' };
+}
+
+/** Whether `fromId` has written to `toId` in their DM: a reply to them is no longer a first DM. */
+export async function hasWrittenTo(db: any, fromId: string, toId: string): Promise<boolean> {
+  const [link] = await db
+    .select({ id: pointToPointLinks.id })
+    .from(pointToPointLinks)
+    .where(
+      or(
+        and(eq(pointToPointLinks.transmitter1Id, fromId), eq(pointToPointLinks.transmitter2Id, toId)),
+        and(eq(pointToPointLinks.transmitter1Id, toId), eq(pointToPointLinks.transmitter2Id, fromId))
+      )
+    )
+    .limit(1);
+  if (!link) return false;
+  const [row] = await db
+    .select({ id: transmissions.id })
+    .from(transmissions)
+    .where(and(eq(transmissions.p2pLinkId, link.id), eq(transmissions.transmitterId, fromId)))
+    .limit(1);
+  return !!row;
+}
+
+/** dmAccess, with Message Requests applied: `request` means the DM must go through Requests. */
+export async function dmDelivery(db: any, senderId: string, targetId: string): Promise<DmAccess & { request?: boolean }> {
+  const access = await dmAccess(db, senderId, targetId);
+  if (!access.ok || !access.requests) return access;
+  return { ...access, request: !(await hasWrittenTo(db, targetId, senderId)) };
 }

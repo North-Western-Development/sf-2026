@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { X, Lock, MessageSquare, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff, Headphones, HeadphoneOff, Volume2, Users as UsersIcon } from 'lucide-react';
+import { X, Lock, MessageSquare, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff, Headphones, HeadphoneOff, Volume2 } from 'lucide-react';
 import type { Track } from 'livekit-client';
-import { ComingSoon, Tooltip } from '@subspace/ui';
+import { Tooltip } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, setState } from '../../data/store';
 import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
@@ -19,6 +19,7 @@ import { useUi } from '../../app/ui';
 import { MobileNavButton } from '../../app/mobile';
 import { SoundboardButton } from './SoundboardButton';
 import { ControlButton } from './ControlButton';
+import { ActivitiesButton, ActivityBanner, ActivityStage } from './ActivityParts';
 
 function VideoSurface({ track, mirrored }: { track: Track; mirrored?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -123,11 +124,15 @@ export function CommLinkView({ relay }: { relay: Relay }) {
                 <p className="text-fg-muted">No one is here yet. Transmissions in this {term('commLink')} work without joining.</p>
               </div>
             ) : (
-              <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, Math.ceil(Math.sqrt(participants.length))))}, minmax(0, 1fr))` }}>
-                {participants.map((id) => (
-                  <Tile key={id} userId={id} beaconId={relay.beaconId} />
-                ))}
-              </div>
+              <>
+                <ActivityBanner relayId={relay.id} beaconId={relay.beaconId} joined={joined} />
+                <ActivityStage relayId={relay.id} />
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, Math.ceil(Math.sqrt(participants.length))))}, minmax(0, 1fr))` }}>
+                  {participants.map((id) => (
+                    <Tile key={id} userId={id} beaconId={relay.beaconId} />
+                  ))}
+                </div>
+              </>
             )}
           </div>
 
@@ -151,11 +156,7 @@ export function CommLinkView({ relay }: { relay: Relay }) {
                   </>
                 )}
                 <SoundboardButton relayId={relay.id} beaconId={relay.beaconId} />
-                <ComingSoon label="Activities">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-overlay text-fg">
-                    <UsersIcon className="h-5 w-5" />
-                  </span>
-                </ComingSoon>
+                <ActivitiesButton relayId={relay.id} />
                 <ControlButton label="Disconnect" danger onClick={() => void leaveVoice()}>
                   <PhoneOff className="h-5 w-5" />
                 </ControlButton>

@@ -28,6 +28,7 @@ import { openEncrypted } from './e2ee';
 import { openSignal } from '../lib/e2ee/client';
 import { onRoomKeySignal } from '../features/voice/roomKeys';
 import { loadSounds, onSoundboardPlay, useSounds } from '../features/voice/soundboard';
+import { onActivityEventMessage, onActivityUpdate } from '../features/voice/activities';
 import { invalidateStickers } from '../features/chat/ExpressionPanels';
 import { bumpThread, upsertThread, type ThreadSummary } from '../features/chat/threads';
 import { ackChannel, applyReaction, loadBeacon, loadCalls, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
@@ -287,6 +288,12 @@ const handlers: Record<string, (d: Raw) => void> = {
   },
   SOUNDBOARD_PLAY(d) {
     onSoundboardPlay(d as any);
+  },
+  ACTIVITY_UPDATE(d) {
+    onActivityUpdate(d as any);
+  },
+  ACTIVITY_EVENT(d) {
+    onActivityEventMessage(d as any);
   },
   BEACON_UPDATE(d) {
     const b = toBeacon(d.beacon ?? d);

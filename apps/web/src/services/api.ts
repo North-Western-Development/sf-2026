@@ -109,6 +109,15 @@ const STORAGE = {
   refresh: 'subspace_refresh_token',
   user: 'subspace_user',
 } as const;
+/** Other signed-in accounts on this device (Switch Accounts). Not part of STORAGE: sign-out keeps them. */
+const ACCOUNTS_KEY = 'subspace_accounts';
+export const MAX_ACCOUNTS = 5;
+
+export interface SavedAccount {
+  transmitter: TransmitterProfile;
+  accessToken: string | null;
+  refreshToken: string | null;
+}
 
 const decodeExp = (jwt: string): number => {
   try {
@@ -145,6 +154,8 @@ class SubspaceApiClient {
         this.transmitter = null;
       }
     }
+    // Sessions from before Switch Accounts join the list on first load.
+    if (this.transmitter && !this.savedAccounts().some((a) => a.transmitter.id === this.transmitter!.id)) this.saveCurrentAccount();
   }
 
   public getToken(): string | null {
@@ -178,7 +189,74 @@ class SubspaceApiClient {
     } catch {
       /* storage unavailable: session lives in memory only */
     }
+    this.saveCurrentAccount();
     this.listeners.forEach((l) => l(this.transmitter));
+  }
+
+  // ---- Switch Accounts ------------------------------------------------------
+
+  public savedAccounts(): SavedAccount[] {
+    try {
+      const list = JSON.parse(readStorage(ACCOUNTS_KEY) || '[]');
+      return Array.isArray(list) ? list.filter((a) => a?.transmitter?.id) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private writeAccounts(list: SavedAccount[]) {
+    try {
+      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(list));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Keep the active session in the saved list, with its newest tokens. */
+  private saveCurrentAccount() {
+    if (!this.transmitter) return;
+    const entry: SavedAccount = { transmitter: this.transmitter, accessToken: this.token, refreshToken: this.refreshToken };
+    const list = this.savedAccounts();
+    const i = list.findIndex((a) => a.transmitter.id === entry.transmitter.id);
+    if (i >= 0) list[i] = entry;
+    else list.push(entry);
+    this.writeAccounts(list.slice(-MAX_ACCOUNTS));
+  }
+
+  /** Forget a saved account; its session on the server is ended too. */
+  public async forgetAccount(id: string): Promise<void> {
+    const list = this.savedAccounts();
+    const gone = list.find((a) => a.transmitter.id === id);
+    this.writeAccounts(list.filter((a) => a.transmitter.id !== id));
+    if (gone?.refreshToken && id !== this.transmitter?.id) {
+      await this.postJson(`${API_BASE}/auth/logout`, { refreshToken: gone.refreshToken }).catch(() => {});
+    }
+  }
+
+  /** Make a saved account the active one. The caller reloads the app. */
+  public switchAccount(id: string): boolean {
+    const next = this.savedAccounts().find((a) => a.transmitter.id === id);
+    if (!next || (!next.accessToken && !next.refreshToken)) return false;
+    this.saveCurrentAccount();
+    this.token = next.accessToken;
+    this.refreshToken = next.refreshToken;
+    this.transmitter = next.transmitter;
+    try {
+      if (next.accessToken) localStorage.setItem(STORAGE.access, next.accessToken);
+      else localStorage.removeItem(STORAGE.access);
+      if (next.refreshToken) localStorage.setItem(STORAGE.refresh, next.refreshToken);
+      else localStorage.removeItem(STORAGE.refresh);
+      localStorage.setItem(STORAGE.user, JSON.stringify(next.transmitter));
+    } catch {
+      /* ignore */
+    }
+    return true;
+  }
+
+  /** Add an account: step out of this one (it stays saved and signed in) to reach the login page. */
+  public stepOutForNewAccount() {
+    this.saveCurrentAccount();
+    this.clearSession();
   }
 
   private clearSession() {
@@ -269,6 +347,7 @@ class SubspaceApiClient {
 
   public async logout(): Promise<void> {
     const refreshToken = this.refreshToken;
+    if (this.transmitter) this.writeAccounts(this.savedAccounts().filter((a) => a.transmitter.id !== this.transmitter!.id));
     this.clearSession();
     if (refreshToken) {
       await fetch(`${API_BASE}/auth/logout`, {
@@ -331,6 +410,8 @@ class SubspaceApiClient {
         res = await fetch(url, { ...options, headers: build() });
       }
       if (res.status === 401) {
+        // The session ended (signed out elsewhere, expired): it is no longer one to switch to.
+        if (this.transmitter) this.writeAccounts(this.savedAccounts().filter((x) => x.transmitter.id !== this.transmitter!.id));
         this.clearSession();
         throw new AuthRequiredError();
       }

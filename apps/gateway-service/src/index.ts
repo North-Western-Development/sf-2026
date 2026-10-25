@@ -33,6 +33,8 @@ const CHANNELS = {
 
 /** Redis hash mirroring every session's masked presence, so the API can read it (e.g. member lists). */
 const PRESENCE_HASH_KEY = 'presence';
+/** Redis hash: transmitter id -> the comm-link (relay id) they are connected to. */
+const VOICE_HASH_KEY = 'voice:relay';
 
 export interface Session {
   transmitterId?: string;
@@ -373,6 +375,11 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     };
     deliverVoice(event);
     publish(CHANNELS.voice, event);
+    // Which comm-link each transmitter is in, for the API (activities check it).
+    if (redisReady()) {
+      if (relayId) redisPub!.hset(VOICE_HASH_KEY, sess.transmitterId!, relayId).catch(() => {});
+      else redisPub!.hdel(VOICE_HASH_KEY, sess.transmitterId!).catch(() => {});
+    }
     // Left a call (hung up, switched rooms, or the socket closed): end it if that emptied it.
     if (previous?.callType && previous.callId && !(call && call.id === previous.callId) && !callOccupied(previous.callType, previous.callId)) {
       endCall(previous.callType, previous.callId).catch((err) => console.warn('[Gateway] Ending call failed:', err?.message));

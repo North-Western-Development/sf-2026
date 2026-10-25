@@ -334,6 +334,13 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
       try {
         raw = (await http.post<{ transmission: Raw }>(`/channels/${type}/${id}/transmissions`, body)).transmission;
       } catch (err) {
+        // Their Message Requests are on: the first DM goes to Requests, not into the conversation.
+        if (err instanceof ApiError && err.code === 'MESSAGE_REQUEST_REQUIRED') {
+          await legacySend(key, content);
+          removeMessage(key, optimistic.id);
+          toast('Sent as a message request. It shows here once they accept.', 'success');
+          return;
+        }
         if (!(err instanceof ApiError) || err.status !== 404) throw err;
         raw = (await legacySend(key, content)).transmission;
       }
@@ -344,7 +351,7 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
     await ackChannel(key);
   } catch (err) {
     // AutoMod stops it for good: say why, and do not offer to resend it.
-    if (err instanceof ApiError && err.code === 'AUTOMOD_BLOCKED') {
+    if (err instanceof ApiError && (err.code === 'AUTOMOD_BLOCKED' || err.code === 'TRANSMISSION_REQUEST_PENDING')) {
       removeMessage(key, optimistic.id);
       toast(err.message, 'error');
       return;
@@ -619,4 +626,7 @@ export async function signOut() {
   gateway.disconnect();
   forgetDevice();
   await api.logout();
+  // Another account still signed in on this device takes over (Switch Accounts).
+  const next = api.savedAccounts()[0];
+  if (next && api.switchAccount(next.transmitter.id)) window.location.assign('/channels/@me');
 }

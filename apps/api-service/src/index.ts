@@ -133,6 +133,8 @@ export async function buildApp() {
   await app.register(threadRoutes, { prefix: '/api/v1' });
   const { expressionRoutes } = await import('./modules/expression/expression.routes.js');
   await app.register(expressionRoutes, { prefix: '/api/v1' });
+  const { activityRoutes } = await import('./modules/activities/activities.routes.js');
+  await app.register(activityRoutes, { prefix: '/api/v1' });
   const { beaconExtrasRoutes } = await import('./modules/beacons/extras.routes.js');
   await app.register(beaconExtrasRoutes, { prefix: '/api/v1' });
   const { moderationRoutes } = await import('./modules/moderation/moderation.routes.js');

@@ -7,6 +7,7 @@ import { QuickScanModal } from '../features/modals/QuickScanModal';
 import { NotificationSettingsModal } from '../features/modals/NotificationSettingsModal';
 import { ProfileModal } from '../features/profile/ProfilePopout';
 import { BadgesModal } from '../features/profile/BadgesModal';
+import { SwitchAccountsModal } from '../features/user/SwitchAccountsModal';
 import { StatusModal } from '../features/user/StatusModal';
 import { EventsModal } from '../features/events/EventsModal';
 import { BeaconPrivacyModal } from '../features/modals/BeaconPrivacyModal';
@@ -103,6 +104,9 @@ export function ModalHost() {
       break;
     case 'badges':
       content = <BadgesModal />;
+      break;
+    case 'switchAccounts':
+      content = <SwitchAccountsModal />;
       break;
     case 'console':
       content = <ConsoleModal staffRank={staffRank} />;

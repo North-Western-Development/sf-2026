@@ -198,6 +198,11 @@ export const beaconMembers = pgTable('beacon_members', {
   timeoutUntil: timestamp('timeout_until', { withTimezone: true }),
   /** Privacy Settings for this beacon (Discord's per-server one): other members may DM you. */
   allowDms: boolean('allow_dms').default(true).notNull(),
+  /** First DMs from members who are not affiliates go to Message Requests instead of the DM. */
+  messageRequests: boolean('message_requests').default(false).notNull(),
+  /** Show which activity you are in to this beacon's members, and let them join it. */
+  shareActivity: boolean('share_activity').default(true).notNull(),
+  activityJoining: boolean('activity_joining').default(true).notNull(),
 }, (table) => [
   primaryKey({ columns: [table.beaconId, table.transmitterId] }),
 ]);

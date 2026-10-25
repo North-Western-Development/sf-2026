@@ -62,6 +62,7 @@ export const PERMISSION_GROUPS: Array<{ title: string; items: PermissionMeta[] }
       p('SPEAK_AUDIO', 'Speak', 'Talk in Comm-Links.'),
       p('BROADCAST_HOLO_CAST', 'Video & Holo-Cast', 'Share camera and screen in Comm-Links.'),
       p('USE_SOUNDBOARD', 'Use Soundboard', "Play sounds from this beacon's soundboard in Comm-Links."),
+      p('USE_ACTIVITIES', 'Use Activities', 'Start and join activities, like Watch Together and Whiteboard, in Comm-Links.'),
       p('MUTE_MEMBERS', 'Mute Members', 'Server-mute other members in Comm-Links.'),
       p('MOVE_MEMBERS', 'Move Members', 'Disconnect or move members between Comm-Links.'),
     ],

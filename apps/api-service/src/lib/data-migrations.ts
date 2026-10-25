@@ -39,6 +39,15 @@ const MIGRATIONS: DataMigration[] = [
         .set({ permissions: sql`${clearances.permissions} | ${((1n << 28n) | (1n << 30n)).toString()}::bigint` })
         .where(eq(clearances.position, 0)),
   },
+  {
+    // Use Activities came with activities in comm-links; @everyone has it by default.
+    id: '2026-10-25-activities-bit',
+    run: (db) =>
+      db
+        .update(clearances)
+        .set({ permissions: sql`${clearances.permissions} | ${(1n << 31n).toString()}::bigint` })
+        .where(eq(clearances.position, 0)),
+  },
 ];
 
 export async function runDataMigrations(db: any, log: { info: (...a: any[]) => void; warn: (...a: any[]) => void }) {

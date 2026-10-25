@@ -62,6 +62,7 @@ export const PERMISSIONS = {
   VIEW_AUDIT_LOG: 1n << 27n,         // Read the beacon's audit log
   USE_SOUNDBOARD: 1n << 28n,         // Play soundboard sounds in Comm-Links
   CREATE_THREADS: 1n << 30n,         // Start threads from transmissions
+  USE_ACTIVITIES: 1n << 31n,         // Start and join activities (Watch Together, Whiteboard) in Comm-Links
   ADMINISTRATOR: 1n << 29n,          // 0x20000000 - Bypass all relay permission checks
 } as const;
 
@@ -92,7 +93,8 @@ export const DEFAULT_EVERYONE_PERMISSIONS =
   PERMISSIONS.CHANGE_NICKNAME |
   PERMISSIONS.READ_HISTORY |
   PERMISSIONS.USE_SOUNDBOARD |
-  PERMISSIONS.CREATE_THREADS;
+  PERMISSIONS.CREATE_THREADS |
+  PERMISSIONS.USE_ACTIVITIES;
 
 /**
  * Calculate the effective permission bitfield for a member given their clearances and owner status
@@ -298,7 +300,8 @@ export const RESTRICTED_MASK =
   PERMISSIONS.CHANGE_NICKNAME |
   PERMISSIONS.CREATE_EVENTS |
   PERMISSIONS.USE_SOUNDBOARD |
-  PERMISSIONS.CREATE_THREADS;
+  PERMISSIONS.CREATE_THREADS |
+  PERMISSIONS.USE_ACTIVITIES;
 
 /** Applies a timeout or quarantine to a permission set. Administrators are never restricted (they cannot be timed out). */
 export function restrictPermissions(
