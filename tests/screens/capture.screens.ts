@@ -521,7 +521,7 @@ test('capture every screen', async ({ browser }) => {
     await page.locator('aside button').filter({ hasText: 'Andromeda Station' }).first().click();
     await page.getByRole('menuitem', { name: /Beacon Settings/ }).click();
     await shot(page, 'beacon-settings-overview');
-    for (const tab of ['Clearances', 'Signal Glyphs', 'Members', 'Invites', 'Bans', 'Onboarding']) {
+    for (const tab of ['Clearances', 'Signal Glyphs', 'Invites', 'Bans', 'Onboarding']) {
       await step(`beacon settings ${tab}`, async () => {
         await page.getByRole('dialog').getByRole('button', { name: tab, exact: true }).click();
         await shot(page, `beacon-settings-${tab.toLowerCase().replace(/\s+/g, '-')}`);
@@ -532,9 +532,12 @@ test('capture every screen', async ({ browser }) => {
       });
     }
     await step('relay settings', async () => {
-      await page.getByRole('dialog').getByRole('button', { name: 'General', exact: true }).click();
+      await page.getByRole('dialog').getByRole('navigation').getByRole('button', { name: 'Relays', exact: true }).click();
+      await shot(page, 'beacon-settings-relays');
+      await page.getByRole('dialog').getByRole('button', { name: /^General/ }).click();
       await shot(page, 'beacon-settings-comm-link');
-      await page.getByRole('dialog').getByRole('button', { name: 'general', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: /^All relays/ }).click();
+      await page.getByRole('dialog').getByRole('button', { name: /^general/ }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'permissions' }).click();
       await shot(page, 'beacon-settings-relay-permissions');
     });
@@ -576,6 +579,84 @@ test('capture every screen', async ({ browser }) => {
   });
 
   // ---- Vault, drives, report, console -------------------------------------------------
+  // ---- Account card, status, badges, emoji picker ------------------------------------------
+  await step('account card', async () => {
+    await page.goto(`${base}/${w.generalId}`);
+    await page.getByRole('button', { name: 'Open your profile' }).click();
+    await shot(page, 'account-card');
+    await page.getByRole('dialog', { name: 'Your profile' }).getByRole('button', { name: /custom status/ }).click();
+    await shot(page, 'status-dialog');
+    await page.getByRole('dialog', { name: 'Set your status' }).getByRole('button', { name: /status emoji/i }).click();
+    await shot(page, 'status-emoji-picker');
+    await esc(page);
+    await esc(page);
+    await page.getByRole('button', { name: 'Open your profile' }).click();
+    await page.getByRole('dialog', { name: 'Your profile' }).getByRole('button', { name: 'Badges' }).click();
+    await shot(page, 'badges-dialog');
+    await esc(page);
+  });
+  await step('composer emoji picker', async () => {
+    await page.getByRole('button', { name: 'Select emoji' }).click();
+    await shot(page, 'emoji-picker-composer');
+    await esc(page);
+  });
+
+  // ---- Events, Channels & Roles, Members ----------------------------------------------------
+  await step('events', async () => {
+    const nav = page.getByRole('navigation', { name: 'Relays' });
+    await nav.getByRole('button', { name: /Event/ }).click();
+    await shot(page, 'events-empty');
+    await page.getByRole('dialog').getByRole('button', { name: 'Create Event' }).first().click();
+    await shot(page, 'events-create-location');
+    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByLabel('Event Topic').fill('Veil Nebula survey');
+    await page.getByLabel('Description').fill('Charting the eastern filaments. Bring your star charts.');
+    await shot(page, 'events-create-details');
+    await page.getByRole('button', { name: 'Next' }).click();
+    await shot(page, 'events-create-preview');
+    await page.getByRole('button', { name: 'Create Event' }).click();
+    await page.waitForTimeout(600);
+    await shot(page, 'events-list');
+    await esc(page);
+  });
+  await step('channels and roles', async () => {
+    await call(w.nova, 'PUT', `/beacons/${w.beaconId}/onboarding-questions`, {
+      questions: [
+        {
+          title: 'Which crews do you fly with?',
+          multiple: true,
+          options: [
+            { label: 'Navigation', emoji: '🧭', description: 'Charts, routes and jump plans' },
+            { label: 'Science', emoji: '🔬', description: 'Samples from every moon' },
+            { label: 'Engineering', emoji: '🔧', description: 'Keep the reactor happy' },
+            { label: 'Comms', emoji: '📡', description: 'Night-shift signals' },
+          ],
+        },
+      ],
+    });
+    await page.getByRole('navigation', { name: 'Relays' }).getByRole('button', { name: 'Channels & Roles' }).click();
+    await page.getByRole('checkbox', { name: /Navigation/ }).click();
+    await page.waitForTimeout(400);
+    await shot(page, 'channels-roles-customize');
+    await page.getByRole('button', { name: /^Browse Channels/ }).click();
+    await shot(page, 'channels-roles-browse');
+  });
+  await step('members page', async () => {
+    await page.getByRole('navigation', { name: 'Relays' }).getByRole('button', { name: 'Members' }).click();
+    await page.waitForTimeout(600);
+    await shot(page, 'members-page');
+    await page.getByRole('button', { name: 'Prune' }).click();
+    await shot(page, 'members-prune');
+    await esc(page);
+  });
+  await step('beacon relays settings', async () => {
+    await page.locator('aside button').filter({ hasText: 'Andromeda Station' }).first().click();
+    await page.getByRole('menuitem', { name: /Beacon Settings/ }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Onboarding', exact: true }).click();
+    await shot(page, 'beacon-settings-onboarding-questions');
+    await esc(page);
+  });
+
   await step('vault', async () => {
     await page.goto('/channels/@me');
     await page.getByRole('complementary').getByRole('button', { name: 'Subspace Vault' }).click();

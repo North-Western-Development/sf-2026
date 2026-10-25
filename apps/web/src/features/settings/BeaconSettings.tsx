@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
 import {
+  ChevronLeft,
+  Hash,
   ArrowDown,
   ArrowUp,
   AudioLines,
@@ -36,13 +38,15 @@ import { pickImage, uploadMedia } from '../../lib/media';
 import { toBeacon, toClearance, toRelay, userTag } from '../../lib/normalize';
 import { PERMISSION_GROUPS } from '../../lib/permissionMeta';
 import { term } from '../../lib/strings';
-import type { Clearance, Member, Relay } from '../../lib/types';
+import type { Clearance, Member } from '../../lib/types';
 import { closeModal, confirmAction, toast } from '../../app/ui';
 import { SettingsLayout, SettingsHeader, SettingsTitle, Field, Switch, SaveBar, useWideSettingsPage } from './SettingsLayout';
 import { RelayIcon } from '../sidebar/BeaconSidebar';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { loadGlyphs, type Glyph } from '../chat/EmojiPicker';
+import { RelaysTab } from './beacon/RelaysTab';
+import { OnboardingQuestionsEditor } from './beacon/OnboardingQuestionsEditor';
 
 // Stable fallbacks: a fresh {} / [] inside a selector would re-render forever.
 const EMPTY_MEMBERS: Record<string, Member> = {};
@@ -348,7 +352,7 @@ function ClearancesTab({ beaconId }: { beaconId: string }) {
 
 type Overwrite = { targetId: string; targetType: 'clearance' | 'transmitter'; allow: string; deny: string };
 
-function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) {
+function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: string; onBack: () => void }) {
   useWideSettingsPage();
   const navigate = useNavigate();
   const relay = useStore((s) => s.relays[relayId]);
@@ -407,6 +411,9 @@ function RelayTab({ beaconId, relayId }: { beaconId: string; relayId: string }) 
 
   return (
     <>
+      <button type="button" onClick={onBack} className="mb-3 flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
+        <ChevronLeft className="h-4 w-4" /> All {term('relay', true).toLowerCase()}
+      </button>
       <SettingsTitle>
         <span className="flex items-center gap-2">
           <RelayIcon type={relay.type} className="h-5 w-5" /> {relay.name}
@@ -759,7 +766,7 @@ function OnboardingTab({ beaconId }: { beaconId: string }) {
       <Button onClick={save} disabled={rules === (beacon.rulesText ?? '')}>
         Save Rules
       </Button>
-      <p className="mt-6 text-sm text-fg-subtle">Onboarding questions and starter {term('clearance', true).toLowerCase()} are coming soon.</p>
+      <OnboardingQuestionsEditor beaconId={beaconId} />
     </>
   );
 }
@@ -771,7 +778,6 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
   const beacon = useStore((s) => s.beacons[beaconId]);
   const perms = useStore((s) => beaconPermissions(s, beaconId));
   const isOwner = useStore((s) => s.beacons[beaconId]?.ownerId === s.me?.id);
-  const relays = useStore(useShallow((s) => (s.relayIdsByBeacon[beaconId] ?? []).map((id) => s.relays[id]).filter((r): r is Relay => !!r && r.type !== 'category')));
   const [tab, setTab] = useState(initialTab ?? 'overview');
 
   useEffect(() => {
@@ -780,7 +786,7 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
   if (!beacon) return null;
 
   const manageBeacon = can(perms, PERMISSIONS.MANAGE_BEACON);
-  const relayTabs = can(perms, PERMISSIONS.MANAGE_RELAYS) ? relays.map((r) => ({ id: `relay:${r.id}`, icon: <RelayIcon type={r.type} />, label: r.name })) : [];
+  const manageRelays = can(perms, PERMISSIONS.MANAGE_RELAYS);
 
   return (
     <SettingsLayout
@@ -796,7 +802,8 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           action={<span className="block text-xs text-fg-subtle">{term('beacon')} Settings</span>}
         />
       }
-      active={tab}
+      // A relay's own page sits under the Relays entry.
+      active={tab.startsWith('relay:') ? 'relays' : tab}
       onSelect={setTab}
       onClose={closeModal}
       sections={[
@@ -805,17 +812,25 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           items: [
             ...(manageBeacon ? [{ id: 'overview', icon: <Info />, label: 'Overview' }] : []),
             ...(can(perms, PERMISSIONS.MANAGE_CLEARANCES) ? [{ id: 'clearances', icon: <ShieldCheck />, label: term('clearance', true) }] : []),
+            ...(manageRelays ? [{ id: 'relays', icon: <Hash />, label: term('relay', true) }] : []),
             ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ id: 'glyphs', icon: <Smile />, label: term('glyph', true) }] : []),
             { id: 'stickers', icon: <Sticker />, label: 'Stickers', comingSoon: true },
             { id: 'soundboard', icon: <AudioLines />, label: 'Soundboard', comingSoon: true },
             { id: 'widget', icon: <LayoutGrid />, label: 'Widget', comingSoon: true },
           ],
         },
-        ...(relayTabs.length ? [{ heading: term('relay', true), items: relayTabs }] : []),
         {
           heading: 'People',
           items: [
-            { id: 'members', icon: <Users />, label: 'Members' },
+            {
+              id: 'members',
+              icon: <Users />,
+              label: 'Members',
+              onClick: () => {
+                closeModal();
+                navigate(`/channels/${beaconId}/member-safety`);
+              },
+            },
             ...(can(perms, PERMISSIONS.CREATE_INVITES) ? [{ id: 'invites', icon: <Link2 />, label: 'Invites' }] : []),
             ...(can(perms, PERMISSIONS.BAN_MEMBERS) ? [{ id: 'bans', icon: <Gavel />, label: 'Bans' }] : []),
           ],
@@ -872,7 +887,8 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
       {tab === 'overview' && manageBeacon && <OverviewTab beaconId={beaconId} />}
       {tab === 'clearances' && <ClearancesTab beaconId={beaconId} />}
       {tab === 'glyphs' && <GlyphsTab beaconId={beaconId} />}
-      {tab.startsWith('relay:') && <RelayTab key={tab} beaconId={beaconId} relayId={tab.slice(6)} />}
+      {tab === 'relays' && <RelaysTab beaconId={beaconId} onOpen={(id) => setTab(`relay:${id}`)} />}
+      {tab.startsWith('relay:') && <RelayTab key={tab} beaconId={beaconId} relayId={tab.slice(6)} onBack={() => setTab('relays')} />}
       {tab === 'members' && <MembersTab beaconId={beaconId} />}
       {tab === 'invites' && <InvitesTab beaconId={beaconId} />}
       {tab === 'bans' && <BansTab beaconId={beaconId} />}

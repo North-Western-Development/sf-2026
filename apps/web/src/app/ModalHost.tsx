@@ -8,6 +8,8 @@ import { NotificationSettingsModal } from '../features/modals/NotificationSettin
 import { ProfileModal } from '../features/profile/ProfilePopout';
 import { BadgesModal } from '../features/profile/BadgesModal';
 import { StatusModal } from '../features/user/StatusModal';
+import { EventsModal } from '../features/events/EventsModal';
+import { CreateEventModal } from '../features/events/CreateEventModal';
 import { UserSettings } from '../features/settings/UserSettings';
 import { BeaconSettings } from '../features/settings/BeaconSettings';
 import { VaultModal } from '../features/vault/VaultModal';
@@ -78,6 +80,12 @@ export function ModalHost() {
       );
       break;
     }
+    case 'events':
+      content = <EventsModal beaconId={modal.beaconId} />;
+      break;
+    case 'createEvent':
+      content = <CreateEventModal beaconId={modal.beaconId} eventId={modal.eventId} />;
+      break;
     case 'status':
       content = <StatusModal />;
       break;

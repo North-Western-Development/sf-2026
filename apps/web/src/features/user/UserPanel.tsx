@@ -4,27 +4,13 @@ import { Headphones, HeadphoneOff, Mic, MicOff, MonitorUp, PhoneOff, Settings, V
 import { useNavigate } from 'react-router';
 import { useShallow } from 'zustand/react/shallow';
 import { Tooltip } from '@subspace/ui';
-import { create } from 'zustand';
 import { useStore } from '../../data/store';
 import { openModal } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
 import { useVoice, leaveVoice, toggleCamera, toggleScreenShare } from '../voice/session';
+import { useAudioPrefs, toggleMute, toggleDeafen } from '../voice/audioPrefs';
 import { SelfProfileCard } from './SelfProfileCard';
 import { prefetchProfile } from '../profile/useProfile';
-
-/** Local audio device state (mirrored into the voice session when connected). */
-export const useAudioPrefs = create<{ muted: boolean; deafened: boolean }>()(() => ({ muted: false, deafened: false }));
-
-export function toggleMute() {
-  const { muted, deafened } = useAudioPrefs.getState();
-  // Unmuting while deafened also undeafens (Discord behaviour).
-  if (muted && deafened) useAudioPrefs.setState({ muted: false, deafened: false });
-  else useAudioPrefs.setState({ muted: !muted });
-}
-export function toggleDeafen() {
-  const { deafened } = useAudioPrefs.getState();
-  useAudioPrefs.setState(deafened ? { deafened: false, muted: false } : { deafened: true, muted: true });
-}
 
 
 export function UserPanel() {

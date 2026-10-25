@@ -63,6 +63,13 @@ export const PERMISSION_GROUPS: Array<{ title: string; items: PermissionMeta[] }
     ],
   },
   {
+    title: 'Events Permissions',
+    items: [
+      p('CREATE_EVENTS', 'Create Events', 'Schedule events, and edit or cancel the ones they created.', false),
+      p('MANAGE_EVENTS', 'Manage Events', "Edit, start, end, and cancel anyone's events.", false),
+    ],
+  },
+  {
     title: 'Advanced Permissions',
     items: [
       p('ADMINISTRATOR', 'Administrator', 'Every permission, bypassing relay overrides. This is a dangerous permission to grant.', false),

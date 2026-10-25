@@ -1,3 +1,4 @@
+import { loadEvents, loadRelayPrefs } from './community';
 import { http, optional, ApiError } from '../lib/http';
 import {
   toBeacon,
@@ -193,6 +194,9 @@ async function fetchBeacon(beaconId: string): Promise<void> {
     optional(http.get<{ clearances: Raw[] }>(`/beacons/${beaconId}/clearances`), { clearances: [] }),
     optional(http.get<{ members: Raw[] }>(`/beacons/${beaconId}/members`), { members: [] }),
   ]);
+  // My sidebar choices and the beacon's events load alongside; neither blocks the beacon.
+  void loadRelayPrefs(beaconId);
+  void loadEvents(beaconId);
   const relays = relaysRes.relays.map(toRelay);
   const members = membersRes.members.map((m) => toMember(m, beaconId));
   rememberUsers(members.map((m) => m.user));

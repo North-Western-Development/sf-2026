@@ -29,6 +29,8 @@ import { openSignal } from '../lib/e2ee/client';
 import { onRoomKeySignal } from '../features/voice/roomKeys';
 import { ackChannel, applyReaction, loadBeacon, loadCalls, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
+import { removeEvent, upsertEvent } from './community';
+import { toast } from '../app/ui';
 
 type Raw = Record<string, any>;
 
@@ -133,6 +135,14 @@ function onTransmissionCreate(d: Raw) {
 }
 
 const handlers: Record<string, (d: Raw) => void> = {
+  EVENT_UPSERT(d) {
+    const prev = upsertEvent(d.event);
+    // Interested people hear when it starts.
+    if (prev?.meInterested && prev.status === 'scheduled' && d.event.status === 'active') toast(`${d.event.name} is starting now`, 'success');
+  },
+  EVENT_DELETE(d) {
+    removeEvent(d.beaconId, d.eventId);
+  },
   READY(d) {
     handlers.RELATIONSHIPS_REFRESH(d);
     // Catch up on anything sent between the REST load (or a dropped connection) and this READY.

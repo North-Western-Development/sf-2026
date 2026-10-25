@@ -6,7 +6,7 @@ import { PERMISSIONS } from '@subspace/constants';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 
 /** Permission bits that onboarding self-selection may never grant. */
-const ELEVATED_PERMISSIONS =
+export const ELEVATED_PERMISSIONS =
   PERMISSIONS.ADMINISTRATOR |
   PERMISSIONS.MANAGE_BEACON |
   PERMISSIONS.MANAGE_RELAYS |

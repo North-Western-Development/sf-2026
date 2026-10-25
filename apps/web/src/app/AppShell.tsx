@@ -13,6 +13,8 @@ import { RelayRoute } from '../features/chat/RelayRoute';
 import { DirectRoute } from '../features/chat/DirectRoute';
 import { DiscoverView } from '../features/discover/DiscoverView';
 import { InviteRoute } from '../features/invite/InviteRoute';
+import { MembersPage } from '../features/community/MembersPage';
+import { ChannelsRolesPage } from '../features/community/ChannelsRolesPage';
 import { ModalHost } from './ModalHost';
 import { ProfilePopoutHost } from '../features/profile/ProfilePopout';
 import { Toasts } from './Toasts';
@@ -154,6 +156,8 @@ export function AppShell() {
           </Route>
           <Route path="/channels/:beaconId" element={<Layout sidebar={<BeaconSidebar />} />}>
             <Route index element={<BeaconIndex />} />
+            <Route path="member-safety" element={<MembersPage />} />
+            <Route path="channels-roles" element={<ChannelsRolesPage />} />
             <Route path=":relayId" element={<RelayRoute />} />
             <Route path=":relayId/threads/:threadId" element={<RelayRoute />} />
           </Route>

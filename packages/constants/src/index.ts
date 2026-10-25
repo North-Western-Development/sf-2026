@@ -56,6 +56,8 @@ export const PERMISSIONS = {
   MUTE_MEMBERS: 1n << 21n,           // Server-mute members in Comm-Links
   MOVE_MEMBERS: 1n << 22n,           // Move/disconnect members in Comm-Links
   PIN_TRANSMISSIONS: 1n << 23n,      // Pin/unpin transmissions
+  CREATE_EVENTS: 1n << 24n,          // Schedule events; edit or cancel your own
+  MANAGE_EVENTS: 1n << 25n,          // Edit, start, end or cancel anyone's events
   ADMINISTRATOR: 1n << 29n,          // 0x20000000 - Bypass all relay permission checks
 } as const;
 

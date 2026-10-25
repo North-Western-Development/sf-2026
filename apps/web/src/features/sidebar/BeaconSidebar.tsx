@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { clsx } from 'clsx';
 import {
+  CalendarDays,
+  ListChecks,
+  Users,
   ChevronDown,
   ChevronRight,
   Hash,
@@ -20,7 +23,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../data/store';
 import { channelIndicator } from '../../data/selectors';
 import { loadBeacon } from '../../data/actions';
-import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
+import { beaconPermissions, relayPermissions, can, PERMISSIONS } from '../../data/permissions';
+import { useCommunity } from '../../data/community';
 import { channelKey, type Relay } from '../../lib/types';
 import { openModal, useUi, rememberRelay } from '../../app/ui';
 import { MentionBadge, Avatar } from '../common/Avatar';
@@ -186,6 +190,38 @@ function Band({ band, relays }: { band: Relay; relays: Relay[] }) {
   );
 }
 
+/** Events, Channels & Roles and (for moderators) Members, above the relay list as in Discord. */
+function CommunityLinks({ beaconId }: { beaconId: string }) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const events = useCommunity((s) => s.events[beaconId]);
+  const perms = useStore((s) => beaconPermissions(s, beaconId));
+  const moderator = [PERMISSIONS.KICK_MEMBERS, PERMISSIONS.BAN_MEMBERS, PERMISSIONS.MANAGE_CLEARANCES, PERMISSIONS.MANAGE_NICKNAMES].some((p) => can(perms, p));
+  const live = events?.some((e) => e.status === 'active');
+  const row = (active: boolean) =>
+    clsx('mx-2 flex h-8 w-[calc(100%-16px)] items-center gap-2 rounded-md px-2 text-left text-[15px] font-medium', active ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg');
+  const base = `/channels/${beaconId}`;
+  return (
+    <div className="mb-3 space-y-px border-b border-line pb-3">
+      <button type="button" onClick={() => openModal({ kind: 'events', beaconId })} className={row(false)}>
+        <CalendarDays className="h-5 w-5 shrink-0" />
+        <span className="flex-1">{events?.length ? `${events.length} Event${events.length === 1 ? '' : 's'}` : 'Events'}</span>
+        {live && <span className="rounded-full bg-online px-1.5 text-[10px] font-bold uppercase leading-4 text-void">Live</span>}
+      </button>
+      <button type="button" onClick={() => navigate(`${base}/channels-roles`)} aria-current={pathname === `${base}/channels-roles` ? 'page' : undefined} className={row(pathname === `${base}/channels-roles`)}>
+        <ListChecks className="h-5 w-5 shrink-0" />
+        <span className="flex-1">Channels &amp; Roles</span>
+      </button>
+      {moderator && (
+        <button type="button" onClick={() => navigate(`${base}/member-safety`)} aria-current={pathname === `${base}/member-safety` ? 'page' : undefined} className={row(pathname === `${base}/member-safety`)}>
+          <Users className="h-5 w-5 shrink-0" />
+          <span className="flex-1">Members</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function BeaconSidebar() {
   const { beaconId = '', relayId } = useParams();
   const navigate = useNavigate();
@@ -203,16 +239,23 @@ export function BeaconSidebar() {
     if (relayId) rememberRelay(beaconId, relayId);
   }, [beaconId, relayId]);
 
+  const hidden = useCommunity((s) => s.prefs[beaconId]?.hiddenRelayIds);
   const { loose, bands } = useMemo(() => {
+    // Relays I hid in Browse Channels stay out of the list, except the one I am looking at.
+    const mine = new Set((hidden ?? []).filter((id) => id !== relayId));
     const all = (relayIds ?? []).map((id) => relaysById[id]).filter((r): r is Relay => !!r && !r.isHidden);
+    const shown = all.filter((r) => r.type === 'category' || !mine.has(r.id));
     const byPos = (a: Relay, b: Relay) => a.position - b.position || a.name.localeCompare(b.name);
     const bandList = all.filter((r) => r.type === 'category').sort(byPos);
     const bandIds = new Set(bandList.map((b) => b.id));
     return {
-      loose: all.filter((r) => r.type !== 'category' && (!r.parentId || !bandIds.has(r.parentId))).sort(byPos),
-      bands: bandList.map((band) => ({ band, relays: all.filter((r) => r.parentId === band.id && r.type !== 'category').sort(byPos) })),
+      loose: shown.filter((r) => r.type !== 'category' && (!r.parentId || !bandIds.has(r.parentId))).sort(byPos),
+      bands: bandList
+        .map((band) => ({ band, relays: shown.filter((r) => r.parentId === band.id && r.type !== 'category').sort(byPos), had: all.some((r) => r.parentId === band.id) }))
+        // A band whose relays are all hidden disappears; an empty band still shows.
+        .filter((b) => b.relays.length || !b.had),
     };
-  }, [relayIds, relaysById]);
+  }, [relayIds, relaysById, hidden, relayId]);
 
   if (!beacon) return null;
 
@@ -240,6 +283,7 @@ export function BeaconSidebar() {
           </div>
         ) : (
           <>
+            <CommunityLinks beaconId={beaconId} />
             <div className="space-y-px">
               {loose.map((r) => (
                 <RelayRow key={r.id} relay={r} />

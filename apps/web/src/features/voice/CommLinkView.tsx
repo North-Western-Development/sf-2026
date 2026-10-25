@@ -10,7 +10,7 @@ import { channelKey, type Relay } from '../../lib/types';
 import { resolveName } from '../../lib/normalize';
 import { term } from '../../lib/strings';
 import { useVoice, joinVoice, leaveVoice, toggleCamera, toggleScreenShare } from './session';
-import { useAudioPrefs, toggleMute, toggleDeafen } from '../user/UserPanel';
+import { useAudioPrefs, toggleMute, toggleDeafen } from './audioPrefs';
 import { Avatar } from '../common/Avatar';
 import { MessageList } from '../chat/MessageList';
 import { Composer } from '../chat/Composer';

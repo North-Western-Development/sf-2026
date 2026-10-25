@@ -27,3 +27,18 @@ export const GROUP_WINDOW_MS = 7 * 60 * 1000;
 
 export const formatBytes = (n: number) =>
   n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`;
+
+const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+/** "22 days ago", "3 months ago", "5 years ago" (Discord's Members table style). */
+export function formatAgo(iso: string, now = Date.now()): string {
+  const s = (new Date(iso).getTime() - now) / 1000;
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ['year', 31_536_000],
+    ['month', 2_592_000],
+    ['day', 86_400],
+    ['hour', 3_600],
+    ['minute', 60],
+  ];
+  for (const [unit, size] of units) if (Math.abs(s) >= size) return RELATIVE.format(Math.round(s / size), unit);
+  return RELATIVE.format(0, 'minute');
+}

@@ -9,7 +9,7 @@ import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types'
 import { term } from '../../lib/strings';
 import { HeaderButton } from '../chat/ChannelView';
 import { Avatar } from '../common/Avatar';
-import { useAudioPrefs, toggleMute, toggleDeafen } from '../user/UserPanel';
+import { useAudioPrefs, toggleMute, toggleDeafen } from './audioPrefs';
 import { Tile, ControlButton } from './CommLinkView';
 import { useVoice, joinCall, leaveVoice, declineCall, ringAgain, toggleCamera, toggleScreenShare } from './session';
 

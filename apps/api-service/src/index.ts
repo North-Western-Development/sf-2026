@@ -121,6 +121,12 @@ export async function buildApp() {
 
   const { beaconRoutes } = await import('./modules/beacons/beacons.routes.js');
   await app.register(beaconRoutes, { prefix: '/api/v1/beacons' });
+  const { memberSafetyRoutes } = await import('./modules/members/member-safety.routes.js');
+  await app.register(memberSafetyRoutes, { prefix: '/api/v1/beacons' });
+  const { communityRoutes } = await import('./modules/community/community.routes.js');
+  await app.register(communityRoutes, { prefix: '/api/v1/beacons' });
+  const { eventRoutes } = await import('./modules/events/events.routes.js');
+  await app.register(eventRoutes, { prefix: '/api/v1/beacons' });
 
   const { clearanceRoutes } = await import('./modules/clearances/clearances.routes.js');
   await app.register(clearanceRoutes, { prefix: '/api/v1/beacons/:id/clearances' });

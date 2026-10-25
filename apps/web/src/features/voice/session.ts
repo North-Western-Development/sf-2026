@@ -6,7 +6,7 @@ import { api } from '../../services/api';
 import { http } from '../../lib/http';
 import { parseChannelKey, type ChannelKey } from '../../lib/types';
 import { getState } from '../../data/store';
-import { useAudioPrefs } from '../user/UserPanel';
+import { useAudioPrefs } from './audioPrefs';
 import { toast } from '../../app/ui';
 import { playPing } from '../../data/notifications';
 import { ensureDevice } from '../../lib/e2ee/client';

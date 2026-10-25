@@ -146,6 +146,11 @@ export const beaconMembers = pgTable('beacon_members', {
     colors: string[];
   }>(),
   joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+  /** How they joined: 'invite' | 'discovery' | 'owner'; null for members from before this was recorded. */
+  joinMethod: text('join_method'),
+  /** The invite code used, kept after the invite itself is revoked. */
+  joinInviteCode: text('join_invite_code'),
+  invitedBy: uuid('invited_by'),
 }, (table) => [
   primaryKey({ columns: [table.beaconId, table.transmitterId] }),
 ]);

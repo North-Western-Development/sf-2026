@@ -97,6 +97,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         beaconId: newBeacon.id,
         transmitterId: token.transmitterId,
         hasCompletedOnboarding: true,
+        joinMethod: 'owner',
         clearanceIds: [],
       })
       .returning();
@@ -381,6 +382,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         transmitterId: token.transmitterId,
         hasCompletedOnboarding: false,
         clearanceIds: [],
+        joinMethod: 'discovery',
       })
       .returning();
 

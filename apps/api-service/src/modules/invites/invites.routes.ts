@@ -271,6 +271,9 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         transmitterId: token.transmitterId,
         hasCompletedOnboarding: false,
         clearanceIds: [],
+        joinMethod: 'invite',
+        joinInviteCode: invite.code,
+        invitedBy: invite.inviterId,
       });
       requiresOnboarding = true;
 
