@@ -19,6 +19,8 @@ export interface ModalProps {
   /** Prevent closing via Escape / backdrop click. */
   dismissible?: boolean;
   className?: string;
+  /** Accessible name when the dialog draws its own heading instead of using title. */
+  ariaLabel?: string;
 }
 
 const WIDTHS = {
@@ -52,6 +54,7 @@ export const Modal: React.FC<ModalProps> = ({
   hideCloseButton = false,
   dismissible = true,
   className,
+  ariaLabel,
 }) => {
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -121,6 +124,7 @@ export const Modal: React.FC<ModalProps> = ({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
+        aria-label={title ? undefined : ariaLabel}
         aria-labelledby={title ? `${id}-title` : undefined}
         aria-describedby={description ? `${id}-desc` : undefined}
         tabIndex={-1}

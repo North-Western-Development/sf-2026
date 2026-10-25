@@ -349,7 +349,7 @@ describe('Phase 9: Command Console, Moderation & Commendations E2E Suite', () =>
       const deck = deckRes.json().deck;
       const staffInsignia = deck.find((b: any) => b.criteriaType === 'staff');
       expect(staffInsignia).toBeDefined();
-      expect(staffInsignia.code).toBe('STAFF_COMMAND');
+      expect(staffInsignia.code).toBe('STAFF');
       expect(staffInsignia.isVisible).toBe(true);
 
       // Attempt to hide the staff insignia

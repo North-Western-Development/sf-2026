@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   pgTable,
+  index,
   text,
   timestamp,
   boolean,
@@ -318,7 +319,10 @@ export const transmissions = pgTable('transmissions', {
   type: text('type').default('default').notNull(), // 'default' | 'reply' | 'system_join' | 'system_pin'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  // Badge checks count a transmitter's transmissions.
+  index('transmissions_transmitter_idx').on(table.transmitterId),
+]);
 
 /**
  * Commendations (Badges)

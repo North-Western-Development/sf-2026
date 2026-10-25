@@ -5,7 +5,7 @@ test.describe('Shell layout', () => {
   test('the user island spans the beacon rail and the sidebar, pinned to the bottom', async ({ page, me }) => {
     await signIn(page, me);
     const rail = await page.getByRole('navigation', { name: 'Beacons' }).boundingBox();
-    const island = await page.getByRole('button', { name: 'Set status' }).locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]').boundingBox();
+    const island = await page.getByRole('button', { name: 'Open your profile' }).locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]').boundingBox();
     const sidebar = await page.locator('aside').first().boundingBox();
     const viewport = page.viewportSize()!;
     expect(rail && island && sidebar).toBeTruthy();

@@ -12,6 +12,7 @@ import {
   transmissions,
   eq,
   and,
+  statsKey,
 } from '@subspace/database';
 import { Redis } from 'ioredis';
 
@@ -47,6 +48,8 @@ export interface Session {
   isMuted?: boolean;
   isDeafened?: boolean;
   isSpeaking?: boolean;
+  /** When this session joined voice (ms), for the voice-time badges. */
+  voiceSince?: number | null;
   /** Transmitters allowed to observe this session's presence, and whose presence it may observe. */
   peers: Set<string>;
   /** Beacons this transmitter belongs to; scopes voice-state visibility. */
@@ -115,6 +118,8 @@ export interface GatewayOptions {
   resolver?: GatewayResolver;
   /** Disable Redis entirely (single-instance / tests). */
   redis?: boolean;
+  /** Where time spent in voice goes (default: the transmitter's Redis stats, for badges). */
+  recordVoiceMinutes?: (transmitterId: string, minutes: number) => void;
 }
 
 const maskPresence = (p: PresenceState): PresenceState =>
@@ -130,6 +135,20 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
   const knownPresence = new Map<string, PresenceState>();
 
   let redisPub: Redis | null = null;
+
+  /** Starts or stops this session's voice clock; stopping adds the time to the transmitter's stats. */
+  const trackVoiceTime = (session: Session, inVoice: boolean) => {
+    if (inVoice) {
+      session.voiceSince ??= Date.now();
+      return;
+    }
+    if (!session.voiceSince || !session.transmitterId) return;
+    const minutes = (Date.now() - session.voiceSince) / 60_000;
+    session.voiceSince = null;
+    if (minutes <= 0) return;
+    if (options.recordVoiceMinutes) options.recordVoiceMinutes(session.transmitterId, minutes);
+    else void redisPub?.hincrbyfloat(statsKey(session.transmitterId), 'voiceMinutes', minutes).catch(() => {});
+  };
   let redisSub: Redis | null = null;
   const redisReady = () => !!redisPub && (redisPub as any).status === 'ready';
 
@@ -507,6 +526,7 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
         session.isMuted = !!is_muted;
         session.isDeafened = !!is_deafened;
         session.isSpeaking = !!is_speaking;
+        trackVoiceTime(session, !!(session.voiceRelayId || session.voiceCall));
         broadcastVoiceStateUpdate(session, session.voiceRelayId ?? null, beaconId);
         return;
       }
@@ -526,6 +546,7 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       clearTimeout(authTimeout);
       if (!session?.transmitterId || !session.isAuthenticated) return;
 
+      trackVoiceTime(session, false);
       if (session.voiceRelayId || session.voiceCall) {
         session.isMuted = session.isDeafened = session.isSpeaking = false;
         session.voiceCall = null;

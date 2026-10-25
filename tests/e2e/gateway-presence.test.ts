@@ -8,6 +8,8 @@ describe('Gateway & Ghost Mode Presence Suite', () => {
   const TEST_PORT = 3999;
   const JWT_SECRET = getJwtSecret();
   let serverInstance: ReturnType<typeof createGatewayServer>;
+  /** Voice time the gateway reports for the badges. */
+  const voiceTime: Array<[string, number]> = [];
 
   // transmitter-a and transmitter-b share a beacon; outsider shares nothing with anyone.
   const resolver: GatewayResolver = {
@@ -23,7 +25,7 @@ describe('Gateway & Ghost Mode Presence Suite', () => {
   };
 
   beforeAll(async () => {
-    serverInstance = createGatewayServer(TEST_PORT, { redis: false, resolver });
+    serverInstance = createGatewayServer(TEST_PORT, { redis: false, resolver, recordVoiceMinutes: (id, minutes) => voiceTime.push([id, minutes]) });
   });
 
   afterAll(async () => {
@@ -224,6 +226,30 @@ describe('Gateway & Ghost Mode Presence Suite', () => {
     expect(bVoice.map((m) => m.d.transmitter_id)).toEqual(['transmitter-a']);
     expect(outsider.messages.some((m) => m.t === 'VOICE_STATE_UPDATE')).toBe(false);
     [a, b, outsider].forEach((c) => c.ws.close());
+  });
+
+  it('records time spent in voice once the session leaves, counting moves between relays and calls as one stretch', async () => {
+    await settle(); // sockets from earlier tests finish closing (and recording) first
+    voiceTime.length = 0;
+    const a = await connect('transmitter-a');
+    a.ws.send(JSON.stringify({ op: GATEWAY_OPCODES.VOICE_STATE_UPDATE, d: { relay_id: 'voice-1' } }));
+    await settle();
+    a.ws.send(JSON.stringify({ op: GATEWAY_OPCODES.VOICE_STATE_UPDATE, d: { call_type: 'link', call_id: 'dm-1' } }));
+    await settle();
+    expect(voiceTime).toEqual([]);
+    a.ws.send(JSON.stringify({ op: GATEWAY_OPCODES.VOICE_STATE_UPDATE, d: {} }));
+    await settle();
+    expect(voiceTime).toHaveLength(1);
+    expect(voiceTime[0][0]).toBe('transmitter-a');
+    expect(voiceTime[0][1]).toBeGreaterThan(0);
+    expect(voiceTime[0][1]).toBeLessThan(1);
+
+    // Disconnecting while in voice records too.
+    a.ws.send(JSON.stringify({ op: GATEWAY_OPCODES.VOICE_STATE_UPDATE, d: { relay_id: 'voice-1' } }));
+    await settle();
+    a.ws.close();
+    await settle();
+    expect(voiceTime).toHaveLength(2);
   });
 
   it('keeps call voice states inside the conversation, even from beacon-mates', async () => {

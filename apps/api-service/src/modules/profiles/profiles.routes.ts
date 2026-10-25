@@ -14,6 +14,7 @@ import {
   transmitterCommendations,
   commendations,
   resolveTransmitterBeaconIds,
+  highestPerFamily,
 } from '@subspace/database';
 import {
   isValidUsername,
@@ -27,6 +28,7 @@ import { publishGatewayEvent } from '../../lib/events.js';
 import { validateMediaUrl } from '../../lib/media.js';
 import { serializeTransmitter } from '../../lib/serialize.js';
 import { confirmPassword } from '../../lib/confirm-password.js';
+import { refreshCommendations } from '../../lib/commendations.js';
 
 const MAX_BIO_LENGTH = 190;
 const MAX_PRONOUNS_LENGTH = 40;
@@ -295,6 +297,7 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       }
     }
 
+    await refreshCommendations(app, db, target);
     const visibleCommendations = await db
       .select({
         code: commendations.code,
@@ -343,7 +346,7 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         staffRank: target.staffRank,
       },
       member,
-      commendations: visibleCommendations.map(({ displayOrder, ...c }: any) => c),
+      commendations: highestPerFamily(visibleCommendations).map(({ displayOrder, ...c }: any) => c),
       mutualBeacons: mutualBeaconRows.map((b: any) => ({ id: b.id, name: b.name, iconUrl: b.iconUrl })),
       mutualFriends: [],
       relationship,

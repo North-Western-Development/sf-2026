@@ -7,73 +7,48 @@ import {
   transmitters,
   commendations,
   transmitterCommendations,
+  COMMENDATION_CATALOG,
+  COMMENDATION_FAMILIES,
+  badgeIconUrl,
 } from '@subspace/database';
-import { STAFF_RANKS } from '@subspace/constants';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+import { commendationStats, refreshCommendations } from '../../lib/commendations.js';
 
 export const commendationRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
 
   /**
-   * Helper: ensure transmitter has appropriate staff commendation if staffRank > 0
+   * GET /api/v1/transmitters/commendations
+   * Every badge there is, so clients can show the ones still to earn.
    */
-  async function ensureStaffCommendation(transmitterId: string, staffRank: number) {
-    if (staffRank === STAFF_RANKS.NONE) return;
-
-    let code = 'STAFF_MODERATOR';
-    let name = 'Command Staff - Moderator';
-    if (staffRank === STAFF_RANKS.ADMIN) {
-      code = 'STAFF_ADMIN';
-      name = 'Command Staff - Administrator';
-    } else if (staffRank === STAFF_RANKS.ROOT) {
-      code = 'STAFF_COMMAND';
-      name = 'Command Staff - Commander in Chief';
-    }
-
-    // Find or create commendation
-    let [badge] = await db
-      .select()
-      .from(commendations)
-      .where(eq(commendations.code, code))
-      .limit(1);
-
-    if (!badge) {
-      [badge] = await db
-        .insert(commendations)
-        .values({
-          code,
-          name,
-          description: 'Official Subspace Frequency Command Staff Insignia',
-          iconUrl: `/assets/insignias/${code.toLowerCase()}.png`,
-          criteriaType: 'staff',
-          threshold: staffRank,
-        })
-        .returning();
-    }
-
-    // Award if not already present
-    const [existing] = await db
-      .select()
-      .from(transmitterCommendations)
-      .where(
-        and(
-          eq(transmitterCommendations.transmitterId, transmitterId),
-          eq(transmitterCommendations.commendationId, badge.id)
-        )
-      )
-      .limit(1);
-
-    if (!existing) {
-      await db
-        .insert(transmitterCommendations)
-        .values({
-          transmitterId,
-          commendationId: badge.id,
-          displayOrder: 0,
-          isVisible: true,
-        });
-    }
-  }
+  app.get('/commendations', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const [me] = await db.select().from(transmitters).where(eq(transmitters.id, token.transmitterId)).limit(1);
+    if (!me) return reply.status(404).send({ error: 'Transmitter not found' });
+    const stats = await commendationStats(app, db, me);
+    return reply.send({
+      families: COMMENDATION_FAMILIES.map((f) => ({
+        ...f,
+        tiers: COMMENDATION_CATALOG.filter((c) => c.family === f.family).map((c) => ({
+          code: c.code,
+          name: c.name,
+          description: c.description,
+          threshold: c.threshold,
+          tier: c.tier,
+          rarity: c.rarity,
+          iconUrl: badgeIconUrl(c.code),
+        })),
+      })),
+      // The caller's own totals, for the progress bars.
+      progress: {
+        voice_minutes: Math.floor(stats.voiceMinutes),
+        transmissions_sent: stats.transmissionsSent,
+        account_age: Math.floor((Date.now() - new Date(me.createdAt).getTime()) / 86_400_000),
+      },
+    });
+  });
 
   /**
    * GET /api/v1/transmitters/:id/commendations
@@ -93,10 +68,7 @@ export const commendationRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       return reply.status(404).send({ error: 'Transmitter not found' });
     }
 
-    // Synchronize staff insignia if applicable
-    if (targetTransmitter.staffRank > 0) {
-      await ensureStaffCommendation(targetTransmitter.id, targetTransmitter.staffRank);
-    }
+    await refreshCommendations(app, db, targetTransmitter);
 
     const deck = await db
       .select({

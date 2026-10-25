@@ -10,11 +10,11 @@ import { channelKey } from '../../lib/types';
 import { http } from '../../lib/http';
 import { memberMenu } from '../members/memberMenu';
 import { useProfile, type FullProfile } from './useProfile';
-import { ProfileBio, ProfileClearances, ProfileCommendations, ProfileHeader, ProfileIdentity, ProfileMeta, ProfileNote } from './ProfileParts';
+import { ProfileBio, ProfileClearances, ProfileHeader, ProfileIdentity, ProfileMeta, ProfileNote, StatusBubble, profileHeading } from './ProfileParts';
 import { Avatar } from '../common/Avatar';
 import { term } from '../../lib/strings';
 
-function themeStyle(p: FullProfile): React.CSSProperties | undefined {
+export function themeStyle(p: FullProfile): React.CSSProperties | undefined {
   const primary = p.member?.themePrimary ?? p.user.themePrimary;
   const accent = p.member?.themeAccent ?? p.user.themeAccent;
   if (!primary && !accent) return undefined;
@@ -85,7 +85,7 @@ function Popout({ userId, beaconId, rect, side }: { userId: string; beaconId?: s
       className="fixed z-[1100] w-[300px] overflow-hidden rounded-xl bg-overlay shadow-pop animate-[fade-in_100ms_ease-out]"
       style={{ left: pos.x, top: pos.y, ...themeStyle(profile) }}
     >
-      <ProfileHeader profile={profile} />
+      <ProfileHeader profile={profile} bubble={<StatusBubble userId={userId} fallback={(profile.user as FullProfile['user']).customStatus} />} />
       <div className="absolute right-2 top-2 flex gap-1">
         {profile.relationship === 'none' && (
           <Tooltip content={`Add ${term('affiliate')}`}>
@@ -111,10 +111,8 @@ function Popout({ userId, beaconId, rect, side }: { userId: string; beaconId?: s
         </Tooltip>
       </div>
       <div className="m-3 mt-0 space-y-3 rounded-lg bg-void/60 p-3">
-        <ProfileIdentity profile={profile} beaconId={beaconId} />
-        <ProfileCommendations profile={profile} />
+        <ProfileIdentity profile={profile} beaconId={beaconId} maxBadges={8} />
         <ProfileBio profile={profile} beaconId={beaconId} />
-        <ProfileMeta profile={profile} />
         <ProfileClearances profile={profile} />
         {!self && <ProfileNote userId={userId} initial={profile.note} />}
         {self ? (
@@ -178,7 +176,7 @@ export function ProfileModal({ userId, beaconId }: { userId: string; beaconId?: 
   return (
     <Modal isOpen onClose={closeModal} maxWidth="2xl" className="!bg-overlay">
       <div className="-mx-6 -my-4" style={themeStyle(profile)}>
-        <ProfileHeader profile={profile} avatarSize={120} bannerHeight={180} />
+        <ProfileHeader profile={profile} avatarSize={120} bannerHeight={180} bubble={<StatusBubble userId={userId} fallback={(profile.user as FullProfile['user']).customStatus} />} />
         <div className="flex items-start justify-between gap-4 px-6">
           <ProfileIdentity profile={profile} beaconId={beaconId} />
           <div className="flex shrink-0 gap-2">
@@ -231,12 +229,11 @@ export function ProfileModal({ userId, beaconId }: { userId: string; beaconId?: 
           <div className="max-h-[40vh] space-y-4 overflow-y-auto p-4">
             {tab === 'about' && (
               <>
-                <ProfileCommendations profile={profile} />
                 <ProfileBio profile={profile} beaconId={beaconId} />
-                <ProfileMeta profile={profile} />
+                <ProfileMeta profile={profile} beaconId={beaconId} />
                 <ProfileClearances profile={profile} />
                 <section>
-                  <h4 className="mb-1 text-xs font-bold uppercase text-fg-muted">Connections</h4>
+                  <h4 className={profileHeading}>Connections</h4>
                   <p className="text-sm text-fg-subtle">Connected accounts are coming soon.</p>
                 </section>
                 {!self && <ProfileNote userId={userId} initial={profile.note} />}

@@ -5,7 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import dotenv from 'dotenv';
 import { runDataMigrations } from './lib/data-migrations.js';
 import { TERMINOLOGY } from '@subspace/constants';
-import { createDatabaseClient } from '@subspace/database';
+import { createDatabaseClient, syncCommendationCatalog } from '@subspace/database';
 import { Redis } from 'ioredis';
 
 // Package-local .env first, then the repo-root .env (native runs); existing env always wins.
@@ -91,6 +91,9 @@ export async function buildApp() {
   // Decorate app with db and redis clients
   (app as any).db = dbStatus === 'connected' && dbClient ? dbClient.db : null;
   (app as any).redis = redisStatus === 'connected' ? redisClient : null;
+  if ((app as any).db) {
+    await syncCommendationCatalog((app as any).db).catch((err) => app.log.warn({ err }, 'Could not sync the commendation catalog'));
+  }
 
   // Rate limiting (section 8): Redis-backed so limits are shared across every instance.
   // Per-route limits are set individually (login, register, 2FA, invite lookup, ...);

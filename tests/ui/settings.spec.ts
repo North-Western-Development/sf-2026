@@ -18,10 +18,10 @@ test.describe('User settings', () => {
     await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0);
 
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: 'Set status' })).toContainText('Captain Sisko');
+    await expect(page.getByRole('button', { name: 'Open your profile' })).toContainText('Captain Sisko');
 
     await page.reload();
-    await expect(page.getByRole('button', { name: 'Set status' })).toContainText('Captain Sisko');
+    await expect(page.getByRole('button', { name: 'Open your profile' })).toContainText('Captain Sisko');
     await openSettings(page, 'Profiles');
     await expect(page.getByLabel('About Me').first()).toHaveValue('Commander of **Deep Space Nine**');
   });
@@ -48,7 +48,7 @@ test.describe('User settings', () => {
     await page.getByLabel('Status text').fill('On the Defiant');
     await page.getByRole('button', { name: 'Save Status' }).click();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: 'Set status' })).toContainText('On the Defiant');
+    await expect(page.getByRole('button', { name: 'Open your profile' })).toContainText('On the Defiant');
 
     await expect(theirs.getByRole('complementary', { name: 'Members' })).toContainText('On the Defiant');
     await theirs.context().close();

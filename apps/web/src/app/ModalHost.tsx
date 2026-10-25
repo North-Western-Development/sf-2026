@@ -6,6 +6,7 @@ import { CreateBandModal, CreateBeaconModal, CreateMeshModal, CreateRelayModal, 
 import { QuickScanModal } from '../features/modals/QuickScanModal';
 import { NotificationSettingsModal } from '../features/modals/NotificationSettingsModal';
 import { ProfileModal } from '../features/profile/ProfilePopout';
+import { BadgesModal } from '../features/profile/BadgesModal';
 import { UserSettings } from '../features/settings/UserSettings';
 import { BeaconSettings } from '../features/settings/BeaconSettings';
 import { VaultModal } from '../features/vault/VaultModal';
@@ -76,6 +77,9 @@ export function ModalHost() {
       );
       break;
     }
+    case 'badges':
+      content = <BadgesModal />;
+      break;
     case 'console':
       content = <ConsoleModal staffRank={staffRank} />;
       break;

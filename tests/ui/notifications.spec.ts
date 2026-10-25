@@ -133,8 +133,10 @@ test.describe('Desktop notifications', () => {
     await signIn(page, me);
     await expect(page.getByRole('img', { name: 'Online' }).first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Set status' }).click();
+    await page.getByRole('button', { name: 'Open your profile' }).click();
+    await page.getByRole('dialog', { name: 'Your profile' }).getByRole('button', { name: 'Status: Online' }).click();
     await page.getByRole('menuitem', { name: /Do Not Disturb/ }).click();
+    await page.keyboard.press('Escape');
     await page.evaluate(() => ((window as any).__hidden = true));
     await pal.api.openDm(me, 'ping during dnd');
     // The DM itself still arrives; only the notification is held back.

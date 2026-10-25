@@ -1,19 +1,15 @@
-import { useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { Headphones, HeadphoneOff, Mic, MicOff, MonitorUp, PhoneOff, Settings, Video, VideoOff } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useShallow } from 'zustand/react/shallow';
-import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
+import { Tooltip } from '@subspace/ui';
 import { create } from 'zustand';
 import { useStore } from '../../data/store';
-import { setMyPresence, signOut } from '../../data/actions';
 import { openModal } from '../../app/ui';
-import { PRESENCE_LABELS } from '../../lib/strings';
-import { userTag } from '../../lib/normalize';
-import { Avatar, PresenceDot } from '../common/Avatar';
-import type { Presence } from '../../lib/types';
+import { Avatar } from '../common/Avatar';
 import { useVoice, leaveVoice, toggleCamera, toggleScreenShare } from '../voice/session';
-import { copyText } from '../../lib/clipboard';
+import { SelfProfileCard } from './SelfProfileCard';
 
 /** Local audio device state (mirrored into the voice session when connected). */
 export const useAudioPrefs = create<{ muted: boolean; deafened: boolean }>()(() => ({ muted: false, deafened: false }));
@@ -29,53 +25,29 @@ export function toggleDeafen() {
   useAudioPrefs.setState(deafened ? { deafened: false, muted: false } : { deafened: true, muted: true });
 }
 
-const STATUSES: Presence[] = ['online', 'idle', 'dnd', 'invisible'];
 
 export function UserPanel() {
   const me = useStore((s) => s.me);
-  const status = useStore((s) => (me ? s.presence[me.id]?.status ?? 'online' : 'online'));
   const customStatus = useStore((s) => (me ? s.presence[me.id]?.customStatus ?? me.customStatus : null));
   const { muted, deafened } = useAudioPrefs();
-  const { openContextMenu } = useContextMenu();
   const anchor = useRef<HTMLButtonElement>(null);
+  const [card, setCard] = useState<DOMRect | null>(null);
+  const closeCard = useCallback(() => setCard(null), []);
   if (!me) return null;
-
-  const statusMenu = (): ContextMenuItem[] => [
-    { heading: true, label: userTag(me) },
-    ...STATUSES.map<ContextMenuItem>((st) => ({
-      label: PRESENCE_LABELS[st].label,
-      sublabel: PRESENCE_LABELS[st].description,
-      icon: <PresenceDot status={st} size={10} ring="transparent" />,
-      checked: status === st,
-      onClick: () => setMyPresence(st),
-    })),
-    { separator: true },
-    { label: customStatus?.text ? 'Edit Custom Status' : 'Set Custom Status', onClick: () => openModal({ kind: 'userSettings', tab: 'status' }) },
-    { label: 'Edit Profile', onClick: () => openModal({ kind: 'userSettings', tab: 'profile' }) },
-    { separator: true },
-    {
-      label: 'Copy Tag',
-      onClick: () => {
-        void copyText(userTag(me), 'Tag copied');
-      },
-    },
-    { label: 'Log Out', danger: true, onClick: () => void signOut() },
-  ];
 
   return (
     // Spans the rail + sidebar; the split background lets both columns run behind the floating island.
     <div className="shrink-0 bg-[linear-gradient(to_right,var(--color-void)_72px,var(--color-raised)_72px)] px-2 pb-2">
-      <div className="flex flex-col rounded-lg bg-overlay shadow-pop">
+      <div data-user-island className="flex flex-col rounded-lg bg-overlay shadow-pop">
         <VoiceStrip />
         <div className="flex h-[52px] items-center gap-1 px-1.5">
           <button
             ref={anchor}
             type="button"
-            aria-label="Set status"
-            onClick={() => {
-              const r = anchor.current!.getBoundingClientRect();
-              openContextMenu({ clientX: r.left, clientY: r.top - 8 }, statusMenu());
-            }}
+            aria-label="Open your profile"
+            aria-expanded={!!card}
+            data-self-card-anchor
+            onClick={() => setCard((open) => (open ? null : anchor.current!.closest('[data-user-island]')!.getBoundingClientRect()))}
             className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 pl-1 pr-2 text-left hover:bg-hover"
           >
             <Avatar user={me} size={32} showPresence ring="var(--color-overlay)" />
@@ -97,6 +69,7 @@ export function UserPanel() {
           </PanelButton>
         </div>
       </div>
+      {card && <SelfProfileCard anchor={card} onClose={closeCard} />}
     </div>
   );
 }
