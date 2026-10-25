@@ -1,3 +1,4 @@
+import { Emoji } from '../../lib/emoji';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { AtSign, CirclePlus, Cloud, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
@@ -352,7 +353,7 @@ export function Composer({
               )}
               {sug.kind === 'emoji' && (
                 <>
-                  {sug.glyph ? <img src={sug.glyph.url} alt="" className="h-5 w-5 object-contain" /> : <span className="text-lg">{sug.emoji}</span>}
+                  {sug.glyph ? <img src={sug.glyph.url} alt="" className="h-5 w-5 object-contain" /> : <Emoji emoji={sug.emoji ?? ""} size={20} />}
                   <span>{sug.label}</span>
                 </>
               )}

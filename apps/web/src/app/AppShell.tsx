@@ -25,6 +25,7 @@ import { clsx } from 'clsx';
 import { lastRelay, useUi } from './ui';
 import { useIsMobile } from './mobile';
 import { useGlobalShortcuts } from './shortcuts';
+import { preloadEmojiSheet } from '../lib/emoji';
 
 function Boot({ children }: { children: React.ReactNode }) {
   const ready = useStore((s) => s.ready);
@@ -52,6 +53,13 @@ function Boot({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+  // Once signed in and idle, fetch the emoji sheet so pickers and messages draw immediately.
+  useEffect(() => {
+    if (!ready) return;
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
+    idle(() => preloadEmojiSheet());
+  }, [ready]);
+
   if (!ready) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 bg-void" aria-busy="true">

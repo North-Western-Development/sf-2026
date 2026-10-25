@@ -1,4 +1,5 @@
 // Discord-flavoured markdown: parser (pure) + React renderer.
+import { withTwemoji } from '../../lib/emoji';
 import React, { useState } from 'react';
 
 // ---------------------------------------------------------------------------
@@ -271,7 +272,8 @@ function renderInline(nodes: Inline[], r: MarkdownResolvers, big: boolean, keyPr
     const key = `${keyPrefix}${i}`;
     switch (n.t) {
       case 'text':
-        return <React.Fragment key={key}>{n.v}</React.Fragment>;
+        // Twemoji like Discord: consistent art, and flags on systems without them.
+        return <React.Fragment key={key}>{withTwemoji(n.v, big ? 48 : 22, key)}</React.Fragment>;
       case 'br':
         return <br key={key} />;
       case 'code':

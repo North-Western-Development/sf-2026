@@ -3,25 +3,14 @@ import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { ChevronDown, Clock, Dog, Flag, Gamepad2, Heart, Lightbulb, Lock, Plane, Pizza, Search, Smile, Hand, X } from 'lucide-react';
 import { ComingSoon } from '@subspace/ui';
-import groups from 'unicode-emoji-json/data-by-group.json';
 import { useStore } from '../../data/store';
 import { http, optional } from '../../lib/http';
+import { EMOJI, EMOJI_CATEGORIES, findEmoji, spriteStyle, type EmojiEntry } from '../../lib/emoji';
 import { rememberGlyphs } from './resolvers';
 
-type Group = { name: string; slug: string; emojis: Array<{ emoji: string; name: string; slug: string }> };
-const GROUPS = (groups as Group[]).filter((g) => g.slug !== 'component');
+export { EMOJI_INDEX } from '../../lib/emoji';
 
-const GROUP_ICON: Record<string, React.ReactNode> = {
-  smileys_emotion: <Smile />,
-  people_body: <Hand />,
-  animals_nature: <Dog />,
-  food_drink: <Pizza />,
-  travel_places: <Plane />,
-  activities: <Gamepad2 />,
-  objects: <Lightbulb />,
-  symbols: <Heart />,
-  flags: <Flag />,
-};
+const CATEGORY_ICON = [<Smile key="0" />, <Hand key="1" />, <Dog key="2" />, <Pizza key="3" />, <Gamepad2 key="4" />, <Plane key="5" />, <Lightbulb key="6" />, <Heart key="7" />, <Flag key="8" />];
 
 export interface Glyph {
   id: string;
@@ -30,6 +19,7 @@ export interface Glyph {
 }
 
 const RECENT_KEY = 'subspace_recent_emoji';
+const TONE_KEY = 'subspace_emoji_tone';
 const readRecent = (): string[] => {
   try {
     return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
@@ -39,9 +29,16 @@ const readRecent = (): string[] => {
 };
 const pushRecent = (e: string) => {
   try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify([e, ...readRecent().filter((x) => x !== e)].slice(0, 24)));
+    localStorage.setItem(RECENT_KEY, JSON.stringify([e, ...readRecent().filter((x) => x !== e)].slice(0, 27)));
   } catch {
     /* ignore */
+  }
+};
+const readTone = () => {
+  try {
+    return Number(localStorage.getItem(TONE_KEY)) || 0;
+  } catch {
+    return 0;
   }
 };
 
@@ -55,12 +52,8 @@ export async function loadGlyphs(beaconId: string): Promise<Glyph[]> {
   return res.emojis;
 }
 
-/** Shortcode lookup used by the composer's ":" autocomplete. */
-export const EMOJI_INDEX = GROUPS.flatMap((g) => g.emojis.map((e) => ({ emoji: e.emoji, slug: e.slug, name: e.name })));
-const BY_EMOJI = new Map(EMOJI_INDEX.map((e) => [e.emoji, e]));
-
-/** One cell's identity: a unicode emoji, or a glyph and the beacon it belongs to. */
-type Item = { kind: 'emoji'; emoji: string; slug: string } | { kind: 'glyph'; glyph: Glyph; beaconId: string; locked: boolean };
+/** One cell: a Twemoji (with the chosen skin tone applied) or a glyph and its beacon. */
+type Item = { kind: 'emoji'; entry: EmojiEntry; emoji: string; x: number; y: number } | { kind: 'glyph'; glyph: Glyph; beaconId: string; locked: boolean };
 interface SectionData {
   key: string;
   title: string;
@@ -69,15 +62,21 @@ interface SectionData {
   collapsible?: boolean;
 }
 
-const itemKey = (it: Item) => (it.kind === 'emoji' ? `e:${it.emoji}` : `g:${it.beaconId}:${it.glyph.id}`);
+const itemKey = (it: Item) => (it.kind === 'emoji' ? `e:${it.entry.slug}` : `g:${it.beaconId}:${it.glyph.id}`);
+const toned = (entry: EmojiEntry, tone: number): Item => {
+  const t = tone ? entry.tones?.[tone] : undefined;
+  return { kind: 'emoji', entry, emoji: t?.emoji ?? entry.emoji, x: t?.x ?? entry.x, y: t?.y ?? entry.y };
+};
+const TONE_SAMPLE = EMOJI.find((e) => e.slug === 'clap')!;
 
 /**
- * Discord-style emoji picker: search, a category rail (recent, each beacon's glyphs, the
- * unicode groups), collapsible beacon sections and a footer naming the hovered emoji.
- * `onPick` receives a unicode emoji or `custom:<glyphId>`.
+ * Discord-style emoji picker drawn from the Twemoji sprite sheet: search, a skin-tone
+ * selector, a category rail (recent, each beacon's glyphs, the emoji groups), collapsible
+ * beacon sections and a footer naming the hovered emoji. `onPick` receives a unicode emoji
+ * or `custom:<glyphId>`.
  *
  * Glyphs from other beacons are shown but locked: a beacon only accepts its own glyphs.
- * `glyphs="none"` (custom status) shows unicode only.
+ * `glyphs="none"` (custom status) shows emoji only.
  */
 export function EmojiPicker({
   anchor,
@@ -102,6 +101,8 @@ export function EmojiPicker({
   const [hovered, setHovered] = useState<Item | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [active, setActive] = useState<string>('');
+  const [tone, setTone] = useState(readTone);
+  const [tonePicker, setTonePicker] = useState(false);
   const [pos, setPos] = useState({ x: -9999, y: -9999 });
   const ref = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -152,14 +153,17 @@ export function EmojiPicker({
     };
   }, [onClose]);
 
-  const q = query.trim().toLowerCase().replace(/^:|:$/g, '');
+  const q = query.trim().toLowerCase().replace(/^:|:$/g, '').replace(/\s+/g, '_');
   const sections = useMemo<SectionData[]>(() => {
     const glyphItem = (g: Glyph, bId: string): Item => ({ kind: 'glyph', glyph: g, beaconId: bId, locked: bId !== beaconId });
     const out: SectionData[] = [];
     if (!q && recent.length) {
       const items = recent
         .map<Item | null>((r) => {
-          if (!r.startsWith('custom:')) return BY_EMOJI.has(r) ? { kind: 'emoji', emoji: r, slug: BY_EMOJI.get(r)!.slug } : null;
+          if (!r.startsWith('custom:')) {
+            const hit = findEmoji(r);
+            return hit ? { kind: 'emoji', entry: hit.entry, emoji: r, x: hit.x, y: hit.y } : null;
+          }
           for (const b of beaconList) {
             const g = glyphsByBeacon[b.id]?.find((x) => x.id === r.slice(7));
             if (g) return glyphItem(g, b.id);
@@ -173,12 +177,12 @@ export function EmojiPicker({
       const list = (glyphsByBeacon[b.id] ?? []).filter((g) => !q || g.name.toLowerCase().includes(q));
       if (list.length) out.push({ key: `beacon:${b.id}`, title: b.name, icon: <BeaconIcon name={b.name} iconUrl={b.iconUrl} />, items: list.map((g) => glyphItem(g, b.id)), collapsible: true });
     }
-    for (const g of GROUPS) {
-      const list = q ? g.emojis.filter((e) => e.slug.includes(q) || e.name.includes(q)) : g.emojis;
-      if (list.length) out.push({ key: g.slug, title: g.name, icon: GROUP_ICON[g.slug] ?? <Smile />, items: list.map((e) => ({ kind: 'emoji', emoji: e.emoji, slug: e.slug })) });
-    }
+    EMOJI_CATEGORIES.forEach((title, ci) => {
+      const list = EMOJI.filter((e) => e.category === ci && (!q || e.slug.includes(q) || e.aliases.some((a) => a.includes(q))));
+      if (list.length) out.push({ key: `cat:${ci}`, title, icon: CATEGORY_ICON[ci], items: list.map((e) => toned(e, tone)) });
+    });
     return out;
-  }, [q, recent, beaconList, glyphsByBeacon, beaconId]);
+  }, [q, recent, beaconList, glyphsByBeacon, beaconId, tone]);
 
   const byKey = useMemo(() => {
     const m = new Map<string, Item>();
@@ -222,8 +226,19 @@ export function EmojiPicker({
     setActive(current || sections[0]?.key || '');
   };
 
+  const chooseTone = (t: number) => {
+    setTone(t);
+    setTonePicker(false);
+    try {
+      localStorage.setItem(TONE_KEY, String(t));
+    } catch {
+      /* ignore */
+    }
+  };
+
   const toggle = useCallback((key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] })), []);
   const hoveredBeacon = hovered?.kind === 'glyph' ? beacons[hovered.beaconId]?.name : undefined;
+  const sample = toned(TONE_SAMPLE, tone) as Extract<Item, { kind: 'emoji' }>;
 
   return createPortal(
     <div
@@ -246,22 +261,39 @@ export function EmojiPicker({
             <span className="rounded-md bg-active px-3 py-1 text-fg">Emoji</span>
           </div>
         )}
-        <label className="flex h-9 items-center gap-2 rounded-md bg-void px-2.5 ring-1 ring-transparent focus-within:ring-brand-sky">
-          <Search className="h-4 w-4 shrink-0 text-fg-subtle" />
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={hovered ? `:${hovered.kind === 'glyph' ? hovered.glyph.name : hovered.slug}:` : 'Find the perfect emoji'}
-            aria-label="Search emoji"
-            className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-subtle"
-          />
-          {query && (
-            <button type="button" aria-label="Clear search" onClick={() => setQuery('')} className="text-fg-subtle hover:text-fg">
-              <X className="h-4 w-4" />
-            </button>
+        <div className="relative flex items-center gap-2">
+          <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md bg-void px-2.5 ring-1 ring-transparent focus-within:ring-brand-sky">
+            <Search className="h-4 w-4 shrink-0 text-fg-subtle" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={hovered ? `:${hovered.kind === 'glyph' ? hovered.glyph.name : hovered.entry.slug}:` : 'Find the perfect emoji'}
+              aria-label="Search emoji"
+              className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-subtle"
+            />
+            {query && (
+              <button type="button" aria-label="Clear search" onClick={() => setQuery('')} className="text-fg-subtle hover:text-fg">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </label>
+          <button type="button" aria-label="Skin tone" aria-expanded={tonePicker} onClick={() => setTonePicker((v) => !v)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-hover">
+            <span style={spriteStyle(sample.x, sample.y, 24)} />
+          </button>
+          {tonePicker && (
+            <div role="listbox" aria-label="Skin tones" className="absolute right-0 top-10 z-20 flex flex-col gap-0.5 rounded-lg bg-overlay p-1 shadow-pop ring-1 ring-line">
+              {[0, 1, 2, 3, 4, 5].map((t) => {
+                const s = toned(TONE_SAMPLE, t) as Extract<Item, { kind: 'emoji' }>;
+                return (
+                  <button key={t} type="button" role="option" aria-selected={tone === t} aria-label={t ? `Skin tone ${t}` : 'Default skin tone'} onClick={() => chooseTone(t)} className={clsx('flex h-9 w-9 items-center justify-center rounded-md hover:bg-hover', tone === t && 'bg-active')}>
+                    <span style={spriteStyle(s.x, s.y, 24)} />
+                  </button>
+                );
+              })}
+            </div>
           )}
-        </label>
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -306,9 +338,9 @@ export function EmojiPicker({
       <div className="flex h-12 shrink-0 items-center gap-3 border-t border-line bg-raised px-4">
         {hovered ? (
           <>
-            {hovered.kind === 'glyph' ? <img src={hovered.glyph.url} alt="" className="h-7 w-7 object-contain" /> : <span className="text-2xl leading-none">{hovered.emoji}</span>}
+            {hovered.kind === 'glyph' ? <img src={hovered.glyph.url} alt="" className="h-7 w-7 object-contain" /> : <span style={spriteStyle(hovered.x, hovered.y, 28)} />}
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-fg">:{hovered.kind === 'glyph' ? hovered.glyph.name : hovered.slug}:</span>
+              <span className="block truncate text-sm font-semibold text-fg">:{hovered.kind === 'glyph' ? hovered.glyph.name : hovered.entry.slug}:</span>
               {hoveredBeacon && (
                 <span className="block truncate text-xs text-fg-muted">
                   {hovered.kind === 'glyph' && hovered.locked ? 'Only usable in ' : 'from '}
@@ -374,8 +406,8 @@ const Sections = memo(function Sections({
               <div className="grid grid-cols-9 pb-2">
                 {s.items.map((it) =>
                   it.kind === 'emoji' ? (
-                    <button key={it.emoji} type="button" data-k={itemKey(it)} aria-label={it.slug.replace(/_/g, ' ')} className="flex h-11 w-11 items-center justify-center rounded-md text-[28px] leading-none hover:bg-hover">
-                      {it.emoji}
+                    <button key={it.entry.slug} type="button" data-k={itemKey(it)} aria-label={it.entry.slug.replace(/_/g, ' ')} className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-hover">
+                      <span style={spriteStyle(it.x, it.y, 32)} />
                     </button>
                   ) : (
                     <button

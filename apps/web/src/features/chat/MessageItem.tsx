@@ -1,3 +1,4 @@
+import { Emoji } from '../../lib/emoji';
 import { memo, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { CornerUpLeft, Pencil, SmilePlus, MoreHorizontal, Pin, AlertCircle, FileText, Download, Forward, MessageSquarePlus, Phone, PhoneMissed, Lock } from 'lucide-react';
@@ -55,7 +56,7 @@ function ReactionChip({ r, onToggle }: { r: Transmission['reactions'][number]; o
         r.me ? 'border-brand bg-brand-soft text-brand-sky' : 'border-transparent bg-raised text-fg-muted hover:border-line-strong'
       )}
     >
-      {url ? <img src={url} alt="" className="h-4 w-4 object-contain" /> : <span className="text-base leading-none">{r.emoji}</span>}
+      {url ? <img src={url} alt="" className="h-4 w-4 object-contain" /> : <Emoji emoji={r.emoji} size={16} />}
       <span className="text-xs font-semibold tabular-nums">{r.count}</span>
     </button>
   );

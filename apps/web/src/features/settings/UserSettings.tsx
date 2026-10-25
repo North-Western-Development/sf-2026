@@ -1,3 +1,4 @@
+import { Emoji } from '../../lib/emoji';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
 import { clsx } from 'clsx';
@@ -1208,7 +1209,7 @@ function StatusTab({ me }: { me: SelfUser }) {
     <>
       <SettingsSection id="custom-status" title="Custom Status" description="Shown under your name in member lists and on your profile.">
         <SettingsRow
-          label={has ? <>{current?.emoji && !current.emoji.startsWith('custom:') && <span className="mr-1.5">{current.emoji}</span>}{current?.text}</> : 'No status set'}
+          label={has ? <>{current?.emoji && !current.emoji.startsWith('custom:') && <Emoji emoji={current.emoji} size={18} className="mr-1.5" />}{current?.text}</> : 'No status set'}
           description={
             current?.expiresAt
               ? `Clears ${new Date(current.expiresAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`

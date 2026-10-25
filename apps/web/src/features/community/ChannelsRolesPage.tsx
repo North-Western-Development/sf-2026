@@ -1,3 +1,4 @@
+import { Emoji } from '../../lib/emoji';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { clsx } from 'clsx';
@@ -142,7 +143,7 @@ function Customize({ beaconId }: { beaconId: string }) {
                       onClick={() => void choose(q, o.id)}
                       className={clsx('relative flex min-h-[72px] items-center gap-3 rounded-lg px-4 py-3 text-left ring-1 transition-colors', on ? 'bg-brand/10 ring-brand' : 'bg-overlay ring-line hover:bg-hover')}
                     >
-                      {o.emoji && <span className="text-2xl leading-none">{o.emoji}</span>}
+                      {o.emoji && <Emoji emoji={o.emoji} size={28} />}
                       <span className="min-w-0">
                         <span className="block font-medium text-fg">{o.label}</span>
                         {o.description && <span className="block text-xs text-fg-muted">{o.description}</span>}

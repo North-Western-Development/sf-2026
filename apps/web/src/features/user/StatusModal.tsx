@@ -1,3 +1,4 @@
+import { Emoji } from '../../lib/emoji';
 import { useState } from 'react';
 import { ChevronDown, Smile, X } from 'lucide-react';
 import { Button, Modal, useContextMenu } from '@subspace/ui';
@@ -108,7 +109,7 @@ export function StatusModal() {
           onClick={(e) => setPicker(e.currentTarget.getBoundingClientRect())}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
         >
-          {emoji ? <span className="text-xl leading-none">{emoji}</span> : <Smile className="h-5 w-5" />}
+          {emoji ? <Emoji emoji={emoji} size={22} /> : <Smile className="h-5 w-5" />}
         </button>
         <input
           id="status-text"

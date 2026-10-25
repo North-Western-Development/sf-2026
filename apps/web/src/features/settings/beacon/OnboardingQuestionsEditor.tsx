@@ -1,3 +1,4 @@
+import { Emoji } from '../../../lib/emoji';
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Plus, Smile, Trash2 } from 'lucide-react';
 import { Button, Input, useContextMenu } from '@subspace/ui';
@@ -112,7 +113,7 @@ export function OnboardingQuestionsEditor({ beaconId }: { beaconId: string }) {
                       onClick={(e) => setPicker({ rect: e.currentTarget.getBoundingClientRect(), q: q.key, o: o.key })}
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-void text-xl text-fg-muted ring-1 ring-line hover:text-fg"
                     >
-                      {o.emoji ?? <Smile className="h-5 w-5" />}
+                      {o.emoji ? <Emoji emoji={o.emoji} size={22} /> : <Smile className="h-5 w-5" />}
                     </button>
                     <input value={o.label} maxLength={50} onChange={(e) => patchO(q.key, o.key, (x) => ({ ...x, label: e.target.value }))} placeholder="Answer" aria-label={`Answer ${oi + 1}`} className="h-9 min-w-0 flex-1 rounded-md bg-void px-2 text-sm text-fg outline-none ring-1 ring-line focus:ring-brand-sky" />
                     <input

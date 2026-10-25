@@ -1,3 +1,4 @@
+import { Emoji } from '../../lib/emoji';
 import { useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 import { Tooltip } from '@subspace/ui';
@@ -37,7 +38,7 @@ export function StatusBubble({
   if (!text && !placeholder) return null;
   const content = (
     <>
-      {text && status?.emoji && !status.emoji.startsWith('custom:') && <span className="mr-1">{status.emoji}</span>}
+      {text && status?.emoji && !status.emoji.startsWith('custom:') && <Emoji emoji={status.emoji} size={18} className="mr-1" />}
       {text || <span className="text-fg-muted">{placeholder}</span>}
     </>
   );
