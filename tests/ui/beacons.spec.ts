@@ -48,6 +48,8 @@ test.describe('Beacon folders (clusters)', () => {
     await owner.api.send(relays.find((r) => r.type === 'text')!.id, `<@${me.transmitter.id}> report in`);
     const folder = page.getByRole('navigation', { name: 'Beacons' }).getByRole('button', { name: 'Work cluster' });
     await expect(folder.getByText('1')).toBeVisible();
+    // Two beacons still sit in a fixed 2x2 grid, the other two slots empty.
+    await expect(folder.locator('span.grid > span')).toHaveCount(4);
   });
 
   test('Move to… puts a beacon first or last in its cluster, or into another cluster', async ({ page, me }) => {

@@ -205,14 +205,17 @@ function ClusterEntry({ cluster }: { cluster: Cluster }) {
             {open ? (
               <Folder className="h-5 w-5" style={{ color: cluster.color }} fill={cluster.color} />
             ) : (
-              <span className="grid grid-cols-2 gap-0.5 p-1">
-                {cluster.beaconIds.slice(0, 4).map((id) => {
-                  const b = beacons[id];
+              // Always a 2x2 grid, like Discord: with fewer than four beacons the rest stay empty.
+              <span className="grid grid-cols-2 grid-rows-2 gap-1 p-1.5">
+                {[0, 1, 2, 3].map((slot) => {
+                  const b = beacons[cluster.beaconIds[slot]];
                   return b ? (
-                    <span key={id} className="flex h-4 w-4 items-center justify-center overflow-hidden rounded-[5px] bg-overlay text-[7px] font-bold">
+                    <span key={slot} className="flex h-4 w-4 items-center justify-center overflow-hidden rounded-[5px] bg-overlay text-[7px] font-bold">
                       {b.iconUrl ? <img src={b.iconUrl} alt="" className="h-full w-full object-cover" /> : b.name[0]?.toUpperCase()}
                     </span>
-                  ) : null;
+                  ) : (
+                    <span key={slot} aria-hidden className="h-4 w-4" />
+                  );
                 })}
               </span>
             )}

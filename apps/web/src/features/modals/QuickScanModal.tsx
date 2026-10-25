@@ -18,27 +18,30 @@ type Result =
   | { kind: 'relay'; id: string; name: string; beaconId: string; beaconName: string; type: string }
   | { kind: 'beacon'; id: string; name: string; iconUrl: string | null };
 
+type RemoteRelay = { id: string; beaconId: string; name: string; type: string; beaconName?: string };
+
 /** Subspace Quick Scan: Discord's Ctrl+K switcher. Prefix @ users, # relays, * beacons. */
 export function QuickScanModal() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
-  const [remote, setRemote] = useState<UserRef[]>([]);
+  // The server searches every joined beacon; the store only holds relays of beacons opened this session.
+  const [remote, setRemote] = useState<{ users: UserRef[]; relays: RemoteRelay[] }>({ users: [], relays: [] });
   const s = useStore();
 
   const mode = query.startsWith('@') ? 'user' : query.startsWith('#') ? 'relay' : query.startsWith('*') ? 'beacon' : 'all';
   const q = (mode === 'all' ? query : query.slice(1)).trim().toLowerCase();
 
   useEffect(() => {
-    if (q.length < 2 || (mode !== 'all' && mode !== 'user')) {
-      setRemote([]);
+    if (!q || mode === 'beacon' || (mode !== 'relay' && q.length < 2)) {
+      setRemote({ users: [], relays: [] });
       return;
     }
     const t = setTimeout(() => {
       http
-        .get<{ transmitters?: any[] }>(`/search/quick-scan?q=${encodeURIComponent(q)}`)
-        .then((r) => setRemote((r.transmitters ?? []).map((u) => toUserRef(u))))
-        .catch(() => setRemote([]));
+        .get<{ transmitters?: any[]; relays?: RemoteRelay[] }>(`/search/quick-scan?q=${encodeURIComponent(q)}`)
+        .then((r) => setRemote({ users: (r.transmitters ?? []).map((u) => toUserRef(u)), relays: r.relays ?? [] }))
+        .catch(() => setRemote({ users: [], relays: [] }));
     }, 150);
     return () => clearTimeout(t);
   }, [q, mode]);
@@ -55,13 +58,19 @@ export function QuickScanModal() {
       };
       Object.values(s.links).forEach((l) => addUser(l.recipient, userTag(l.recipient)));
       Object.values(s.relationships).filter((r) => r.type === 'friend').forEach((r) => addUser(r.user, userTag(r.user)));
-      remote.forEach((u) => addUser(u, userTag(u)));
+      remote.users.forEach((u) => addUser(u, userTag(u)));
       if (mode === 'all') Object.values(s.meshes).filter((m) => match(m.name)).forEach((m) => out.push({ kind: 'mesh', id: m.id, name: m.name }));
     }
     if (mode === 'all' || mode === 'relay') {
+      const seen = new Set<string>();
       for (const r of Object.values(s.relays)) {
         if (r.type === 'category' || r.isHidden || !match(r.name)) continue;
+        seen.add(r.id);
         out.push({ kind: 'relay', id: r.id, name: r.name, beaconId: r.beaconId, beaconName: s.beacons[r.beaconId]?.name ?? '', type: r.type });
+      }
+      for (const r of remote.relays) {
+        if (seen.has(r.id) || r.type === 'category' || !match(r.name)) continue;
+        out.push({ kind: 'relay', id: r.id, name: r.name, beaconId: r.beaconId, beaconName: r.beaconName ?? s.beacons[r.beaconId]?.name ?? '', type: r.type });
       }
     }
     if (mode === 'all' || mode === 'beacon') {
