@@ -529,6 +529,7 @@ export const beaconEmojis = pgTable('beacon_emojis', {
 export * from './schema-messaging.js';
 export * from './schema-community.js';
 export * from './schema-moderation.js';
+export * from './schema-oauth.js';
 
 /**
  * One-time data migrations applied by api-service on boot (see apps/api-service/src/lib/data-migrations.ts).

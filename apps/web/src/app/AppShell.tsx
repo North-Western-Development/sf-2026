@@ -14,6 +14,7 @@ import { DirectRoute } from '../features/chat/DirectRoute';
 import { DiscoverView } from '../features/discover/DiscoverView';
 import { InviteRoute } from '../features/invite/InviteRoute';
 import { TemplateRoute } from '../features/invite/TemplateRoute';
+import { AuthorizePage } from '../features/oauth/AuthorizePage';
 import { MembersPage } from '../features/community/MembersPage';
 import { ChannelsRolesPage } from '../features/community/ChannelsRolesPage';
 import { ModalHost } from './ModalHost';
@@ -159,6 +160,7 @@ export function AppShell() {
           <Route path="/" element={<Navigate to="/channels/@me" replace />} />
           <Route path="/invite/:code" element={<InviteRoute />} />
           <Route path="/template/:code" element={<TemplateRoute />} />
+          <Route path="/oauth2/authorize" element={<AuthorizePage />} />
           <Route path="/channels/@me" element={<Layout sidebar={<HomeSidebar />} />}>
             <Route index element={<FriendsView />} />
             <Route path="requests" element={<RequestsView />} />

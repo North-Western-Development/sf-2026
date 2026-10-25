@@ -9,6 +9,7 @@ import {
   Bell,
   Keyboard,
   KeyRound,
+  Code2,
   Languages,
   Laptop,
   Link2,
@@ -62,6 +63,7 @@ import { AccessibilityTab, LanguageTimeTab, SafetySettings } from './user/Displa
 import { MicTest } from './user/VoiceTools';
 import { ClipSettings } from '../voice/ClipsUI';
 import { ConnectionsTab } from './user/ConnectionsTab';
+import { AuthorizedAppsTab, DeveloperAppsTab } from './user/AppsTabs';
 import { CurrentPassword, usePasswordField, withPassword } from './user/passwordField';
 import { AccountStandingRow, DecorationPicker, EffectPicker, PhoneRow } from './user/AccountExtras';
 import { Markdown } from '../chat/markdown';
@@ -1787,8 +1789,8 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
               id: 'authorized',
               icon: <KeyRound />,
               label: 'Authorized Apps',
-              comingSoon: true,
             },
+            { id: 'developer', icon: <Code2 />, label: 'Developer Applications' },
           ],
         },
         ...((me.staffRank ?? 0) > 0
@@ -1826,6 +1828,8 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
       {tab === 'notifications' && <NotificationsTab />}
       {tab === 'devices' && <DevicesTab />}
       {tab === 'connections' && <ConnectionsTab />}
+      {tab === 'authorized' && <AuthorizedAppsTab />}
+      {tab === 'developer' && <DeveloperAppsTab />}
       {tab === 'voice' && <VoiceTab />}
       {tab === 'chat' && <ChatTab />}
       {tab === 'appearance' && <AppearanceTab />}
