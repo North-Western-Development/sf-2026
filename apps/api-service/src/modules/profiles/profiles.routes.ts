@@ -344,6 +344,7 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         presence: target.presence,
         createdAt: target.createdAt,
         staffRank: target.staffRank,
+        tagBeaconId: target.tagBeaconId,
       },
       member,
       commendations: highestPerFamily(visibleCommendations).map(({ displayOrder, ...c }: any) => c),

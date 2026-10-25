@@ -6,6 +6,7 @@ import { useStore } from '../../data/store';
 import { http } from '../../lib/http';
 import { userTag } from '../../lib/normalize';
 import { Avatar } from '../common/Avatar';
+import { BeaconTag } from '../common/BeaconTag';
 import { UserName } from '../common/UserName';
 import { Markdown } from '../chat/markdown';
 import { useMarkdownResolvers } from '../chat/resolvers';
@@ -99,8 +100,9 @@ export function ProfileIdentity({ profile, beaconId, maxBadges }: { profile: Ful
   return (
     <div>
       <UserName user={u} beaconId={beaconId} className="block text-xl font-bold leading-tight" />
-      <p className="text-sm text-fg">
+      <p className="flex flex-wrap items-center gap-1 text-sm text-fg">
         {userTag(u)}
+        <BeaconTag beaconId={u.tagBeaconId} />
         {pronouns && <span className="text-fg-muted"> • {pronouns}</span>}
       </p>
       <ProfileBadges profile={profile} max={maxBadges} className="mt-2" />

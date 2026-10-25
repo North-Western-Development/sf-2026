@@ -7,6 +7,7 @@ import { useStore } from '../../data/store';
 import type { Member, Presence } from '../../lib/types';
 import { openPopout } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
+import { BeaconTag } from '../common/BeaconTag';
 import { UserName } from '../common/UserName';
 import { memberMenu } from './memberMenu';
 
@@ -27,6 +28,7 @@ function MemberRow({ member, beaconId, offline }: { member: Member; beaconId: st
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1">
           <UserName user={member.user} beaconId={beaconId} className="text-[15px] font-medium" />
+          <BeaconTag beaconId={member.user.tagBeaconId} />
           {member.isOwner && <span title="Beacon Owner" aria-label="Beacon Owner" className="text-star text-xs">★</span>}
         </span>
         {!offline && status?.customStatus?.text && <span className="block truncate text-xs text-fg-subtle">{status.customStatus.text}</span>}

@@ -548,8 +548,9 @@ export async function unblockUser(userId: string) {
   await refreshRelationships().catch(() => {});
 }
 
-export async function createBeacon(name: string, iconUrl?: string | null): Promise<string> {
-  const res = await http.post<{ beacon: Raw }>('/beacons', { name, iconUrl: iconUrl ?? undefined });
+/** Creates a beacon, optionally from a built-in template (`template`) or a member's (`templateCode`). */
+export async function createBeacon(name: string, iconUrl?: string | null, from: { template?: string; templateCode?: string } = {}): Promise<string> {
+  const res = await http.post<{ beacon: Raw }>('/beacons', { name, iconUrl: iconUrl ?? undefined, ...from });
   const beacon = toBeacon(res.beacon);
   setState((s) => ({ beacons: { ...s.beacons, [beacon.id]: beacon }, beaconOrder: [...s.beaconOrder, beacon.id] }));
   return beacon.id;

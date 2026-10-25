@@ -33,16 +33,24 @@ export async function postWelcome(app: any, db: any, beaconId: string, memberId:
   await post(app, db, beaconId, relay.id, memberId, 'system_join', String(Math.floor(Math.random() * WELCOME_LINES)));
 }
 
-/** A new beacon's system relay is its first text relay, and the owner gets the setup checklist. */
+/**
+ * A new beacon's system relay is the one its template chose, else its first text relay; the
+ * owner gets the setup checklist there.
+ */
 export async function setUpSystemChannel(app: any, db: any, beaconId: string, ownerId: string) {
   if (!db) return;
-  const [first] = await db
-    .select({ id: relays.id })
-    .from(relays)
-    .where(and(eq(relays.beaconId, beaconId), eq(relays.type, 'text')))
-    .orderBy(asc(relays.position))
-    .limit(1);
-  if (!first) return;
-  const [beacon] = await db.update(beacons).set({ systemChannelId: first.id }).where(eq(beacons.id, beaconId)).returning();
-  if (beacon?.setupTips) await post(app, db, beaconId, first.id, ownerId, 'system_tips', 'setup');
+  const [current] = await db.select().from(beacons).where(eq(beacons.id, beaconId)).limit(1);
+  let channelId: string | null = current?.systemChannelId ?? null;
+  if (!channelId) {
+    const [first] = await db
+      .select({ id: relays.id })
+      .from(relays)
+      .where(and(eq(relays.beaconId, beaconId), eq(relays.type, 'text')))
+      .orderBy(asc(relays.position))
+      .limit(1);
+    if (!first) return;
+    channelId = first.id as string;
+    await db.update(beacons).set({ systemChannelId: channelId }).where(eq(beacons.id, beaconId));
+  }
+  if (current?.setupTips) await post(app, db, beaconId, channelId, ownerId, 'system_tips', 'setup');
 }

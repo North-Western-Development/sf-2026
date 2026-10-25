@@ -56,6 +56,7 @@ import {
 import { Avatar, PresenceDot } from '../common/Avatar';
 import { saveCustomStatus } from '../user/StatusModal';
 import { UserName } from '../common/UserName';
+import { Dropdown } from '../common/Dropdown';
 import { Markdown } from '../chat/markdown';
 
 const USERNAME_RE = /^(?!.*\.\.)(?!\.)(?!.*\.$)[a-z0-9_.]{2,32}$/;
@@ -882,6 +883,34 @@ function ProfilePreview({ me, d, tag }: { me: SelfUser; d: ProfileDraft; tag?: s
   );
 }
 
+/** Which Beacon Tag to wear beside your name (from beacons you are in that have one). Saves at once. */
+function TagPicker({ me }: { me: SelfUser }) {
+  const tagged = useStore(useShallow((s) => Object.values(s.beacons).filter((b) => b.tag)));
+  const choose = async (v: string) => {
+    const beaconId = v === 'none' ? null : v;
+    try {
+      await http.put('/users/@me/tag', { beaconId });
+      setState((s) => ({
+        me: s.me ? { ...s.me, tagBeaconId: beaconId } : s.me,
+        users: s.me && s.users[s.me.id] ? { ...s.users, [s.me.id]: { ...s.users[s.me.id], tagBeaconId: beaconId } } : s.users,
+      }));
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
+  return (
+    <FormBlock label={`${term('beacon')} Tag`} hint={tagged.length ? undefined : `None of your ${term('beacon', true).toLowerCase()} have a tag yet.`}>
+      <Dropdown
+        hideLabel
+        label={`${term('beacon')} Tag`}
+        value={me.tagBeaconId ?? 'none'}
+        options={[{ value: 'none', label: 'No tag' }, ...tagged.map((b) => ({ value: b.id, label: `${b.tag} · ${b.name}`, icon: b.tagBadge ? <Emoji emoji={b.tagBadge} size={16} /> : undefined }))]}
+        onChange={(v) => void choose(v)}
+      />
+    </FormBlock>
+  );
+}
+
 function UserProfileForm({ me }: { me: SelfUser }) {
   const initial = useMemo(() => draftFrom(me as any), [me]);
   const [d, setD] = useState<ProfileDraft>(initial);
@@ -924,6 +953,7 @@ function UserProfileForm({ me }: { me: SelfUser }) {
           <FormBlock label="Pronouns">
             <Input value={d.pronouns} maxLength={40} onChange={(e) => set('pronouns', e.target.value)} placeholder="Add your pronouns" aria-label="Pronouns" />
           </FormBlock>
+          <TagPicker me={me} />
           <FormBlock label="Avatar">
             <ImageControls noun="Avatar" value={d.avatarUrl} onChange={(v) => set('avatarUrl', v)} purpose="avatar" />
           </FormBlock>

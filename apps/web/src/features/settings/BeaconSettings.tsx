@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   Link2,
   Megaphone,
+  Tag,
   Plus,
   ScrollText,
   Search,
@@ -52,6 +53,10 @@ import { EngagementTab } from './beacon/EngagementTab';
 import { AuditLogTab } from './beacon/AuditLogTab';
 import { AutoModTab } from './beacon/AutoModTab';
 import { SafetyTab } from './beacon/SafetyTab';
+import { TagTab } from './beacon/TagTab';
+import { InsightsTab } from './beacon/InsightsTab';
+import { WidgetTab } from './beacon/WidgetTab';
+import { TemplateTab } from './beacon/TemplateTab';
 
 // Stable fallbacks: a fresh {} / [] inside a selector would re-render forever.
 const EMPTY_MEMBERS: Record<string, Member> = {};
@@ -816,6 +821,7 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           heading: beacon.name,
           items: [
             ...(manageBeacon ? [{ id: 'overview', icon: <Info />, label: `${term('beacon')} Profile` }] : []),
+            ...(manageBeacon ? [{ id: 'tag', icon: <Tag />, label: `${term('beacon')} Tag` }] : []),
             ...(manageBeacon ? [{ id: 'engagement', icon: <Megaphone />, label: 'Engagement' }] : []),
             ...(manageRelays ? [{ id: 'relays', icon: <Hash />, label: term('relay', true) }] : []),
           ],
@@ -856,9 +862,13 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           heading: 'Community',
           items: [
             ...(manageBeacon ? [{ id: 'onboarding', icon: <Flag />, label: 'Onboarding' }] : []),
-            { id: 'insights', icon: <BarChart3 />, label: 'Beacon Insights', comingSoon: true },
-            { id: 'widget', icon: <LayoutGrid />, label: 'Widget', comingSoon: true },
-            { id: 'template', icon: <Copy />, label: 'Beacon Template', comingSoon: true },
+            ...(manageBeacon
+              ? [
+                  { id: 'insights', icon: <BarChart3 />, label: `${term('beacon')} Insights` },
+                  { id: 'widget', icon: <LayoutGrid />, label: 'Widget' },
+                  { id: 'template', icon: <Copy />, label: `${term('beacon')} Template` },
+                ]
+              : []),
           ],
         },
         ...(isOwner
@@ -905,6 +915,10 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
       {tab === 'onboarding' && <OnboardingTab beaconId={beaconId} />}
       {tab === 'engagement' && <EngagementTab beaconId={beaconId} />}
       {tab === 'audit' && <AuditLogTab beaconId={beaconId} />}
+      {tab === 'tag' && <TagTab beaconId={beaconId} />}
+      {tab === 'insights' && <InsightsTab beaconId={beaconId} />}
+      {tab === 'widget' && <WidgetTab beaconId={beaconId} />}
+      {tab === 'template' && <TemplateTab beaconId={beaconId} />}
       {tab === 'automod' && <AutoModTab beaconId={beaconId} />}
       {tab === 'safety' && <SafetyTab beaconId={beaconId} onOpenAutoMod={() => setTab('automod')} />}
     </SettingsLayout>

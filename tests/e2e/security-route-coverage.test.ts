@@ -26,6 +26,7 @@ const PUBLIC: Record<string, string> = {
   'GET /api/v1/embed-proxy': 'embed images load in <img> tags; only fetches URLs the server signed',
   'GET /api/v1/vault/drives/:provider/callback': 'OAuth popup landing; sealed state names the account and an HttpOnly cookie binds it to the browser',
   'GET /api/v1/vault/files/:id': 'attachment links work in <img> tags; unguessable ids, as the upload disclaimer states',
+  'GET /api/v1/beacons/:id/widget.json': 'the beacon widget embeds on other sites; only when its admins turn it on, online members only, no ids',
 };
 
 const UUID = '00000000-0000-4000-8000-00000000dead';

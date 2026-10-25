@@ -24,6 +24,7 @@ import { copyText } from '../../lib/clipboard';
 import { prefetchProfile } from '../profile/useProfile';
 import { RichInput, type RichInputHandle } from '../common/RichInput';
 import { AutomodAlertMessage, JoinMessage, SetupTipsMessage } from './SystemMessages';
+import { BeaconTag } from '../common/BeaconTag';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
@@ -140,6 +141,7 @@ export interface MessageItemProps {
 
 export const MessageItem = memo(function MessageItem({ message: m, channelKey: key, beaconId, grouped, onReply, onJumpTo }: MessageItemProps) {
   const me = useStore((s) => s.me);
+  const authorTag = useStore((s) => s.users[m.author.id]?.tagBeaconId ?? m.author.tagBeaconId);
   const pingsMe = useStore((s) => explicitlyMentionsMe(s, key, m));
   const { type: chType, id: chId } = parseChannelKey(key);
   const perms = useStore((s) => (chType === 'relay' ? relayPermissions(s, chId) : null));
@@ -303,6 +305,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
             <button type="button" onClick={openProfile} onPointerEnter={warmProfile} className="min-w-0 font-medium hover:underline">
               <UserName user={m.author} beaconId={beaconId} />
             </button>
+            <BeaconTag beaconId={authorTag} className="self-center" />
             {(m.author.staffRank ?? 0) >= 1 && (
               <span className="rounded-xs bg-brand px-1 text-[10px] font-bold uppercase leading-4 text-on-brand">Staff</span>
             )}

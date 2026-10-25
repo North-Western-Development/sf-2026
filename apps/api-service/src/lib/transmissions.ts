@@ -20,6 +20,8 @@ export const AUTHOR_FIELDS = {
   displayColor: transmitters.displayColor,
   displayFont: transmitters.displayFont,
   staffRank: transmitters.staffRank,
+  /** The beacon whose tag they wear; clients look up the tag itself. */
+  tagBeaconId: transmitters.tagBeaconId,
 };
 
 export function deriveChannel(row: {

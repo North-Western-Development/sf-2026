@@ -12,6 +12,8 @@ import {
   beaconBans,
   relays,
   resolveBeaconAudience,
+  beaconTemplates,
+  type TemplateSnapshot,
 } from '@subspace/database';
 import {
   PERMISSIONS,
@@ -30,6 +32,7 @@ import { validateMediaUrl } from '../../lib/media.js';
 import { buildMember, buildMembers } from '../../lib/members.js';
 import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
 import { postWelcome, setUpSystemChannel } from '../../lib/system-messages.js';
+import { BUILTIN_TEMPLATES, applyTemplate } from '../../lib/templates.js';
 import { audit, diff } from '../../lib/audit.js';
 
 export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -52,6 +55,18 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     const body = request.body as any;
     const { name, description, iconUrl, bannerUrl, isDiscoverable, suppressCustomFonts, rulesText } =
       body || {};
+
+    // Start from a built-in template, or a member's template by its code.
+    let snapshot: TemplateSnapshot | null = null;
+    if (typeof body?.template === 'string') {
+      snapshot = BUILTIN_TEMPLATES[body.template] ?? null;
+      if (!snapshot) return reply.status(400).send({ error: 'Unknown template' });
+    } else if (typeof body?.templateCode === 'string') {
+      const [tpl] = await db.select().from(beaconTemplates).where(eq(beaconTemplates.code, body.templateCode)).limit(1);
+      if (!tpl) return reply.status(404).send({ error: 'Template not found', code: 'TEMPLATE_NOT_FOUND' });
+      snapshot = tpl.snapshot;
+      await db.update(beaconTemplates).set({ usageCount: tpl.usageCount + 1 }).where(eq(beaconTemplates.code, tpl.code));
+    }
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return reply.status(400).send({ error: 'Beacon name is required' });
@@ -106,19 +121,23 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       })
       .returning();
 
-    // Discord-style starter layout: a text band with #general and a Comm-Link band with General.
-    const [textBand] = await db
-      .insert(relays)
-      .values({ beaconId: newBeacon.id, name: 'Text Relays', type: 'category', position: 0 })
-      .returning();
-    const [voiceBand] = await db
-      .insert(relays)
-      .values({ beaconId: newBeacon.id, name: 'Comm-Links', type: 'category', position: 1 })
-      .returning();
-    await db.insert(relays).values([
-      { beaconId: newBeacon.id, parentId: textBand.id, name: 'general', type: 'text', position: 0 },
-      { beaconId: newBeacon.id, parentId: voiceBand.id, name: 'General', type: 'comm_link', position: 0 },
-    ]);
+    if (snapshot) {
+      await applyTemplate(db, newBeacon.id, snapshot);
+    } else {
+      // Discord-style starter layout: a text band with #general and a Comm-Link band with General.
+      const [textBand] = await db
+        .insert(relays)
+        .values({ beaconId: newBeacon.id, name: 'Text Relays', type: 'category', position: 0 })
+        .returning();
+      const [voiceBand] = await db
+        .insert(relays)
+        .values({ beaconId: newBeacon.id, name: 'Comm-Links', type: 'category', position: 1 })
+        .returning();
+      await db.insert(relays).values([
+        { beaconId: newBeacon.id, parentId: textBand.id, name: 'general', type: 'text', position: 0 },
+        { beaconId: newBeacon.id, parentId: voiceBand.id, name: 'General', type: 'comm_link', position: 0 },
+      ]);
+    }
     await setUpSystemChannel(app, db, newBeacon.id, token.transmitterId);
     const [created] = await db.select().from(beacons).where(eq(beacons.id, newBeacon.id)).limit(1);
 
@@ -142,21 +161,14 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (!token) return reply.status(401).send({ error: 'Authentication required' });
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
 
-    const userBeacons = await db
-      .select({
-        id: beacons.id,
-        name: beacons.name,
-        description: beacons.description,
-        iconUrl: beacons.iconUrl,
-        bannerUrl: beacons.bannerUrl,
-        ownerId: beacons.ownerId,
-        isDiscoverable: beacons.isDiscoverable,
-      })
+    // Every setting members see (engagement, tags, verification) comes with the list.
+    const rows = await db
+      .select({ beacon: beacons })
       .from(beaconMembers)
       .innerJoin(beacons, eq(beaconMembers.beaconId, beacons.id))
       .where(eq(beaconMembers.transmitterId, token.transmitterId));
 
-    return reply.send({ beacons: userBeacons });
+    return reply.send({ beacons: rows.map((r: any) => r.beacon) });
   });
 
   /**

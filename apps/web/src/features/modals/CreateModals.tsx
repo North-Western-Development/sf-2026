@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
 import { ChevronRight, Hash, Image as ImageIcon, MessagesSquare, Search, Volume2, Check, Copy, Users, Lock } from 'lucide-react';
-import { Button, Input, Modal, ComingSoon } from '@subspace/ui';
+import { Button, Input, Modal } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, setState, getState } from '../../data/store';
 import { acceptInvite, createBeacon, openDirectLink, sendMessage } from '../../data/actions';
@@ -18,10 +18,21 @@ import { copyText } from '../../lib/clipboard';
 // Create / join beacon
 // ---------------------------------------------------------------------------
 
+/** The built-in starters (the server's BUILTIN_TEMPLATES). */
+const TEMPLATES = [
+  { id: 'gaming', label: 'Gaming', icon: '🎮' },
+  { id: 'school-club', label: 'School Club', icon: '🏫' },
+  { id: 'study-group', label: 'Study Group', icon: '📚' },
+  { id: 'friends', label: 'Friends', icon: '💖' },
+  { id: 'artists-creators', label: 'Artists & Creators', icon: '🎨' },
+  { id: 'local-community', label: 'Local Community', icon: '🏘️' },
+];
+
 export function CreateBeaconModal() {
   const navigate = useNavigate();
   const me = useStore((s) => s.me);
   const [step, setStep] = useState<'start' | 'create' | 'join'>('start');
+  const [template, setTemplate] = useState<string | undefined>(undefined);
   const [name, setName] = useState(`${me?.displayName || me?.username}'s ${term('beacon').toLowerCase()}`);
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
@@ -31,7 +42,7 @@ export function CreateBeaconModal() {
     e.preventDefault();
     setBusy(true);
     try {
-      const id = await createBeacon(name.trim());
+      const id = await createBeacon(name.trim(), null, template ? { template } : {});
       closeModal();
       navigate(`/channels/${id}`);
     } catch (err) {
@@ -64,7 +75,14 @@ export function CreateBeaconModal() {
           <Input label={`${term('beacon')} name`} value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required autoFocus error={error ?? undefined} />
           <p className="mt-2 text-xs text-fg-subtle">By creating a {term('beacon').toLowerCase()}, you agree to the Subspace Directives.</p>
           <div className="-mx-6 -mb-4 mt-6 flex justify-between bg-raised px-6 py-4">
-            <Button variant="link" className="text-fg" onClick={() => setStep('start')}>
+            <Button
+              variant="link"
+              className="text-fg"
+              onClick={() => {
+                setTemplate(undefined);
+                setStep('start');
+              }}
+            >
               Back
             </Button>
             <Button type="submit" isLoading={busy} disabled={!name.trim()}>
@@ -102,10 +120,20 @@ export function CreateBeaconModal() {
         <ChevronRight className="h-5 w-5" />
       </button>
       <p className="mb-2 mt-4 text-xs font-bold uppercase text-fg-muted">Start from a template</p>
-      {['Gaming', 'School Club', 'Study Group', 'Friends', 'Artists & Creators', 'Local Community'].map((t) => (
-        <ComingSoon key={t} className="mb-2 w-full" label={`${t} template`}>
-          <span className="flex w-full items-center gap-3 rounded-lg border border-line-strong p-3 font-semibold text-fg">{t}</span>
-        </ComingSoon>
+      {TEMPLATES.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => {
+            setTemplate(t.id);
+            setStep('create');
+          }}
+          className="mb-2 flex w-full items-center gap-3 rounded-lg border border-line-strong p-3 text-left font-semibold text-fg hover:bg-hover"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-xl">{t.icon}</span>
+          <span className="flex-1">{t.label}</span>
+          <ChevronRight className="h-5 w-5" />
+        </button>
       ))}
       <div className="-mx-6 -mb-4 mt-4 bg-raised px-6 py-4 text-center">
         <p className="text-lg font-semibold text-fg">Have an invite already?</p>

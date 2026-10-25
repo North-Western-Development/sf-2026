@@ -22,5 +22,6 @@ export function serializeTransmitter(user: any) {
     is2faEnabled: Boolean(user.is2faEnabled),
     isEmailVerified: Boolean(user.isEmailVerified),
     createdAt: user.createdAt,
+    tagBeaconId: user.tagBeaconId ?? null,
   };
 }

@@ -36,6 +36,7 @@ export async function buildMembers(db: any, redis: any, beaconId: string, onlyId
       avatarUrl: transmitters.avatarUrl,
       customStatus: transmitters.customStatus,
       staffRank: transmitters.staffRank,
+      tagBeaconId: transmitters.tagBeaconId,
     })
     .from(beaconMembers)
     .innerJoin(transmitters, eq(beaconMembers.transmitterId, transmitters.id))
@@ -73,6 +74,7 @@ export async function buildMembers(db: any, redis: any, beaconId: string, onlyId
         displayFont: beacon.suppressCustomFonts ? 'default' : m.displayFont,
         displayNameStyle: m.displayNameStyle,
         staffRank: m.staffRank,
+        tagBeaconId: m.tagBeaconId,
       },
       // Flat fields kept for existing clients.
       username: m.username,

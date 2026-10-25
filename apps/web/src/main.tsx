@@ -4,8 +4,11 @@ import { ContextMenuProvider } from '@subspace/ui';
 import { AppShell } from './app/AppShell';
 import { AuthGate } from './features/auth/AuthGate';
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage';
+import { WidgetPage } from './features/invite/WidgetPage';
 import { toast } from './app/ui';
 import './index.css';
+
+const widgetId = /^\/widget\/([0-9a-f-]{36})\/?$/i.exec(window.location.pathname)?.[1];
 
 const pasteBlocked = () => toast('Your browser blocked reading the clipboard. Press Ctrl+V to paste.', 'error');
 
@@ -15,6 +18,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ContextMenuProvider onPasteBlocked={pasteBlocked}>
       {window.location.pathname === '/verify-email' ? (
         <VerifyEmailPage />
+      ) : widgetId ? (
+        // Embedded on other sites: public, no sign-in.
+        <WidgetPage beaconId={widgetId} />
       ) : (
         <AuthGate>
           <AppShell />

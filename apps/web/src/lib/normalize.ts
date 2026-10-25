@@ -29,6 +29,7 @@ export function toUserRef(raw: Raw | null | undefined, fallbackId = ''): UserRef
     displayFont: r.displayFont ?? null,
     displayNameStyle: r.displayNameStyle ?? null,
     staffRank: r.staffRank ?? 0,
+    tagBeaconId: r.tagBeaconId ?? null,
   };
 }
 

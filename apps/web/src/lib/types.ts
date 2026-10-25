@@ -36,6 +36,8 @@ export interface UserRef {
   displayFont?: string | null;
   displayNameStyle?: DisplayNameStyle | null;
   staffRank?: number;
+  /** The beacon whose Beacon Tag they wear. */
+  tagBeaconId?: string | null;
 }
 
 export interface SelfUser extends UserRef {

@@ -13,6 +13,7 @@ import { RelayRoute } from '../features/chat/RelayRoute';
 import { DirectRoute } from '../features/chat/DirectRoute';
 import { DiscoverView } from '../features/discover/DiscoverView';
 import { InviteRoute } from '../features/invite/InviteRoute';
+import { TemplateRoute } from '../features/invite/TemplateRoute';
 import { MembersPage } from '../features/community/MembersPage';
 import { ChannelsRolesPage } from '../features/community/ChannelsRolesPage';
 import { ModalHost } from './ModalHost';
@@ -157,6 +158,7 @@ export function AppShell() {
         <Routes>
           <Route path="/" element={<Navigate to="/channels/@me" replace />} />
           <Route path="/invite/:code" element={<InviteRoute />} />
+          <Route path="/template/:code" element={<TemplateRoute />} />
           <Route path="/channels/@me" element={<Layout sidebar={<HomeSidebar />} />}>
             <Route index element={<FriendsView />} />
             <Route path="requests" element={<RequestsView />} />
