@@ -13,6 +13,7 @@ export type ModalState =
   | { kind: 'addAffiliate' }
   | { kind: 'confirm'; title: string; body: string; confirmLabel: string; danger?: boolean; onConfirm: () => Promise<void> | void }
   | { kind: 'prompt'; title: string; label: string; initial?: string; maxLength?: number; confirmLabel?: string; onSubmit: (value: string) => Promise<void> | void }
+  | { kind: 'leaving'; href: string }
   | { kind: 'quickScan' }
   | { kind: 'vault' }
   | { kind: 'badges' }
@@ -37,7 +38,7 @@ export interface Toast {
   tone: 'info' | 'error' | 'success';
 }
 
-export type DialogState = Extract<ModalState, { kind: 'confirm' } | { kind: 'prompt' }>;
+export type DialogState = Extract<ModalState, { kind: 'confirm' } | { kind: 'prompt' } | { kind: 'leaving' }>;
 
 interface UiState {
   modal: ModalState | null;

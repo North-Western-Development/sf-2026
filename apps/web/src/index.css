@@ -185,3 +185,17 @@
   vertical-align: -0.35em;
   object-fit: contain;
 }
+
+/* Code block syntax colours (highlight.js classes), a dark theme like Discord's. */
+.hljs-comment, .hljs-quote { color: #7d8799; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-meta .hljs-keyword { color: #c678dd; }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attribute, .hljs-meta .hljs-string { color: #98c379; }
+.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet, .hljs-variable.constant_ { color: #d19a66; }
+.hljs-title, .hljs-title.function_, .hljs-section { color: #61afef; }
+.hljs-title.class_, .hljs-type, .hljs-built_in, .hljs-selector-class { color: #e5c07b; }
+.hljs-attr, .hljs-variable, .hljs-template-variable, .hljs-selector-id, .hljs-property { color: #e06c75; }
+.hljs-tag, .hljs-name, .hljs-meta, .hljs-deletion { color: #e06c75; }
+.hljs-params, .hljs-subst { color: inherit; }
+.hljs-link { color: #56b6c2; text-decoration: underline; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }

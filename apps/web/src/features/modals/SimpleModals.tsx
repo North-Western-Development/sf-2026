@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Button, Input, Modal } from '@subspace/ui';
 import { closeDialog as closeModal, toast } from '../../app/ui';
+import { linkHost, trustDomain } from '../../lib/links';
 
 export function ConfirmModal({
   title,
@@ -45,6 +46,42 @@ export function ConfirmModal({
       }
     >
       <p className="text-fg-muted">{body}</p>
+    </Modal>
+  );
+}
+
+/** Discord's "Leaving Discord": shows where an outside link really goes before opening it. */
+export function LeavingModal({ href }: { href: string }) {
+  const host = linkHost(href) ?? href;
+  const [trust, setTrust] = useState(false);
+  const visit = () => {
+    if (trust) trustDomain(host);
+    window.open(href, '_blank', 'noopener,noreferrer');
+    closeModal();
+  };
+  return (
+    <Modal
+      isOpen
+      onClose={closeModal}
+      title="Leaving Subspace"
+      maxWidth="md"
+      footer={
+        <>
+          <Button variant="link" className="text-fg" onClick={closeModal}>
+            Go Back
+          </Button>
+          <Button onClick={visit} data-autofocus>
+            Visit Site
+          </Button>
+        </>
+      }
+    >
+      <p className="text-fg-muted">This link is taking you to the following website</p>
+      <div className="mt-3 break-all rounded-sm bg-raised px-3 py-2.5 text-sm text-fg">{href}</div>
+      <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-fg-muted">
+        <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} className="h-4 w-4 accent-[var(--color-brand)]" />
+        Trust <span className="font-semibold text-fg">{host}</span> links from now on
+      </label>
     </Modal>
   );
 }

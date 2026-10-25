@@ -4,6 +4,13 @@ import type { Embed } from '../../lib/types';
 import { useChatPrefs } from '../../lib/chatPrefs';
 import { confirmAction, toast } from '../../app/ui';
 import { http } from '../../lib/http';
+import { isTrustedLink, openLeavingDialog } from '../../lib/links';
+
+const guardLink = (href: string) => (e: React.MouseEvent) => {
+  if (isTrustedLink(href)) return;
+  e.preventDefault();
+  openLeavingDialog(href);
+};
 
 function hostOf(url: string) {
   try {
@@ -48,7 +55,7 @@ function EmbedCard({ embed, onRemove }: { embed: Embed; onRemove?: () => void })
     >
       <div className="min-w-0 space-y-1 pt-1">
         <p className="text-xs text-fg-muted">{embed.siteName ?? hostOf(embed.url)}</p>
-        <a href={embed.url} target="_blank" rel="noreferrer noopener" className="block font-semibold text-brand-sky hover:underline">
+        <a href={embed.url} target="_blank" rel="noreferrer noopener" onClick={guardLink(embed.url)} className="block font-semibold text-brand-sky hover:underline">
           {title}
         </a>
         {embed.description && <p className="whitespace-pre-line break-words text-sm text-fg-muted">{embed.description}</p>}

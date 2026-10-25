@@ -1,6 +1,8 @@
 // Discord-flavoured markdown: parser (pure) + React renderer.
 import { withTwemoji } from '../../lib/emoji';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Tooltip } from '@subspace/ui';
+import { isTrustedLink, openLeavingDialog } from '../../lib/links';
 
 // ---------------------------------------------------------------------------
 // AST
@@ -28,6 +30,9 @@ export type Block =
   | { t: 'list'; ordered: boolean; start: number; items: Block[][] };
 
 const SAFE_URL = /^(https?:\/\/|mailto:)/i;
+/** Discord's code block: a language only when a newline follows it; blank edge lines trimmed. */
+const CODE_RE = /^```(?:([a-z0-9_+\-.#]+?)\n)?\n*([^\n][\s\S]*?)\n*```/i;
+const LIST_RE = /^(\s*)([-*]|(\d{1,9})\.) (.+)$/;
 
 // ---------------------------------------------------------------------------
 // Inline parser
@@ -120,37 +125,6 @@ export function parseMarkdown(src: string, depth = 0): Block[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Fenced code
-    const fence = line.match(/^```([A-Za-z0-9_+-]*)\s*(.*)$/);
-    if (fence) {
-      const body: string[] = [];
-      const firstRest = fence[2];
-      // ```code``` on one line
-      if (firstRest.endsWith('```') && firstRest.length >= 3) {
-        flushPara();
-        blocks.push({ t: 'codeblock', lang: '', v: (fence[1] + ' ' + firstRest.slice(0, -3)).trim() });
-        continue;
-      }
-      let j = i + 1;
-      let closed = false;
-      if (firstRest) body.push(firstRest);
-      for (; j < lines.length; j++) {
-        const end = lines[j].indexOf('```');
-        if (end >= 0) {
-          if (end > 0) body.push(lines[j].slice(0, end));
-          closed = true;
-          break;
-        }
-        body.push(lines[j]);
-      }
-      if (closed) {
-        flushPara();
-        blocks.push({ t: 'codeblock', lang: fence[1].toLowerCase(), v: body.join('\n') });
-        i = j;
-        continue;
-      }
-    }
-
     // Block quotes: ">>> " quotes the rest of the message; "> " quotes one line.
     if (depth < 1 && line.startsWith('>>> ')) {
       flushPara();
@@ -167,6 +141,27 @@ export function parseMarkdown(src: string, depth = 0): Block[] {
       continue;
     }
 
+    // Fenced code, like Discord: it can open mid-line, and text after the closing fence stays.
+    const k = line.indexOf('```');
+    if (k >= 0) {
+      const tail = [line.slice(k), ...lines.slice(i + 1)].join('\n');
+      const m = CODE_RE.exec(tail);
+      if (m) {
+        const before = line.slice(0, k);
+        if (before.trim()) {
+          // Earlier paragraph lines and the text before the fence parse together.
+          blocks.push(...parseMarkdown([...para, before].join('\n'), depth));
+          para = [];
+        } else flushPara();
+        blocks.push({ t: 'codeblock', lang: (m[1] ?? '').toLowerCase(), v: m[2] });
+        let rest = tail.slice(m[0].length);
+        rest = rest.startsWith('\n') ? rest.slice(1) : rest.replace(/^[ \t]+/, '');
+        lines.splice(i, lines.length - i, ...(rest ? rest.split('\n') : []));
+        i--;
+        continue;
+      }
+    }
+
     const heading = line.match(/^(#{1,3}) (.+)$/);
     if (heading) {
       flushPara();
@@ -180,19 +175,28 @@ export function parseMarkdown(src: string, depth = 0): Block[] {
       continue;
     }
 
-    const item = line.match(/^(\s*)([-*]|(\d{1,9})\.) (.+)$/);
+    const item = line.match(LIST_RE);
     if (item) {
       flushPara();
+      const base = item[1].length;
       const ordered = !!item[3];
-      const items: Block[][] = [];
+      // Each item is its text plus the more-indented lines under it (a nested list).
+      const items: Array<{ text: string; sub: string[] }> = [];
       let j = i;
       while (j < lines.length) {
-        const m = lines[j].match(/^(\s*)([-*]|(\d{1,9})\.) (.+)$/);
-        if (!m || !!m[3] !== ordered) break;
-        items.push([{ t: 'p', c: parseInline(m[4]) }]);
+        const m = lines[j].match(LIST_RE);
+        if (!m) break;
+        if (m[1].length > base) items[items.length - 1].sub.push(lines[j]);
+        else if (!!m[3] !== ordered) break;
+        else items.push({ text: m[4], sub: [] });
         j++;
       }
-      blocks.push({ t: 'list', ordered, start: ordered ? Number(item[3]) : 1, items });
+      blocks.push({
+        t: 'list',
+        ordered,
+        start: ordered ? Number(item[3]) : 1,
+        items: items.map((it) => [{ t: 'p', c: parseInline(it.text) }, ...(it.sub.length ? parseMarkdown(it.sub.join('\n'), depth) : [])]),
+      });
       i = j - 1;
       continue;
     }
@@ -265,6 +269,32 @@ function Spoiler({ children }: { children: React.ReactNode }) {
   );
 }
 
+type Hljs = typeof import('highlight.js/lib/common').default;
+let hljsLoad: Promise<Hljs> | null = null;
+/** highlight.js loads the first time a code block names a language. */
+const loadHljs = () => (hljsLoad ??= import('highlight.js/lib/common').then((m) => m.default));
+
+function CodeBlock({ lang, code }: { lang: string; code: string }) {
+  const [html, setHtml] = useState<string | null>(null);
+  useEffect(() => {
+    setHtml(null);
+    if (!lang) return;
+    let live = true;
+    void loadHljs().then((hljs) => {
+      if (live && hljs.getLanguage(lang)) setHtml(hljs.highlight(code, { language: lang, ignoreIllegals: true }).value);
+    });
+    return () => {
+      live = false;
+    };
+  }, [lang, code]);
+  return (
+    <pre className="my-1 max-w-[90%] rounded-sm border border-line bg-raised p-2 font-mono text-sm leading-[1.125rem] whitespace-pre-wrap break-words" data-lang={lang || undefined}>
+      {/* highlight.js escapes the code; its output is only spans. */}
+      {html === null ? <code className="hljs">{code}</code> : <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />}
+    </pre>
+  );
+}
+
 const mentionPill = 'rounded-xs px-0.5 font-medium cursor-pointer bg-brand-soft text-brand-sky hover:bg-brand hover:text-on-brand transition-colors';
 
 function renderInline(nodes: Inline[], r: MarkdownResolvers, big: boolean, keyPrefix = ''): React.ReactNode[] {
@@ -301,7 +331,13 @@ function renderInline(nodes: Inline[], r: MarkdownResolvers, big: boolean, keyPr
             rel="noreferrer noopener"
             title={n.masked ? n.href : undefined}
             className="text-brand-sky hover:underline break-words"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isTrustedLink(n.href)) {
+                e.preventDefault();
+                openLeavingDialog(n.href);
+              }
+            }}
           >
             {renderInline(n.c, r, big, key)}
           </a>
@@ -363,12 +399,17 @@ function renderInline(nodes: Inline[], r: MarkdownResolvers, big: boolean, keyPr
         const size = big ? 'h-12 w-12' : 'h-[1.375em] w-[1.375em]';
         return <img key={key} src={url} alt={`:${n.name}:`} title={`:${n.name}:`} className={`inline-block align-bottom object-contain ${size}`} draggable={false} />;
       }
-      case 'timestamp':
+      case 'timestamp': {
+        const d = new Date(n.unix * 1000);
+        if (Number.isNaN(d.getTime())) return <React.Fragment key={key}>{formatTimestamp(n.unix, n.style)}</React.Fragment>;
         return (
-          <time key={key} dateTime={new Date(n.unix * 1000).toISOString()} className="rounded-xs bg-hover px-1">
-            {formatTimestamp(n.unix, n.style)}
-          </time>
+          <Tooltip key={key} content={formatTimestamp(n.unix, 'F')}>
+            <time dateTime={d.toISOString()} className="rounded-xs bg-hover px-1">
+              {formatTimestamp(n.unix, n.style)}
+            </time>
+          </Tooltip>
         );
+      }
     }
   });
 }
@@ -386,11 +427,7 @@ function renderBlocks(blocks: Block[], r: MarkdownResolvers, big: boolean, keyPr
       case 'subtext':
         return <div key={key} className="text-xs text-fg-subtle">{renderInline(b.c, r, false, key)}</div>;
       case 'codeblock':
-        return (
-          <pre key={key} className="my-1 max-w-full overflow-x-auto rounded-md border border-line bg-raised p-2.5 font-mono text-[0.85em] leading-relaxed" data-lang={b.lang || undefined}>
-            <code>{b.v}</code>
-          </pre>
-        );
+        return <CodeBlock key={key} lang={b.lang} code={b.v} />;
       case 'quote':
         return (
           <blockquote key={key} className="my-0.5 flex gap-2">
@@ -401,7 +438,11 @@ function renderBlocks(blocks: Block[], r: MarkdownResolvers, big: boolean, keyPr
       case 'list': {
         const Tag = b.ordered ? 'ol' : 'ul';
         return (
-          <Tag key={key} start={b.ordered ? b.start : undefined} className={`my-0.5 pl-6 ${b.ordered ? 'list-decimal' : 'list-disc'}`}>
+          <Tag
+            key={key}
+            start={b.ordered ? b.start : undefined}
+            className={`my-0.5 pl-6 ${b.ordered ? 'list-decimal' : 'list-disc [&_ul]:list-[circle] [&_ul_ul]:list-[square]'}`}
+          >
             {b.items.map((it, j) => (
               <li key={j}>{renderBlocks(it, r, false, `${key}-${j}`)}</li>
             ))}

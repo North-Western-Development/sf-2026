@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { parseInline, parseMarkdown, Markdown, isJumboEmoji, toPlainText } from '../features/chat/markdown';
+import { inOpenCodeBlock } from '../features/common/RichInput';
 
 const U = '11111111-1111-1111-1111-111111111111';
 const R = '22222222-2222-2222-2222-222222222222';
@@ -65,6 +66,32 @@ describe('block markdown', () => {
   it('keeps an unclosed fence as text', () => {
     expect(parseMarkdown('```js\nno end')[0].t).toBe('p');
   });
+
+  it('opens code blocks mid-line and keeps the text after the closing fence', () => {
+    expect(parseMarkdown('look ```a = 1``` and more')).toEqual([
+      { t: 'p', c: [{ t: 'text', v: 'look ' }] },
+      { t: 'codeblock', lang: '', v: 'a = 1' },
+      { t: 'p', c: [{ t: 'text', v: 'and more' }] },
+    ]);
+    expect(parseMarkdown('```py\nx\n```\nafter').map((b) => b.t)).toEqual(['codeblock', 'p']);
+  });
+
+  it('takes a language only when a newline follows it, and trims blank edge lines', () => {
+    expect(parseMarkdown('```hello world```')).toEqual([{ t: 'codeblock', lang: '', v: 'hello world' }]);
+    expect(parseMarkdown('```js\n\n\nx\n\n```')).toEqual([{ t: 'codeblock', lang: 'js', v: 'x' }]);
+  });
+
+  it('keeps a code block inside a >>> quote', () => {
+    const [q] = parseMarkdown('>>> see\n```js\nx\n```');
+    expect(q.t === 'quote' && q.c.map((b) => b.t)).toEqual(['p', 'codeblock']);
+  });
+
+  it('nests indented list items', () => {
+    const [list] = parseMarkdown('- a\n  - b\n    - c\n- d');
+    expect(list.t === 'list' && list.items.length).toBe(2);
+    const sub = list.t === 'list' ? list.items[0][1] : null;
+    expect(sub?.t === 'list' && sub.items[0][1]?.t).toBe('list');
+  });
 });
 
 describe('<Markdown />', () => {
@@ -94,6 +121,13 @@ describe('<Markdown />', () => {
 });
 
 describe('helpers', () => {
+  it('knows when the caret is inside an unclosed code block', () => {
+    expect(inOpenCodeBlock('```js\nconst', 11)).toBe(true);
+    expect(inOpenCodeBlock('```js\nx\n```', 12)).toBe(false);
+    expect(inOpenCodeBlock('```js\nx\n```', 3)).toBe(false);
+    expect(inOpenCodeBlock('plain', 5)).toBe(false);
+  });
+
   it('detects emoji-only messages', () => {
     expect(isJumboEmoji('🚀🚀')).toBe(true);
     expect(isJumboEmoji('🚀 launch')).toBe(false);

@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router';
 import { useStore } from '../data/store';
 import { useUi, closeModal } from './ui';
-import { ConfirmModal, PromptModal } from '../features/modals/SimpleModals';
+import { ConfirmModal, LeavingModal, PromptModal } from '../features/modals/SimpleModals';
 import { CreateBandModal, CreateBeaconModal, CreateMeshModal, CreateRelayModal, InviteModal } from '../features/modals/CreateModals';
 import { QuickScanModal } from '../features/modals/QuickScanModal';
 import { NotificationSettingsModal } from '../features/modals/NotificationSettingsModal';
@@ -109,6 +109,7 @@ export function ModalHost() {
       {content}
       {dialog?.kind === 'confirm' && <ConfirmModal {...dialog} />}
       {dialog?.kind === 'prompt' && <PromptModal {...dialog} />}
+      {dialog?.kind === 'leaving' && <LeavingModal href={dialog.href} />}
     </>
   );
 }
