@@ -46,7 +46,7 @@ test.describe('Stickers and GIFs', () => {
 
     // The favorite is kept.
     await page.getByRole('button', { name: 'Open GIF picker' }).click();
-    await picker.getByRole('button', { name: 'Favorites' }).click();
+    await picker.getByRole('button', { name: 'Favorites', exact: true }).click();
     await expect(picker.getByRole('button', { name: 'Remove from favorites' })).toHaveCount(1);
   });
 });

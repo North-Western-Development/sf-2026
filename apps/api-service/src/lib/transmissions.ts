@@ -150,6 +150,7 @@ export async function formatTransmission(
     editedAt: row.isEdited ? row.updatedAt : null,
     attachments: row.attachments || [],
     stickers: (row as any).stickers || [],
+    forwarded: (row as any).forwarded ?? null,
     mentions: row.mentions || [],
     mentionRoles: row.mentionRoles || [],
     mentionEveryone: !!row.mentionEveryone,

@@ -25,6 +25,7 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         mutualBeaconId: transmissionRequests.mutualBeaconId,
         initialTransmission: transmissionRequests.initialTransmission,
         status: transmissionRequests.status,
+        isSpam: transmissionRequests.isSpam,
         createdAt: transmissionRequests.createdAt,
         expiresAt: transmissionRequests.expiresAt,
         senderName: transmitters.displayName,
@@ -38,7 +39,9 @@ export const requestRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         and(
           eq(transmissionRequests.recipientId, token.transmitterId),
           eq(transmissionRequests.status, 'pending'),
-          gt(transmissionRequests.expiresAt, new Date())
+          gt(transmissionRequests.expiresAt, new Date()),
+          // ?spam=true lists the Spam folder instead.
+          eq(transmissionRequests.isSpam, (request.query as any)?.spam === 'true')
         )
       )
       .orderBy(desc(transmissionRequests.createdAt));
@@ -123,6 +126,23 @@ scheduleEmbeds(app, intro);
    * POST /api/v1/requests/:id/decline
    * Decline transmission request
    */
+  /**
+   * POST /api/v1/requests/:id/not-spam — moves a request out of Spam into Requests.
+   */
+  app.post('/:id/not-spam', async (request, reply) => {
+    const token = extractAuthToken(request);
+    if (!token) return reply.status(401).send({ error: 'Authentication required' });
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const { id } = request.params as { id: string };
+    const [updated] = await db
+      .update(transmissionRequests)
+      .set({ isSpam: false })
+      .where(and(eq(transmissionRequests.id, id), eq(transmissionRequests.recipientId, token.transmitterId)))
+      .returning();
+    if (!updated) return reply.status(404).send({ error: 'Request not found' });
+    return reply.send({ request: updated });
+  });
+
   app.post('/:id/decline', async (request, reply) => {
     const token = extractAuthToken(request);
     if (!token) return reply.status(401).send({ error: 'Authentication required' });

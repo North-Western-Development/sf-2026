@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { Bell, BellOff, Pin, Users, Inbox, CircleHelp, Hash } from 'lucide-react';
-import { ComingSoon, Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
+import { Bell, BellOff, Pin, Users, Inbox, CircleHelp, MessagesSquare } from 'lucide-react';
+import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { setState, useStore } from '../../data/store';
 import { loadPins } from '../../data/actions';
 import { effectiveNotification, isMuted, settingFor } from '../../data/notifications';
 import { muteDurations, setNotificationSetting } from '../../data/notificationActions';
 import { parseChannelKey, type ChannelKey, type NotificationLevel, type Transmission } from '../../lib/types';
-import { useUi } from '../../app/ui';
+import { openModal, useUi } from '../../app/ui';
+import { ThreadsPopover } from './ThreadsUI';
+import { InboxPopover } from './InboxPopover';
 import { SearchBar, SearchResults } from '../search/Search';
 import { MobileNavButton, MobileSheet, useIsMobile } from '../../app/mobile';
 import { formatMessageTime } from '../../lib/time';
@@ -149,12 +151,22 @@ export interface ChannelViewProps {
   aside?: React.ReactNode;
   /** Full-width area under the header (the DM call view). */
   banner?: React.ReactNode;
+  /** Shown beside the conversation whatever the member-list toggle says (an open thread). */
+  sidePanel?: React.ReactNode;
 }
 
-export function ChannelView({ channelKey: key, beaconId, icon, title, topic, placeholder, welcome, actions, aside, banner }: ChannelViewProps) {
+export function ChannelView({ channelKey: key, beaconId, icon, title, topic, placeholder, welcome, actions, aside, banner, sidePanel }: ChannelViewProps) {
   const memberListOpen = useUi((s) => s.memberListOpen);
   const [pinsAnchor, setPinsAnchor] = useState<DOMRect | null>(null);
+  const [threadsAnchor, setThreadsAnchor] = useState<DOMRect | null>(null);
+  const [inboxAnchor, setInboxAnchor] = useState<DOMRect | null>(null);
+  const closeThreads = useCallback(() => setThreadsAnchor(null), []);
+  const closeInbox = useCallback(() => setInboxAnchor(null), []);
   const resolvers = useMarkdownResolvers(beaconId);
+  const threadsRelay = useStore((s) => {
+    const { type, id } = parseChannelKey(key);
+    return type === 'relay' && s.relays[id]?.type === 'text' ? s.relays[id] : undefined;
+  });
 
   useEffect(() => {
     setState({ activeChannel: key });
@@ -176,7 +188,8 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
   const showAside = hasAside && (mobile ? mobileAside : memberListOpen);
   const asideOpen = mobile ? mobileAside : memberListOpen;
   const toggleAside = () => (mobile ? setMobileAside((v) => !v) : useUi.setState({ memberListOpen: !memberListOpen }));
-  const panel = search ? <SearchResults search={search} /> : showAside ? (aside ?? (beaconId ? <MemberList beaconId={beaconId} /> : null)) : null;
+  // An open thread takes the member list's place, as on Discord.
+  const panel = search ? <SearchResults search={search} /> : sidePanel ?? (showAside ? (aside ?? (beaconId ? <MemberList beaconId={beaconId} /> : null)) : null);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -196,11 +209,11 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
           {actions}
           {!mobile && (
             <>
-              <ComingSoon label="Threads" placement="bottom">
-                <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
-                  <Hash className="h-5 w-5" />
-                </span>
-              </ComingSoon>
+              {threadsRelay && (
+                <HeaderButton label="Threads" onClick={(e) => setThreadsAnchor(e.currentTarget.getBoundingClientRect())}>
+                  <MessagesSquare className="h-5 w-5" />
+                </HeaderButton>
+              )}
               <NotificationButton channelKey={key} />
               <HeaderButton label="Pinned Transmissions" onClick={(e) => setPinsAnchor(e.currentTarget.getBoundingClientRect())}>
                 <Pin className="h-5 w-5" />
@@ -215,16 +228,12 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
           <SearchBar scope={searchScope} />
           {!mobile && (
             <>
-              <ComingSoon label="Inbox" placement="bottom">
-                <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
-                  <Inbox className="h-5 w-5" />
-                </span>
-              </ComingSoon>
-              <ComingSoon label="Help" placement="bottom">
-                <span className="flex h-8 w-8 items-center justify-center text-fg-muted">
-                  <CircleHelp className="h-5 w-5" />
-                </span>
-              </ComingSoon>
+              <HeaderButton label="Inbox" onClick={(e) => setInboxAnchor(e.currentTarget.getBoundingClientRect())}>
+                <Inbox className="h-5 w-5" />
+              </HeaderButton>
+              <HeaderButton label="Help" onClick={() => openModal({ kind: 'help' })}>
+                <CircleHelp className="h-5 w-5" />
+              </HeaderButton>
             </>
           )}
         </div>
@@ -244,6 +253,8 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
       </div>
 
       {pinsAnchor && <PinsPopover channelKey={key} beaconId={beaconId} anchor={pinsAnchor} onClose={() => setPinsAnchor(null)} />}
+      {threadsAnchor && threadsRelay && <ThreadsPopover relay={threadsRelay} anchor={threadsAnchor} onClose={closeThreads} />}
+      {inboxAnchor && <InboxPopover anchor={inboxAnchor} onClose={closeInbox} />}
     </div>
   );
 }

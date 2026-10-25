@@ -57,6 +57,7 @@ import { Avatar, PresenceDot } from '../common/Avatar';
 import { saveCustomStatus } from '../user/StatusModal';
 import { UserName } from '../common/UserName';
 import { Dropdown } from '../common/Dropdown';
+import { KEYBINDS } from '../../lib/keybinds';
 import { Markdown } from '../chat/markdown';
 
 const USERNAME_RE = /^(?!.*\.\.)(?!\.)(?!.*\.$)[a-z0-9_.]{2,32}$/;
@@ -1521,17 +1522,6 @@ function ChatTab() {
     </>
   );
 }
-
-const KEYBINDS: Array<[string, string]> = [
-  ['Ctrl + K', 'Quick Scan (switch beacons, relays, links)'],
-  ['Alt + ↑ / ↓', 'Previous / next relay'],
-  ['Alt + Shift + ↑ / ↓', 'Previous / next unread relay'],
-  ['Esc', 'Mark relay as read'],
-  ['Shift + Esc', 'Mark beacon as read'],
-  ['↑ (empty composer)', 'Edit your last transmission'],
-  ['Enter / Shift + Enter', 'Send / new line'],
-  ['Esc (while replying)', 'Cancel reply'],
-];
 
 function KeybindsTab() {
   return (

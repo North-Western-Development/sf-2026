@@ -1,7 +1,7 @@
 import { Emoji } from '../../lib/emoji';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { AtSign, CirclePlus, Cloud, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
+import { AtSign, Blocks, CirclePlus, Cloud, MessagesSquare, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
 import { Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore, getState } from '../../data/store';
 import { notifyTyping, sendMessage, type SendOptions } from '../../data/actions';
@@ -19,6 +19,10 @@ import { UserName } from '../common/UserName';
 import { EmojiPicker, EMOJI_INDEX, loadGlyphs, type Glyph } from './EmojiPicker';
 import { OnboardingGate, useNeedsOnboarding } from '../onboarding/OnboardingGate';
 import { RichInput, type RichInputHandle } from '../common/RichInput';
+import { matchCommands, parseCommand, type Command, type CommandContext } from './commands';
+import { startThread, threadPath } from './ThreadParts';
+import { createThread } from './threads';
+import { useNavigate } from 'react-router';
 
 const MAX_LENGTH = 2000;
 
@@ -226,7 +230,40 @@ export function Composer({
 
   const insertAtCaret = (value: string) => area.current?.insert(value);
 
+  // Built-in slash commands.
+  const navigate = useNavigate();
+  const threadRelay = useStore((s) => (type === 'relay' && s.relays[id]?.type === 'text' && can(relayPermissions(s, id), PERMISSIONS.CREATE_THREADS) ? s.relays[id] : undefined));
+  const commandCtx: CommandContext = {
+    beaconId,
+    threadRelayId: threadRelay?.id,
+    send: (content) => sendNow(content),
+    startThread: async (name) => {
+      if (!threadRelay) return;
+      const t = await createThread(threadRelay.id, name);
+      navigate(threadPath(threadRelay.beaconId, threadRelay.id, t.id));
+    },
+    toast,
+  };
+  const commandList = matchCommands(text, commandCtx);
+  const chooseCommand = (c: Command) => {
+    const next = `/${c.name} `;
+    setText(next);
+    requestAnimationFrame(() => area.current?.setCaret(next.length));
+  };
+  const showCommands = () => {
+    setText('/');
+    setActive(0);
+    requestAnimationFrame(() => area.current?.setCaret(1));
+  };
+
   const submit = async () => {
+    // A slash command runs instead of sending (Use Apps).
+    const cmd = !attachmentIds.length ? parseCommand(text, commandCtx) : null;
+    if (cmd) {
+      setText('');
+      await cmd.command.run(cmd.arg, commandCtx);
+      return;
+    }
     const content = encodeMentions(text, tokens.current).trim();
     if ((!content && !attachmentIds.length) || content.length > MAX_LENGTH) return;
     setText('');
@@ -244,6 +281,18 @@ export function Composer({
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (commandList.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : -1) + commandList.length) % commandList.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        chooseCommand(commandList[Math.min(active, commandList.length - 1)]);
+        return;
+      }
+    }
     if (suggestions.length && trigger) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -321,6 +370,29 @@ export function Composer({
 
   return (
     <div className="relative px-4 pb-6">
+      {commandList.length > 0 && (
+        <div role="listbox" aria-label="Commands" className="absolute inset-x-4 bottom-full mb-2 max-h-80 overflow-y-auto rounded-lg bg-overlay p-2 shadow-pop">
+          <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Built-in Apps</p>
+          {commandList.map((c, i) => (
+            <button
+              key={c.name}
+              role="option"
+              aria-selected={i === active}
+              type="button"
+              onMouseEnter={() => setActive(i)}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                chooseCommand(c);
+              }}
+              className={clsx('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm', i === active ? 'bg-active' : '')}
+            >
+              <span className="font-semibold text-fg">/{c.name}</span>
+              {c.arg && <span className="rounded bg-raised px-1 text-xs text-fg-muted">{c.arg}</span>}
+              <span className="min-w-0 flex-1 truncate text-fg-subtle">{c.description}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {suggestions.length > 0 && trigger && (
         <div role="listbox" className="absolute inset-x-4 bottom-full mb-2 max-h-80 overflow-y-auto rounded-lg bg-overlay p-2 shadow-pop">
           <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
@@ -437,8 +509,8 @@ export function Composer({
                   icon: <Cloud className="h-4 w-4" />,
                   onClick: () => openModal({ kind: 'drivePicker', onPick: (f) => setAttachmentIds((a) => [...a, { id: f.id, name: f.filename }]) }),
                 }]),
-                { label: 'Create Thread', disabled: true, sublabel: 'Coming soon' },
-                { label: 'Use Apps', disabled: true, sublabel: 'Coming soon' },
+                ...(threadRelay ? [{ label: 'Create Thread', icon: <MessagesSquare className="h-4 w-4" />, onClick: () => startThread(threadRelay, navigate) }] : []),
+                { label: 'Use Apps', icon: <Blocks className="h-4 w-4" />, onClick: () => showCommands() },
               ])
             }
             className="mt-2.5 flex h-6 w-6 items-center justify-center rounded-full text-fg-muted hover:text-fg disabled:opacity-40"

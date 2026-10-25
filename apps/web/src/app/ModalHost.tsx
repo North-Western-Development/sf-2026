@@ -10,6 +10,8 @@ import { BadgesModal } from '../features/profile/BadgesModal';
 import { StatusModal } from '../features/user/StatusModal';
 import { EventsModal } from '../features/events/EventsModal';
 import { BeaconPrivacyModal } from '../features/modals/BeaconPrivacyModal';
+import { ForwardModal } from '../features/chat/ForwardModal';
+import { HelpModal } from '../features/modals/HelpModal';
 import { CreateEventModal } from '../features/events/CreateEventModal';
 import { UserSettings } from '../features/settings/UserSettings';
 import { BeaconSettings } from '../features/settings/BeaconSettings';
@@ -83,6 +85,12 @@ export function ModalHost() {
     }
     case 'events':
       content = <EventsModal beaconId={modal.beaconId} />;
+      break;
+    case 'forward':
+      content = <ForwardModal channelKey={modal.channelKey as any} messageId={modal.messageId} />;
+      break;
+    case 'help':
+      content = <HelpModal tab={modal.tab} />;
       break;
     case 'beaconPrivacy':
       content = <BeaconPrivacyModal beaconId={modal.beaconId} />;

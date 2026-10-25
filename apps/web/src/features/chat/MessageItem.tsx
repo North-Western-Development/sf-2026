@@ -1,7 +1,7 @@
 import { Emoji } from '../../lib/emoji';
 import { memo, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { CornerUpLeft, Pencil, SmilePlus, MoreHorizontal, Pin, AlertCircle, FileText, Download, Forward, MessageSquarePlus, Phone, PhoneMissed, Lock } from 'lucide-react';
+import { CornerUpLeft, Pencil, SmilePlus, MoreHorizontal, Pin, AlertCircle, Forward, MessageSquarePlus, Phone, PhoneMissed, Lock } from 'lucide-react';
 import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { useStore } from '../../data/store';
 import { explicitlyMentionsMe } from '../../data/notifications';
@@ -10,7 +10,7 @@ import { deleteMessage, editMessage, retryMessage, setPinned, toggleReaction } f
 import { removeMessage } from '../../data/store';
 import type { ChannelKey, Transmission } from '../../lib/types';
 import { parseChannelKey } from '../../lib/types';
-import { formatFullDate, formatMessageTime, formatShortTime, formatBytes } from '../../lib/time';
+import { formatFullDate, formatMessageTime, formatShortTime } from '../../lib/time';
 import { confirmAction, openModal, openPopout, toast, useUi } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
@@ -25,6 +25,11 @@ import { prefetchProfile } from '../profile/useProfile';
 import { RichInput, type RichInputHandle } from '../common/RichInput';
 import { AutomodAlertMessage, JoinMessage, SetupTipsMessage } from './SystemMessages';
 import { BeaconTag } from '../common/BeaconTag';
+import { ThreadChip, ThreadStartedMessage, startThread } from './ThreadParts';
+import { ForwardedBox } from './ForwardedBox';
+import { Attachments } from './Attachments';
+export { Attachments };
+import { useNavigate } from 'react-router';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
@@ -65,39 +70,6 @@ function ReactionChip({ r, onToggle }: { r: Transmission['reactions'][number]; o
   );
 }
 
-export function Attachments({ items }: { items: Transmission['attachments'] }) {
-  const inline = useChatPrefs((p) => p.inlineMedia);
-  if (!items.length) return null;
-  return (
-    <div className="mt-1 flex flex-col gap-1.5">
-      {items.map((a) => {
-        const isImage = inline && (a.mimeType?.startsWith('image/') || /\.(png|jpe?g|gif|webp|avif)$/i.test(a.filename));
-        const isVideo = inline && (a.mimeType?.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(a.filename));
-        if (isImage)
-          return (
-            <a key={a.id} href={a.url} target="_blank" rel="noreferrer noopener" className="block max-w-[400px] overflow-hidden rounded-md">
-              <img src={a.url} alt={a.filename} loading="lazy" className="max-h-[350px] w-auto object-contain" />
-            </a>
-          );
-        if (isVideo) return <video key={a.id} src={a.url} controls className="max-h-[350px] max-w-[400px] rounded-md" />;
-        return (
-          <div key={a.id} className="flex max-w-[432px] items-center gap-3 rounded-md border border-line bg-raised p-3">
-            <FileText className="h-8 w-8 shrink-0 text-brand-sky" />
-            <div className="min-w-0 flex-1">
-              <a href={a.url} target="_blank" rel="noreferrer noopener" className="block truncate text-sm text-brand-sky hover:underline">
-                {a.filename}
-              </a>
-              <span className="text-xs text-fg-subtle">{formatBytes(a.size)}</span>
-            </div>
-            <a href={a.url} download={a.filename} aria-label={`Download ${a.filename}`} className="text-fg-subtle hover:text-fg">
-              <Download className="h-5 w-5" />
-            </a>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function InlineEditor({ initial, onSave, onCancel }: { initial: string; onSave: (v: string) => void; onCancel: () => void }) {
   const [value, setValue] = useState(initial);
@@ -158,6 +130,13 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
   const canManage = perms === null ? isMine : can(perms, PERMISSIONS.MANAGE_TRANSMISSIONS);
   const canPin = perms === null ? true : can(perms, PERMISSIONS.PIN_TRANSMISSIONS) || can(perms, PERMISSIONS.MANAGE_TRANSMISSIONS);
   const canReact = perms === null ? true : can(perms, PERMISSIONS.ADD_REACTIONS);
+  const navigate = useNavigate();
+  const relay = useStore((s) => (chType === 'relay' ? s.relays[chId] : undefined));
+  const ordinary = (m.type === 'default' || m.type === 'reply') && !m.pending;
+  // Threads start from transmissions in text relays (Discord's "Create Thread").
+  const canThread = ordinary && relay?.type === 'text' && !m.thread && perms !== null && can(perms, PERMISSIONS.CREATE_THREADS);
+  const canForward = ordinary && !m.encrypted;
+  const forward = () => openModal({ kind: 'forward', channelKey: key, messageId: m.id });
 
   const openProfile = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -187,12 +166,9 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
       });
     if (isMine && !m.pending) items.push({ label: 'Edit Transmission', onClick: startEdit });
     if (!m.pending) items.push({ label: 'Reply', onClick: () => onReply(m.id) });
-    items.push(
-      { label: 'Forward', disabled: true, sublabel: 'Coming soon' },
-      { label: 'Create Thread', disabled: true, sublabel: 'Coming soon' },
-      { separator: true },
-      { label: 'Copy Text', onClick: () => void copyText(m.content) }
-    );
+    if (canForward) items.push({ label: 'Forward', onClick: forward });
+    if (canThread) items.push({ label: 'Create Thread', onClick: () => startThread(relay!, navigate, m) });
+    items.push({ separator: true }, { label: 'Copy Text', onClick: () => void copyText(m.content) });
     if (canPin && !m.pending) items.push({ label: m.pinned ? 'Unpin Transmission' : 'Pin Transmission', onClick: () => void setPinned(key, m.id, !m.pinned).catch(() => toast('Could not update pin', 'error')) });
     items.push({
       label: 'Copy Transmission Link',
@@ -244,6 +220,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
 
   if (m.type === 'system_join') return <JoinMessage m={m} channelKey={key} beaconId={beaconId} onOpenProfile={openProfile} />;
   if (m.type === 'system_tips') return <SetupTipsMessage m={m} beaconId={beaconId} />;
+  if (m.type === 'system_thread') return <ThreadStartedMessage m={m} beaconId={beaconId} onOpenProfile={openProfile} />;
   if (m.type === 'system_automod') return <AutomodAlertMessage m={m} beaconId={beaconId} onOpenProfile={openProfile} />;
 
   if (m.type === 'system_pin') {
@@ -351,9 +328,11 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
           ))}
         </div>
       )}
+      {m.forwarded && <ForwardedBox forwarded={m.forwarded} beaconId={beaconId} />}
       <Attachments items={m.attachments} />
       <SealedAttachments items={m.encryptedAttachments} />
       <Embeds embeds={m.embeds} messageId={m.id} canRemove={isMine || (chType !== 'link' && chType !== 'mesh' && canManage)} />
+      {m.thread && <ThreadChip m={m} beaconId={beaconId} />}
 
       {m.failed && (
         <div className="mt-1 flex items-center gap-2 text-xs text-danger">
@@ -409,12 +388,16 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
               <CornerUpLeft className="h-5 w-5" />
             </ActionButton>
           )}
-          <ActionButton label="Forward (Coming soon)" disabled onClick={() => {}}>
-            <Forward className="h-5 w-5" />
-          </ActionButton>
-          <ActionButton label="Create Thread (Coming soon)" disabled onClick={() => {}}>
-            <MessageSquarePlus className="h-5 w-5" />
-          </ActionButton>
+          {canForward && (
+            <ActionButton label="Forward" onClick={forward}>
+              <Forward className="h-5 w-5" />
+            </ActionButton>
+          )}
+          {canThread && (
+            <ActionButton label="Create Thread" onClick={() => startThread(relay!, navigate, m)}>
+              <MessageSquarePlus className="h-5 w-5" />
+            </ActionButton>
+          )}
           <ActionButton label="More" onClick={(e) => openContextMenu({ clientX: e.clientX, clientY: e.clientY }, menu())}>
             <MoreHorizontal className="h-5 w-5" />
           </ActionButton>

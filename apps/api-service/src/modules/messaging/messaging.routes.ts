@@ -14,6 +14,7 @@ import {
   signalBlacklist,
   beaconEmojis,
   beaconStickers,
+  relays,
   beaconMembers,
   vaultFiles,
   subspaceMeshMembers,
@@ -31,6 +32,7 @@ import { touchChannelLastTransmission, incrementMentionCounts } from '../../lib/
 import { linkIsEncrypted } from '../e2ee/e2ee.routes.js';
 import { queuePush } from '../../lib/push.js';
 import { runAutomod } from '../../lib/automod.js';
+import { attachThreads } from '../threads/threads.routes.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
@@ -210,7 +212,8 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         visible.map((r) => formatTransmission(db, r, token.transmitterId, { beaconId: channel.beaconId }))
       );
 
-      return reply.send({ transmissions: formatted });
+      // Messages that started a thread carry it (the chip under them).
+      return reply.send({ transmissions: channel.channelType === 'relay' ? await attachThreads(db, formatted) : formatted });
     }
   );
 
@@ -709,6 +712,88 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
   /**
    * PUT/DELETE /api/v1/transmissions/:id/pin
    */
+  /**
+   * POST /api/v1/transmissions/:id/forward  { targets: [{ channelType, channelId }], comment? }
+   * Discord's forwarding: each target gets a snapshot of the transmission (its text,
+   * attachments and stickers) and where it came from, with an optional comment.
+   * Encrypted conversations are never a source or a target.
+   */
+  app.post(
+    '/transmissions/:id/forward',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['targets'],
+          properties: {
+            targets: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 5,
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['channelType', 'channelId'],
+                properties: { channelType: channelTypeSchema, channelId: { type: 'string', format: 'uuid' } },
+              },
+            },
+            comment: { type: 'string', maxLength: MAX_TRANSMISSION_LENGTH },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const token = extractAuthToken(request);
+      if (!token) return reply.status(401).send({ error: 'Authentication required' });
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+      const { id } = request.params as { id: string };
+      const body = request.body as { targets: Array<{ channelType: string; channelId: string }>; comment?: string };
+
+      const [original] = await db.select().from(transmissions).where(eq(transmissions.id, id)).limit(1);
+      if (!original) return reply.status(404).send({ error: 'Transmission not found' });
+      const source = await loadChannelForExistingTransmission(original);
+      if (!source) return reply.status(404).send({ error: 'Transmission not found' });
+      const view = await checkChannelAccess(db, source, token.transmitterId, 'view');
+      if (!view.allowed) return reply.status(404).send({ error: 'Transmission not found' });
+      if (original.encryptedPayload) return reply.status(400).send({ error: 'Encrypted transmissions cannot be forwarded', code: 'ENCRYPTED' });
+      if (original.type !== 'default' && original.type !== 'reply') return reply.status(400).send({ error: 'Only transmissions can be forwarded' });
+
+      let sourceName: string | null = null;
+      if (source.relayId) {
+        const [relay] = await db.select({ name: relays.name }).from(relays).where(eq(relays.id, source.relayId)).limit(1);
+        sourceName = relay?.name ?? null;
+      }
+      const snapshot = {
+        content: original.forwarded ? original.forwarded.content : original.content,
+        attachments: original.forwarded ? original.forwarded.attachments : original.attachments ?? [],
+        stickers: original.forwarded ? original.forwarded.stickers ?? [] : (original as any).stickers ?? [],
+        createdAt: new Date(original.createdAt).toISOString(),
+        source: { channelType: source.channelType, channelId: source.channelId, beaconId: source.beaconId ?? null, name: sourceName, transmissionId: original.id },
+      };
+
+      const sent: any[] = [];
+      for (const target of body.targets) {
+        const channel = await loadChannel(db, target.channelType, target.channelId);
+        if (!channel) return reply.status(404).send({ error: 'Target not found' });
+        const access = await checkChannelAccess(db, channel, token.transmitterId, 'send');
+        if (!access.allowed) return reply.status(access.status).send({ error: access.error, code: access.code });
+        if (channel.channelType === 'link' && (await linkIsEncrypted(db, channel.channelId))) {
+          return reply.status(400).send({ error: 'Encrypted conversations cannot receive forwards', code: 'ENCRYPTED' });
+        }
+        const [row] = await db
+          .insert(transmissions)
+          .values({ [containerColumn(channel.channelType)]: channel.channelId, transmitterId: token.transmitterId, content: (body.comment ?? '').trim(), forwarded: snapshot })
+          .returning();
+        await touchChannelLastTransmission(db, channel, row.id, row.createdAt);
+        const formatted = await formatTransmission(db, row, token.transmitterId, { beaconId: channel.beaconId });
+        await publishGatewayEvent(app, 'TRANSMISSION_CREATE', { channelType: channel.channelType, channelId: channel.channelId, transmission: formatted }, audienceForChannel(channel));
+        sent.push(formatted);
+      }
+      return reply.status(201).send({ transmissions: sent });
+    }
+  );
+
   app.put('/transmissions/:id/pin', async (request, reply) => {
     const token = extractAuthToken(request);
     if (!token) return reply.status(401).send({ error: 'Authentication required' });

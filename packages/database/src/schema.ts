@@ -285,6 +285,8 @@ export const transmissionRequests = pgTable('transmission_requests', {
   mutualBeaconId: uuid('mutual_beacon_id').references(() => beacons.id, { onDelete: 'cascade' }).notNull(),
   initialTransmission: text('initial_transmission').notNull(),
   status: text('status').default('pending').notNull(), // 'pending' | 'accepted' | 'declined' | 'timed_out'
+  /** Flagged as likely spam (Discord's Spam folder): kept out of Requests and its notifications. */
+  isSpam: boolean('is_spam').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), // 7 days from creation
 });
@@ -312,6 +314,8 @@ export const archivalThreads = pgTable('archival_threads', {
   isPinned: boolean('is_pinned').default(false).notNull(),
   isLocked: boolean('is_locked').default(false).notNull(),
   rootTransmissionId: uuid('root_transmission_id'),
+  /** Text-relay threads: the transmission in the relay it was started from (Discord's thread starter). */
+  starterTransmissionId: uuid('starter_transmission_id'),
   transmissionCount: integer('transmission_count').default(0).notNull(),
   lastTransmissionId: uuid('last_transmission_id'),
   lastTransmissionAt: timestamp('last_transmission_at', { withTimezone: true }).defaultNow().notNull(),
@@ -344,6 +348,8 @@ export const transmissions = pgTable('transmissions', {
   content: text('content').notNull(), // Max 2000 chars default
   attachments: jsonb('attachments').$type<Array<{ id: string; url: string; filename: string; size: number; mimeType?: string; width?: number; height?: number }>>().default([]).notNull(),
   /** Stickers sent with it (Discord's sticker_items); kept as sent, so a deleted sticker still shows. */
+  /** A forwarded transmission (Discord's forwarding): a snapshot of the original and where it came from. */
+  forwarded: jsonb('forwarded').$type<{ content: string; attachments: unknown[]; stickers?: unknown[]; createdAt: string; source: { channelType: string; channelId: string; beaconId?: string | null; name?: string | null; transmissionId: string } }>(),
   stickers: jsonb('stickers').$type<Array<{ id: string; name: string; url: string }>>().default([]).notNull(),
   isEdited: boolean('is_edited').default(false).notNull(),
   encryptedPayload: text('encrypted_payload'),

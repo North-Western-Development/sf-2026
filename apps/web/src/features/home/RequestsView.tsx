@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
 import { Inbox } from 'lucide-react';
-import { Button, ComingSoon } from '@subspace/ui';
+import { Button } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../data/store';
-import { blockUser, respondTransmissionRequest } from '../../data/actions';
-import { userTag } from '../../lib/normalize';
+import { blockUser, loadTransmissionRequests, respondTransmissionRequest } from '../../data/actions';
+import { toUserRef, userTag } from '../../lib/normalize';
+import { http } from '../../lib/http';
 import { term } from '../../lib/strings';
 import { formatMessageTime } from '../../lib/time';
 import { confirmAction, openModal, toast } from '../../app/ui';
@@ -51,11 +52,19 @@ export function RequestsView() {
         >
           Requests
         </button>
-        <ComingSoon label="Spam filtering" placement="bottom">
-          <span className="rounded-md px-2 py-0.5 text-[15px] font-medium text-fg-muted">Spam</span>
-        </ComingSoon>
+        <button
+          type="button"
+          aria-pressed={tab === 'spam'}
+          onClick={() => setTab('spam')}
+          className={clsx('rounded-md px-2 py-0.5 text-[15px] font-medium', tab === 'spam' ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover')}
+        >
+          Spam
+        </button>
       </header>
 
+      {tab === 'spam' ? (
+        <SpamList onChanged={() => void loadTransmissionRequests()} />
+      ) : (
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-4">
         <p className="mb-4 text-sm text-fg-muted">
           {term('user', true)} who share a {term('beacon').toLowerCase()} with you can send one introductory transmission. Requests expire after 7 days.
@@ -118,6 +127,70 @@ export function RequestsView() {
           </ul>
         )}
       </div>
+      )}
+    </div>
+  );
+}
+
+interface SpamRequest {
+  id: string;
+  senderId: string;
+  senderName: string | null;
+  senderUsername: string;
+  senderDiscriminator: string;
+  senderAvatar: string | null;
+  initialTransmission: string;
+  createdAt: string;
+}
+
+/** Discord's Spam folder: requests that looked like spam, kept out of Requests and its pings. */
+function SpamList({ onChanged }: { onChanged: () => void }) {
+  const [list, setList] = useState<SpamRequest[] | null>(null);
+  const load = () => http.get<{ requests: SpamRequest[] }>('/requests?spam=true').then((r) => setList(r.requests)).catch(() => setList([]));
+  useEffect(() => void load(), []);
+  const act = async (id: string, action: 'not-spam' | 'decline') => {
+    try {
+      await http.post(`/requests/${id}/${action}`);
+      setList((l) => (l ?? []).filter((r) => r.id !== id));
+      onChanged();
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-8 py-4">
+      <p className="mb-4 text-sm text-fg-muted">Requests that look like spam, from very new accounts with links or from someone sending many at once, land here without notifying you.</p>
+      {list?.length === 0 && <p className="py-24 text-center text-fg-muted">No spam. Nice and quiet.</p>}
+      <ul className="space-y-2">
+        {list?.map((r) => {
+          const user = toUserRef({ id: r.senderId, username: r.senderUsername, discriminator: r.senderDiscriminator, displayName: r.senderName, avatarUrl: r.senderAvatar });
+          return (
+            <li key={r.id} className="rounded-lg border border-line bg-raised p-4">
+              <div className="flex items-start gap-3">
+                <Avatar user={user} size={40} />
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-baseline gap-2">
+                    <span className="font-semibold text-fg">{user.displayName || user.username}</span>
+                    <span className="text-xs text-fg-subtle">{userTag(user)}</span>
+                    <span className="text-xs text-fg-subtle">{formatMessageTime(r.createdAt)}</span>
+                  </p>
+                  <div className="mt-2 text-[15px] text-fg">
+                    <Markdown content={r.initialTransmission} />
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button size="sm" variant="secondary" onClick={() => void act(r.id, 'decline')}>
+                  Delete
+                </Button>
+                <Button size="sm" onClick={() => void act(r.id, 'not-spam')}>
+                  Not Spam
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

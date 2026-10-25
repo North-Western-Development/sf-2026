@@ -29,6 +29,7 @@ import { openSignal } from '../lib/e2ee/client';
 import { onRoomKeySignal } from '../features/voice/roomKeys';
 import { loadSounds, onSoundboardPlay, useSounds } from '../features/voice/soundboard';
 import { invalidateStickers } from '../features/chat/ExpressionPanels';
+import { bumpThread, upsertThread, type ThreadSummary } from '../features/chat/threads';
 import { ackChannel, applyReaction, loadBeacon, loadCalls, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 import { removeEvent, upsertEvent } from './community';
@@ -91,10 +92,18 @@ function toVoiceState(v: Raw): VoiceState | null {
 }
 
 
+function onThread(d: Raw) {
+  const t = d.thread as ThreadSummary | undefined;
+  if (!t || !('messageCount' in t)) return;
+  upsertThread(t);
+  if (t.starterTransmissionId) patchMessage(channelKey('relay', t.relayId), t.starterTransmissionId, { thread: t });
+}
+
 function onTransmissionCreate(d: Raw) {
   const key = eventChannel(d);
   if (!key || !d.transmission) return;
   const t = { ...toTransmission(d.transmission), nonce: d.nonce ?? d.transmission.nonce };
+  if (d.channelType === 'thread') bumpThread(d.channelId, t.createdAt);
   rememberUsers([t.author]);
   const s = getState();
   const me = s.me;
@@ -265,6 +274,13 @@ const handlers: Record<string, (d: Raw) => void> = {
       beaconOrder: s.beaconOrder.includes(b.id) ? s.beaconOrder : [...s.beaconOrder, b.id],
     }));
   },
+  // Text-relay threads (forum posts carry no starterTransmissionId and are handled by the forum view).
+  THREAD_CREATE(d) {
+    onThread(d);
+  },
+  THREAD_UPDATE(d) {
+    onThread(d);
+  },
   BEACON_EXPRESSIONS_UPDATE(d) {
     if (d.kind === 'stickers') invalidateStickers();
     else if (d.kind === 'sounds' && useSounds.getState()[d.beaconId]) void loadSounds(d.beaconId, true);
@@ -392,7 +408,8 @@ const handlers: Record<string, (d: Raw) => void> = {
   TRANSMISSION_REQUEST_CREATE(d) {
     if (d.recipient_id === getState().me?.id) {
       void loadTransmissionRequests().catch(() => {});
-      playPing();
+      // Requests flagged as spam arrive quietly, into the Spam tab.
+      if (!d.request?.isSpam) playPing();
     }
   },
   MESH_CREATE(d) {

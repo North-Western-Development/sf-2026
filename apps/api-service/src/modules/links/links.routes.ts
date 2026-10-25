@@ -4,6 +4,7 @@ import {
   and,
   or,
   desc,
+  gt,
   notInArray,
   pointToPointLinks,
   pointToPointLinkHidden,
@@ -24,6 +25,23 @@ import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
 import { dmAccess } from '../../lib/dm-access.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
+
+/**
+ * Discord's spam filter for message requests, as heuristics: a sender who has sent several
+ * requests in the last hour, or a brand-new account (under a day old) whose first message
+ * carries a link or an invite.
+ */
+export async function looksLikeSpam(db: any, senderId: string, content: string): Promise<boolean> {
+  const hourAgo = new Date(Date.now() - 3600_000);
+  const recent = await db
+    .select({ id: transmissionRequests.id })
+    .from(transmissionRequests)
+    .where(and(eq(transmissionRequests.senderId, senderId), gt(transmissionRequests.createdAt, hourAgo)));
+  if (recent.length >= 3) return true;
+  const [sender] = await db.select({ createdAt: transmitters.createdAt }).from(transmitters).where(eq(transmitters.id, senderId)).limit(1);
+  const fresh = !!sender && Date.now() - new Date(sender.createdAt).getTime() < 86_400_000;
+  return fresh && /https?:\/\/|\/invite\//i.test(content);
+}
 
 async function isBlocked(db: any, a: string, b: string): Promise<boolean> {
   const [row] = await db
@@ -372,6 +390,7 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     // Create 1st introductory transmission request expiring in 7 days
     const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
+    const isSpam = await looksLikeSpam(db, senderId, content);
     const [newRequest] = await db
       .insert(transmissionRequests)
       .values({
@@ -380,6 +399,7 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         mutualBeaconId: mutualBeacon.beaconId,
         initialTransmission: content.trim(),
         status: 'pending',
+        isSpam,
         expiresAt,
       })
       .returning();

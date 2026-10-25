@@ -166,6 +166,16 @@ export interface Transmission {
   editedAt: string | null;
   attachments: Attachment[];
   stickers?: Array<{ id: string; name: string; url: string }>;
+  /** The thread this transmission started (text relays). */
+  thread?: { id: string; relayId: string; title: string; messageCount: number; lastTransmissionAt: string; isLocked: boolean } | null;
+  /** A forwarded transmission: what was forwarded, and from where. */
+  forwarded?: {
+    content: string;
+    attachments: Attachment[];
+    stickers?: Array<{ id: string; name: string; url: string }>;
+    createdAt: string;
+    source: { channelType: string; channelId: string; beaconId?: string | null; name?: string | null; transmissionId: string };
+  } | null;
   mentions: string[];
   mentionRoles: string[];
   mentionEveryone: boolean;
@@ -180,7 +190,7 @@ export interface Transmission {
   encrypted?: unknown | null;
   e2ee?: 'pending' | 'ok' | 'other-device' | 'failed';
   encryptedAttachments?: Array<{ url: string; key: string; filename: string; mimeType: string; size: number }>;
-  type: 'default' | 'reply' | 'system_join' | 'system_tips' | 'system_automod' | 'system_pin' | 'system_call' | 'system_encryption';
+  type: 'default' | 'reply' | 'system_join' | 'system_tips' | 'system_automod' | 'system_thread' | 'system_pin' | 'system_call' | 'system_encryption';
   /** Client-only: optimistic send state. */
   pending?: boolean;
   failed?: boolean;

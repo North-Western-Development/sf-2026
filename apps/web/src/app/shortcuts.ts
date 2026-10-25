@@ -22,6 +22,11 @@ export function useGlobalShortcuts() {
         openModal({ kind: 'quickScan' });
         return;
       }
+      if (mod && e.key === '/') {
+        e.preventDefault();
+        openModal({ kind: 'help', tab: 'shortcuts' });
+        return;
+      }
       if (useUi.getState().modal) return;
 
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && beaconId && beaconId !== '@me') {

@@ -65,10 +65,11 @@ test.describe('Shell layout', () => {
     await expect(page.getByRole('menu')).toHaveCount(0);
   });
 
-  test('Discord-only features are greyed placeholders with a Coming soon tooltip', async ({ page, me }) => {
-    const { beacon, relays } = await me.api.createBeacon('Soon Beacon');
-    const relay = relays.find((r) => r.type === 'text')!;
-    await signIn(page, me, `/channels/${beacon.id}/${relay.id}`);
+  test('features still to come are greyed placeholders with a Coming soon tooltip', async ({ page, me }) => {
+    // Themes are the one placeholder left (Settings › Appearance).
+    await signIn(page, me);
+    await page.getByRole('button', { name: 'User Settings' }).click();
+    await page.getByRole('button', { name: 'Appearance', exact: true }).click();
     const placeholders = page.locator('[data-coming-soon]');
     await expect(placeholders.first()).toBeVisible();
     const first = placeholders.first();

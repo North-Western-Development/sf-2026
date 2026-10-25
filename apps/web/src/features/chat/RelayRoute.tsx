@@ -7,9 +7,10 @@ import { RelayIcon } from '../sidebar/BeaconSidebar';
 import { CommLinkView } from '../voice/CommLinkView';
 import { ForumView } from '../forum/ForumView';
 import { GalleryView } from '../gallery/GalleryView';
+import { TextThreadPane } from './ThreadsUI';
 
 export function RelayRoute() {
-  const { beaconId = '', relayId = '' } = useParams();
+  const { beaconId = '', relayId = '', threadId } = useParams();
   const relay = useStore((s) => s.relays[relayId]);
   const loaded = useStore((s) => !!s.relayIdsByBeacon[beaconId]);
   const beacon = useStore((s) => s.beacons[beaconId]);
@@ -33,6 +34,7 @@ export function RelayRoute() {
       title={relay.name}
       topic={relay.topic}
       placeholder={`Transmit to #${relay.name}`}
+      sidePanel={threadId ? <TextThreadPane key={threadId} relay={relay} threadId={threadId} /> : undefined}
       welcome={
         <div className="mx-4 mb-4 mt-16">
           <span className="mb-2 flex h-[68px] w-[68px] items-center justify-center rounded-full bg-overlay">
