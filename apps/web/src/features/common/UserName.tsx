@@ -4,6 +4,7 @@ import { useStore } from '../../data/store';
 import { memberColor } from '../../data/selectors';
 import { resolveName } from '../../lib/normalize';
 import type { UserRef } from '../../lib/types';
+import { useA11yPrefs } from '../../lib/a11yPrefs';
 
 const fontFamily = (font?: string | null) => THEME.fonts.find((f) => f.id === font)?.family;
 
@@ -24,7 +25,8 @@ export function UserName({
   styled?: boolean;
 }) {
   const member = useStore((s) => (beaconId ? s.members[beaconId]?.[user.id] : undefined));
-  const roleColor = useStore((s) => memberColor(s, beaconId, member));
+  const showRoleColors = useA11yPrefs((p) => p.roleColors);
+  const roleColor = useStore((s) => (showRoleColors ? memberColor(s, beaconId, member) : null));
   const suppressFonts = useStore((s) => (beaconId ? !!s.beacons[beaconId]?.suppressCustomFonts : false));
 
   const style = user.displayNameStyle;

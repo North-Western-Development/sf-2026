@@ -62,7 +62,7 @@ function PauseRow({ beaconId, field, title, description }: { beaconId: string; f
 
 /** Discord's Safety Setup: security actions for raids, and the verification level. */
 export function SafetyTab({ beaconId, onOpenAutoMod }: { beaconId: string; onOpenAutoMod: () => void }) {
-  const { d, set, dirty, saving, save, reset } = useBeaconDraft(beaconId, ['verificationLevel'] as const);
+  const { d, set, dirty, saving, save, reset } = useBeaconDraft(beaconId, ['verificationLevel', 'explicitFilter'] as const);
   return (
     <>
       <SettingsTitle>Safety Setup</SettingsTitle>
@@ -81,6 +81,22 @@ export function SafetyTab({ beaconId, onOpenAutoMod }: { beaconId: string; onOpe
         description={`Members must meet these criteria before they can send transmissions, react or speak. Members with a ${term('clearance').toLowerCase()} are exempt.`}
       >
         <RadioList label="Verification level" value={d.verificationLevel ?? 'none'} onChange={(v) => set('verificationLevel', v)} options={[...LEVELS]} />
+      </SettingsSection>
+      <SettingsSection
+        id="explicit"
+        title="Explicit Image Filter"
+        description={`Images are checked on each member's own device and explicit ones are blurred until clicked. Nothing is uploaded to be checked, and this cannot remove the transmission itself.`}
+      >
+        <RadioList
+          label="Explicit image filter"
+          value={d.explicitFilter ?? 'off'}
+          onChange={(v) => set('explicitFilter', v)}
+          options={[
+            { value: 'off', label: 'Don’t filter', description: 'Members choose for themselves in their own settings.' },
+            { value: 'members', label: `Filter images from members without a ${term('clearance').toLowerCase()}`, description: 'Recommended for most beacons.' },
+            { value: 'all', label: 'Filter images from all members' },
+          ]}
+        />
       </SettingsSection>
       <SettingsSection id="automod" title="AutoMod">
         <div className="flex items-center gap-4">

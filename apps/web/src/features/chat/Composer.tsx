@@ -1,7 +1,8 @@
 import { Emoji } from '../../lib/emoji';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { AtSign, Blocks, CirclePlus, Cloud, MessagesSquare, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
+import { AtSign, Blocks, CirclePlus, Cloud, MessagesSquare, SendHorizontal, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
+import { useA11yPrefs } from '../../lib/a11yPrefs';
 import { Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore, getState } from '../../data/store';
 import { notifyTyping, sendMessage, type SendOptions } from '../../data/actions';
@@ -85,6 +86,7 @@ export function Composer({
   const [active, setActive] = useState(0);
   const [emojiAnchor, setEmojiAnchor] = useState<DOMRect | null>(null);
   const [pickerTab, setPickerTab] = useState<'gifs' | 'stickers' | 'emoji'>('emoji');
+  const sendButton = useA11yPrefs((p) => p.sendButton);
   /** A sticker or GIF goes out on its own, as Discord sends them, replying if a reply is open. */
   const sendNow = (content: string, extra: SendOptions = {}) => {
     const r = useUi.getState().replyingTo[key];
@@ -568,6 +570,13 @@ export function Composer({
               <Smile className="h-5 w-5" />
             </button>
           </Tooltip>
+          {sendButton && (
+            <Tooltip content="Send">
+              <button type="button" aria-label="Send" onClick={() => void submit()} disabled={!text.trim() && !attachmentIds.length} className="flex h-7 w-7 items-center justify-center text-fg-muted hover:text-fg disabled:opacity-40">
+                <SendHorizontal className="h-5 w-5" />
+              </button>
+            </Tooltip>
+          )}
         </div>
       </div>
 

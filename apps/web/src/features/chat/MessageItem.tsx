@@ -30,6 +30,8 @@ import { ForwardedBox } from './ForwardedBox';
 import { Attachments } from './Attachments';
 export { Attachments };
 import { useNavigate } from 'react-router';
+import { useLocalePrefs } from '../../lib/locale';
+import { shouldFilter, useExplicitPrefs } from '../../lib/explicitFilter';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
@@ -116,6 +118,8 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
   const authorTag = useStore((s) => s.users[m.author.id]?.tagBeaconId ?? m.author.tagBeaconId);
   // A link that is only an image or GIF shows just the picture, as Discord does (the link comes back with previews off).
   const showEmbeds = useChatPrefs((p) => p.showEmbeds);
+  const compact = useChatPrefs((p) => p.compact);
+  useLocalePrefs(); // times re-render when Language & Time changes
   const mediaOnly = showEmbeds && !m.encrypted && m.embeds.length === 1 && m.embeds[0].type === 'image' && m.content.trim() === m.embeds[0].url;
   const pingsMe = useStore((s) => explicitlyMentionsMe(s, key, m));
   const { type: chType, id: chId } = parseChannelKey(key);
@@ -137,6 +141,18 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
   const canThread = ordinary && relay?.type === 'text' && !m.thread && perms !== null && can(perms, PERMISSIONS.CREATE_THREADS);
   const canForward = ordinary && !m.encrypted;
   const forward = () => openModal({ kind: 'forward', channelKey: key, messageId: m.id });
+  // Sensitive media: checked on this device when the viewer's or the beacon's filter asks for it.
+  const explicitPrefs = useExplicitPrefs();
+  const filterMedia = useStore((s) =>
+    shouldFilter({
+      prefs: explicitPrefs,
+      channelType: chType,
+      mine: m.author.id === s.me?.id,
+      authorIsFriend: s.relationships[m.author.id]?.type === 'friend',
+      beaconFilter: beaconId ? s.beacons[beaconId]?.explicitFilter : undefined,
+      authorHasClearance: !!(beaconId && s.members[beaconId]?.[m.author.id]?.clearanceIds.length),
+    })
+  );
 
   const openProfile = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -244,7 +260,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
       onContextMenu={(e) => openContextMenu(e, menu())}
       className={clsx(
         'group relative pl-[72px] pr-12',
-        grouped ? 'py-0.5' : 'mt-4 py-0.5',
+        compact ? 'py-0.5' : grouped ? 'py-0.5' : 'mt-4 py-0.5',
         pingsMe ? 'bg-mention-bg before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-mention hover:bg-star-soft' : 'hover:bg-raised/60',
         m.pending && 'opacity-60'
       )}
@@ -267,7 +283,14 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
         </div>
       )}
 
-      {grouped ? (
+      {compact ? (
+        // Discord's compact display: time, then the name, on every transmission; no avatars.
+        <Tooltip content={formatFullDate(m.createdAt)}>
+          <time dateTime={m.createdAt} className="absolute left-0 w-[72px] pt-0.5 text-center text-[11px] leading-[22px] text-fg-subtle">
+            {formatShortTime(m.createdAt)}
+          </time>
+        </Tooltip>
+      ) : grouped ? (
         <Tooltip content={formatFullDate(m.createdAt)}>
           <time
             dateTime={m.createdAt}
@@ -309,7 +332,12 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
           }}
         />
       ) : (
-        <div className={clsx('text-[15px] leading-[22px] text-fg', m.failed && 'text-danger')}>
+        <div className={clsx('text-[15px] leading-[22px] text-fg', m.failed && 'text-danger', compact && 'flex gap-2')}>
+          {compact && (
+            <button type="button" onClick={openProfile} onPointerEnter={warmProfile} className="shrink-0 font-medium hover:underline">
+              <UserName user={m.author} beaconId={beaconId} />
+            </button>
+          )}
           {m.encrypted && m.e2ee !== 'ok' ? <SealedNotice state={m.e2ee} /> : mediaOnly ? null : <Markdown content={m.content} resolvers={resolvers} />}
           {m.editedAt && (
             <Tooltip content={formatFullDate(m.editedAt)}>
@@ -328,10 +356,10 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
           ))}
         </div>
       )}
-      {m.forwarded && <ForwardedBox forwarded={m.forwarded} beaconId={beaconId} />}
-      <Attachments items={m.attachments} />
+      {m.forwarded && <ForwardedBox forwarded={m.forwarded} beaconId={beaconId} filter={filterMedia} />}
+      <Attachments items={m.attachments} filter={filterMedia} />
       <SealedAttachments items={m.encryptedAttachments} />
-      <Embeds embeds={m.embeds} messageId={m.id} canRemove={isMine || (chType !== 'link' && chType !== 'mesh' && canManage)} />
+      <Embeds embeds={m.embeds} messageId={m.id} canRemove={isMine || (chType !== 'link' && chType !== 'mesh' && canManage)} filter={filterMedia} />
       {m.thread && <ThreadChip m={m} beaconId={beaconId} />}
 
       {m.failed && (

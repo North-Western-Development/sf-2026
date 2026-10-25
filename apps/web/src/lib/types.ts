@@ -52,6 +52,7 @@ export interface SelfUser extends UserRef {
   is2faEnabled?: boolean;
   isEmailVerified?: boolean;
   createdAt?: string;
+  defaultAllowDms?: boolean;
 }
 
 export interface Beacon {
@@ -75,6 +76,7 @@ export interface Beacon {
   afkTimeout?: number;
   // Safety Setup / Security Actions
   verificationLevel?: 'none' | 'low' | 'medium' | 'high' | 'highest';
+  explicitFilter?: 'off' | 'members' | 'all';
   invitesPausedUntil?: string | null;
   dmsPausedUntil?: string | null;
   // Beacon Tag and Widget

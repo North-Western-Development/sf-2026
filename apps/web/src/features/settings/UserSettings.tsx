@@ -58,6 +58,8 @@ import { saveCustomStatus } from '../user/StatusModal';
 import { UserName } from '../common/UserName';
 import { Dropdown } from '../common/Dropdown';
 import { KEYBINDS } from '../../lib/keybinds';
+import { AccessibilityTab, LanguageTimeTab, SafetySettings } from './user/DisplayTabs';
+import { MicTest } from './user/VoiceTools';
 import { Markdown } from '../chat/markdown';
 
 const USERNAME_RE = /^(?!.*\.\.)(?!\.)(?!.*\.$)[a-z0-9_.]{2,32}$/;
@@ -1322,14 +1324,7 @@ function PrivacyTab({ me }: { me: SelfUser & Record<string, any> }) {
           ]}
         />
       </SettingsSection>
-      <SettingsSection id="safety" title="Safety">
-        <ComingSoon className="flex w-full [&>*]:flex-1">
-          <div>
-            <Switch label={`Allow ${term('link', true).toLowerCase()} from ${term('beacon').toLowerCase()} members`} checked onChange={() => {}} />
-            <Switch label="Filter explicit media" checked onChange={() => {}} />
-          </div>
-        </ComingSoon>
-      </SettingsSection>
+      <SafetySettings me={me} />
     </>
   );
 }
@@ -1435,11 +1430,9 @@ function VoiceTab() {
         </div>
         <Switch label="Echo Cancellation" description="Always on." checked disabled onChange={() => {}} />
         <Switch label="Noise Suppression" description="Always on." checked disabled onChange={() => {}} />
-        <ComingSoon className="flex w-full [&>*]:flex-1">
-          <div>
-            <Switch label="Mic Test and Input Sensitivity" checked={false} onChange={() => {}} />
-          </div>
-        </ComingSoon>
+        <div className="pt-4">
+          <MicTest />
+        </div>
       </SettingsSection>
       <SettingsSection id="video" title="Video">
         {pick('videoinput', 'videoInput', 'Camera')}
@@ -1449,6 +1442,7 @@ function VoiceTab() {
 }
 
 function AppearanceTab() {
+  const compact = useChatPrefs((p) => p.compact);
   const [scale, setScale] = useState(() => Number(localStorage.getItem('subspace_font_scale') || '16'));
   useEffect(() => {
     document.documentElement.style.fontSize = `${scale}px`;
@@ -1492,11 +1486,15 @@ function AppearanceTab() {
         <p className="mt-2 text-sm text-fg-muted">Currently {scale}px.</p>
       </SettingsSection>
       <SettingsSection id="display" title="Message Display">
-        <ComingSoon className="flex w-full [&>*]:flex-1">
-          <div>
-            <Switch label="Compact mode" checked={false} onChange={() => {}} />
-          </div>
-        </ComingSoon>
+        <RadioList
+          label="Message display"
+          value={compact ? 'compact' : 'cozy'}
+          onChange={(v) => setChatPrefs({ compact: v === 'compact' })}
+          options={[
+            { value: 'cozy', label: 'Cozy', description: 'Modern, beautiful, and easy on your eyes.' },
+            { value: 'compact', label: 'Compact', description: 'Fit more transmissions on screen at one time. #IRC' },
+          ]}
+        />
       </SettingsSection>
     </>
   );
@@ -1830,18 +1828,8 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
             { id: 'chat', icon: <MessageSquare />, label: 'Chat' },
             { id: 'appearance', icon: <Palette />, label: 'Appearance' },
             { id: 'keybinds', icon: <Keyboard />, label: 'Keybinds' },
-            {
-              id: 'accessibility',
-              icon: <Accessibility />,
-              label: 'Accessibility',
-              comingSoon: true,
-            },
-            {
-              id: 'language',
-              icon: <Languages />,
-              label: 'Language & Time',
-              comingSoon: true,
-            },
+            { id: 'accessibility', icon: <Accessibility />, label: 'Accessibility' },
+            { id: 'language', icon: <Languages />, label: 'Language & Time' },
             {
               id: 'authorized',
               icon: <KeyRound />,
@@ -1888,6 +1876,8 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
       {tab === 'chat' && <ChatTab />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'keybinds' && <KeybindsTab />}
+      {tab === 'accessibility' && <AccessibilityTab />}
+      {tab === 'language' && <LanguageTimeTab />}
     </SettingsLayout>
   );
 }

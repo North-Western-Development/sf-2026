@@ -13,6 +13,7 @@ import {
   ConnectionState,
   ExternalE2EEKeyProvider,
 } from 'livekit-client';
+import { gateMicrophone, inputDeviceId } from '../lib/voicePrefs';
 
 export type SpeakingCallback = (speakerIdentities: string[]) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
@@ -30,6 +31,8 @@ export type TrackUnsubscribedCallback = (
 export class LiveKitRoomManager {
   private room: Room | null = null;
   private localAudioTrack: LocalAudioTrack | null = null;
+  /** Stops the input-sensitivity gate on the microphone. */
+  private stopGate: (() => void) | null = null;
   private localVideoTrack: LocalVideoTrack | null = null;
   private localScreenTrack: LocalVideoTrack | null = null;
   private attachedAudioElements: Map<string, HTMLAudioElement> = new Map();
@@ -149,12 +152,15 @@ export class LiveKitRoomManager {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          deviceId: inputDeviceId(),
         });
         this.localAudioTrack = audioTrack;
         if (this.isMuted) {
           audioTrack.mute();
         }
         await room.localParticipant.publishTrack(audioTrack);
+        // The input-sensitivity gate starts once the track is out (it only ever silences it).
+        this.stopGate = gateMicrophone(audioTrack.mediaStreamTrack, () => audioTrack.isMuted);
       } catch (err) {
         console.warn('Microphone permission denied or unavailable:', err);
       }
@@ -175,9 +181,10 @@ export class LiveKitRoomManager {
       }
     } else if (enabled) {
       try {
-        const audioTrack = await createLocalAudioTrack();
+        const audioTrack = await createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, deviceId: inputDeviceId() });
         this.localAudioTrack = audioTrack;
         await this.room.localParticipant.publishTrack(audioTrack);
+        this.stopGate = gateMicrophone(audioTrack.mediaStreamTrack, () => audioTrack.isMuted);
       } catch (err) {
         console.warn('Failed to enable mic:', err);
       }
@@ -250,6 +257,8 @@ export class LiveKitRoomManager {
   }
 
   public async disconnect(): Promise<void> {
+    this.stopGate?.();
+    this.stopGate = null;
     if (this.localAudioTrack) {
       this.localAudioTrack.stop();
       this.localAudioTrack = null;

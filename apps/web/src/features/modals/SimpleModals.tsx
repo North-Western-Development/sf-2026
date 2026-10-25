@@ -9,12 +9,17 @@ export function ConfirmModal({
   confirmLabel,
   danger,
   onConfirm,
+  cancelLabel = 'Cancel',
+  onCancel,
 }: {
   title: string;
   body: string;
   confirmLabel: string;
   danger?: boolean;
   onConfirm: () => Promise<void> | void;
+  /** A second choice instead of plain Cancel (it still closes the dialog). */
+  cancelLabel?: string;
+  onCancel?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const run = async () => {
@@ -36,8 +41,15 @@ export function ConfirmModal({
       maxWidth="md"
       footer={
         <>
-          <Button variant="link" className="text-fg" onClick={closeModal}>
-            Cancel
+          <Button
+            variant="link"
+            className="text-fg"
+            onClick={() => {
+              onCancel?.();
+              closeModal();
+            }}
+          >
+            {cancelLabel}
           </Button>
           <Button variant={danger ? 'danger' : 'primary'} onClick={run} isLoading={busy} data-autofocus>
             {confirmLabel}

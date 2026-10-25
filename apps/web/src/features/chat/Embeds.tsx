@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Star, X } from 'lucide-react';
 import { loadGifFavorites, toggleGifFavorite, useGifFavorites } from './ExpressionPanels';
+import { SafeImage } from '../common/SafeImage';
 import { Tooltip } from '@subspace/ui';
 import type { Embed } from '../../lib/types';
 import { useChatPrefs } from '../../lib/chatPrefs';
@@ -40,7 +41,7 @@ function GifStar({ url, preview }: { url: string; preview: string }) {
   );
 }
 
-function EmbedCard({ embed, onRemove }: { embed: Embed; onRemove?: () => void }) {
+function EmbedCard({ embed, onRemove, filter }: { embed: Embed; onRemove?: () => void; filter: boolean }) {
   const remove = onRemove && (
     <Tooltip content="Remove all embeds">
       <button
@@ -59,7 +60,7 @@ function EmbedCard({ embed, onRemove }: { embed: Embed; onRemove?: () => void })
     return (
       <div className="group/embed relative w-fit">
         <a href={embed.url} target="_blank" rel="noreferrer noopener" className="block max-w-[400px] overflow-hidden rounded-md">
-          <img src={embed.image.proxyUrl} alt="" loading="lazy" className="max-h-[300px] w-auto object-contain" />
+          <SafeImage src={embed.image.proxyUrl} alt="" filter={filter} className="max-h-[300px] w-auto object-contain" />
         </a>
         {GIF_URL.test(embed.url) && <GifStar url={embed.url} preview={embed.image.proxyUrl} />}
         {remove}
@@ -93,7 +94,7 @@ function EmbedCard({ embed, onRemove }: { embed: Embed; onRemove?: () => void })
 }
 
 /** Link previews under a transmission. `canRemove`: the author or a moderator. */
-export function Embeds({ embeds, messageId, canRemove }: { embeds: Embed[]; messageId: string; canRemove: boolean }) {
+export function Embeds({ embeds, messageId, canRemove, filter = false }: { embeds: Embed[]; messageId: string; canRemove: boolean; filter?: boolean }) {
   const show = useChatPrefs((p) => p.showEmbeds);
   if (!show || !embeds.length) return null;
   const onRemove = canRemove
@@ -109,7 +110,7 @@ export function Embeds({ embeds, messageId, canRemove }: { embeds: Embed[]; mess
   return (
     <div className="mt-1 flex flex-col gap-1 pr-8">
       {embeds.map((e, i) => (
-        <EmbedCard key={`${e.url}-${i}`} embed={e} onRemove={i === 0 ? onRemove : undefined} />
+        <EmbedCard key={`${e.url}-${i}`} embed={e} onRemove={i === 0 ? onRemove : undefined} filter={filter} />
       ))}
     </div>
   );

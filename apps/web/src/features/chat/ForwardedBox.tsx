@@ -9,7 +9,7 @@ import { useMarkdownResolvers } from './resolvers';
 import { Attachments } from './Attachments';
 
 /** How a forwarded transmission reads: marked Forwarded, the original, and where it came from. */
-export function ForwardedBox({ forwarded, beaconId }: { forwarded: NonNullable<Transmission['forwarded']>; beaconId?: string }) {
+export function ForwardedBox({ forwarded, beaconId, filter = false }: { forwarded: NonNullable<Transmission['forwarded']>; beaconId?: string; filter?: boolean }) {
   const navigate = useNavigate();
   const resolvers = useMarkdownResolvers(beaconId);
   const canOpen = useStore((s) => (forwarded.source.channelType === 'relay' ? !!s.relays[forwarded.source.channelId] : forwarded.source.channelType === 'link' ? !!s.links[forwarded.source.channelId] : true));
@@ -35,7 +35,7 @@ export function ForwardedBox({ forwarded, beaconId }: { forwarded: NonNullable<T
           ))}
         </div>
       )}
-      <Attachments items={forwarded.attachments} />
+      <Attachments items={forwarded.attachments} filter={filter} />
       <p className="mt-1 text-xs text-fg-subtle">
         {forwarded.source.name && canOpen ? (
           <button type="button" onClick={open} className="hover:underline">

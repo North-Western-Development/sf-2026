@@ -2,9 +2,10 @@ import { Download, FileText } from 'lucide-react';
 import type { Transmission } from '../../lib/types';
 import { useChatPrefs } from '../../lib/chatPrefs';
 import { formatBytes } from '../../lib/time';
+import { SafeImage } from '../common/SafeImage';
 
 /** A transmission's files: images and video inline (unless turned off), the rest as file cards. */
-export function Attachments({ items }: { items: Transmission['attachments'] }) {
+export function Attachments({ items, filter = false }: { items: Transmission['attachments']; filter?: boolean }) {
   const inline = useChatPrefs((p) => p.inlineMedia);
   if (!items.length) return null;
   return (
@@ -15,7 +16,7 @@ export function Attachments({ items }: { items: Transmission['attachments'] }) {
         if (isImage)
           return (
             <a key={a.id} href={a.url} target="_blank" rel="noreferrer noopener" className="block max-w-[400px] overflow-hidden rounded-md">
-              <img src={a.url} alt={a.filename} loading="lazy" className="max-h-[350px] w-auto object-contain" />
+              <SafeImage src={a.url} alt={a.filename} filter={filter} className="max-h-[350px] w-auto object-contain" />
             </a>
           );
         if (isVideo) return <video key={a.id} src={a.url} controls className="max-h-[350px] max-w-[400px] rounded-md" />;

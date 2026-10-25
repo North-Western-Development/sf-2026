@@ -1,24 +1,26 @@
+import { clockOptions, locale } from './locale';
+
 const sameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
 /** "Today at 3:04 PM", "Yesterday at ...", or "9/6/26, 3:04 PM" (Discord's author-line format). */
 export function formatMessageTime(iso: string, now = new Date()): string {
   const d = new Date(iso);
-  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const time = d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit', ...clockOptions() });
   if (sameDay(d, now)) return `Today at ${time}`;
   const y = new Date(now);
   y.setDate(now.getDate() - 1);
   if (sameDay(d, y)) return `Yesterday at ${time}`;
-  return `${d.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric', year: '2-digit' })}, ${time}`;
+  return `${d.toLocaleDateString(locale(), { month: 'numeric', day: 'numeric', year: '2-digit' })}, ${time}`;
 }
 
-export const formatShortTime = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+export const formatShortTime = (iso: string) => new Date(iso).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit', ...clockOptions() });
 
 export const formatFullDate = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  new Date(iso).toLocaleString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', ...clockOptions() });
 
 export const formatDayDivider = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  new Date(iso).toLocaleDateString(locale(), { year: 'numeric', month: 'long', day: 'numeric' });
 
 export const isSameDay = (a: string, b: string) => sameDay(new Date(a), new Date(b));
 
@@ -28,7 +30,6 @@ export const GROUP_WINDOW_MS = 7 * 60 * 1000;
 export const formatBytes = (n: number) =>
   n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`;
 
-const RELATIVE = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 /** "22 days ago", "3 months ago", "5 years ago" (Discord's Members table style). */
 export function formatAgo(iso: string, now = Date.now()): string {
   const s = (new Date(iso).getTime() - now) / 1000;
@@ -39,6 +40,7 @@ export function formatAgo(iso: string, now = Date.now()): string {
     ['hour', 3_600],
     ['minute', 60],
   ];
-  for (const [unit, size] of units) if (Math.abs(s) >= size) return RELATIVE.format(Math.round(s / size), unit);
-  return RELATIVE.format(0, 'minute');
+  const relative = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' });
+  for (const [unit, size] of units) if (Math.abs(s) >= size) return relative.format(Math.round(s / size), unit);
+  return relative.format(0, 'minute');
 }

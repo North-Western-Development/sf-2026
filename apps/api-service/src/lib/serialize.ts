@@ -23,5 +23,30 @@ export function serializeTransmitter(user: any) {
     isEmailVerified: Boolean(user.isEmailVerified),
     createdAt: user.createdAt,
     tagBeaconId: user.tagBeaconId ?? null,
+    defaultAllowDms: user.defaultAllowDms ?? true,
+  };
+}
+
+/** What other people may see of a transmitter (never email, security or privacy settings). */
+export function serializePublicTransmitter(user: any) {
+  const full = serializeTransmitter(user);
+  return {
+    id: full.id,
+    username: full.username,
+    discriminator: full.discriminator,
+    displayName: full.displayName,
+    displayColor: full.displayColor,
+    displayFont: full.displayFont,
+    avatarUrl: full.avatarUrl,
+    bannerUrl: full.bannerUrl,
+    bannerColor: full.bannerColor,
+    bio: full.bio,
+    staffRank: full.staffRank,
+    pronouns: full.pronouns,
+    themePrimary: full.themePrimary,
+    themeAccent: full.themeAccent,
+    displayNameStyle: full.displayNameStyle,
+    customStatus: full.customStatus,
+    tagBeaconId: full.tagBeaconId,
   };
 }

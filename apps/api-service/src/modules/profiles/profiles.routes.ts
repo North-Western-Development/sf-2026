@@ -26,7 +26,7 @@ import {
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { validateMediaUrl } from '../../lib/media.js';
-import { serializeTransmitter } from '../../lib/serialize.js';
+import { serializePublicTransmitter, serializeTransmitter } from '../../lib/serialize.js';
 import { confirmPassword } from '../../lib/confirm-password.js';
 import { refreshCommendations } from '../../lib/commendations.js';
 
@@ -178,17 +178,22 @@ export async function applyProfileUpdate(
     updates.profileVisibility = body.profileVisibility;
   }
 
+  // Privacy › "Allow DMs from other members in beacons I join"; Discord offers to apply it to
+  // every beacon you are already in too.
+  if (body.defaultAllowDms !== undefined) {
+    updates.defaultAllowDms = Boolean(body.defaultAllowDms);
+    if (body.applyToExistingBeacons === true) {
+      await db.update(beaconMembers).set({ allowDms: updates.defaultAllowDms }).where(eq(beaconMembers.transmitterId, transmitterId));
+    }
+  }
+
   const [updatedUser] = await db.update(transmitters).set(updates).where(eq(transmitters.id, transmitterId)).returning();
 
   // USER_UPDATE: public profile fields go to presence peers; the full self profile goes to the user.
   const { resolvePresencePeers } = await import('@subspace/database');
   const peers = await resolvePresencePeers(db, transmitterId);
-  await publishGatewayEvent(
-    app,
-    'USER_UPDATE',
-    { user: serializeTransmitter(updatedUser) },
-    { transmitterIds: [...peers, transmitterId] }
-  );
+  await publishGatewayEvent(app, 'USER_UPDATE', { user: serializePublicTransmitter(updatedUser) }, { transmitterIds: peers.filter((id: string) => id !== transmitterId) });
+  await publishGatewayEvent(app, 'USER_UPDATE', { user: serializeTransmitter(updatedUser) }, { transmitterIds: [transmitterId] });
 
   return { status: 200, body: { message: 'Profile updated successfully', transmitter: serializeTransmitter(updatedUser) } };
 }

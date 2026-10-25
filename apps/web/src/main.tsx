@@ -5,8 +5,12 @@ import { AppShell } from './app/AppShell';
 import { AuthGate } from './features/auth/AuthGate';
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage';
 import { WidgetPage } from './features/invite/WidgetPage';
+import { applyA11yPrefs } from './lib/a11yPrefs';
 import { toast } from './app/ui';
 import './index.css';
+
+// Accessibility preferences apply before the first paint.
+applyA11yPrefs();
 
 const widgetId = /^\/widget\/([0-9a-f-]{36})\/?$/i.exec(window.location.pathname)?.[1];
 

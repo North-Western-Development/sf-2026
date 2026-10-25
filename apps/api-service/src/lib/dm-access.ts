@@ -1,4 +1,10 @@
-import { and, eq, or, affiliations, transmissionRequests, beaconMembers, beacons } from '@subspace/database';
+import { and, eq, or, affiliations, transmissionRequests, beaconMembers, beacons, transmitters } from '@subspace/database';
+
+/** A beacon's Privacy Settings start from the member's default (Data & Privacy). */
+export async function defaultAllowDms(db: any, transmitterId: string): Promise<boolean> {
+  const [row] = await db.select({ v: transmitters.defaultAllowDms }).from(transmitters).where(eq(transmitters.id, transmitterId)).limit(1);
+  return row?.v ?? true;
+}
 
 export type DmAccess =
   | { ok: true; via: 'affiliation' | 'request' | 'beacon'; beaconId?: string }

@@ -34,6 +34,7 @@ import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
 import { postWelcome, setUpSystemChannel } from '../../lib/system-messages.js';
 import { BUILTIN_TEMPLATES, applyTemplate } from '../../lib/templates.js';
 import { audit, diff } from '../../lib/audit.js';
+import { defaultAllowDms } from '../../lib/dm-access.js';
 
 export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -302,6 +303,10 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       if (![60, 300, 900, 1800, 3600].includes(body.afkTimeout)) return bad('afkTimeout must be 60, 300, 900, 1800 or 3600 seconds');
       updates.afkTimeout = body.afkTimeout;
     }
+    if (body.explicitFilter !== undefined) {
+      if (!['off', 'members', 'all'].includes(body.explicitFilter)) return bad('explicitFilter must be off, members or all');
+      updates.explicitFilter = body.explicitFilter;
+    }
     if (body.verificationLevel !== undefined) {
       if (!['none', 'low', 'medium', 'high', 'highest'].includes(body.verificationLevel)) return bad('Unknown verificationLevel');
       updates.verificationLevel = body.verificationLevel;
@@ -453,6 +458,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         hasCompletedOnboarding: false,
         clearanceIds: [],
         joinMethod: 'discovery',
+        allowDms: await defaultAllowDms(db, token.transmitterId),
       })
       .returning();
 

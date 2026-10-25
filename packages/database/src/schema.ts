@@ -59,6 +59,8 @@ export const transmitters = pgTable('transmitters', {
   quarantineReason: text('quarantine_reason'),
   /** The beacon whose Beacon Tag they wear beside their name (Discord's server tags). */
   tagBeaconId: uuid('tag_beacon_id'),
+  /** Privacy: whether members of beacons they join may DM them (each beacon's Privacy Settings starts from this). */
+  defaultAllowDms: boolean('default_allow_dms').default(true).notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -112,6 +114,8 @@ export const beacons = pgTable('beacons', {
   // Safety Setup.
   /** 'none' | 'low' (verified email) | 'medium' (account older than 5 minutes) | 'high' (member for 10 minutes) | 'highest' (two-factor on). */
   verificationLevel: text('verification_level').default('none').notNull(),
+  /** Explicit image filter: 'off' | 'members' (members without a clearance) | 'all'. Images are checked on members' devices and blurred. */
+  explicitFilter: text('explicit_filter').default('off').notNull(),
   /** Security Actions: joining by invite, and DMs between members who are not affiliates, are paused until then. */
   invitesPausedUntil: timestamp('invites_paused_until', { withTimezone: true }),
   dmsPausedUntil: timestamp('dms_paused_until', { withTimezone: true }),

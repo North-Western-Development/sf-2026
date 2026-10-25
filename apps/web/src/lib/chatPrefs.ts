@@ -6,10 +6,12 @@ export interface ChatPrefs {
   showEmbeds: boolean;
   /** Show images and videos inline; otherwise as file cards. */
   inlineMedia: boolean;
+  /** Discord's compact message display: time and name on one line, no avatars. */
+  compact: boolean;
 }
 
 const KEY = 'subspace_chat_prefs';
-const defaults: ChatPrefs = { showEmbeds: true, inlineMedia: true };
+const defaults: ChatPrefs = { showEmbeds: true, inlineMedia: true, compact: false };
 
 const read = (): ChatPrefs => {
   try {

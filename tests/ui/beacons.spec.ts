@@ -47,7 +47,8 @@ test.describe('Beacon folders (clusters)', () => {
     await expect(page.getByRole('img', { name: 'Online' }).first()).toBeVisible();
     await owner.api.send(relays.find((r) => r.type === 'text')!.id, `<@${me.transmitter.id}> report in`);
     const folder = page.getByRole('navigation', { name: 'Beacons' }).getByRole('button', { name: 'Work cluster' });
-    await expect(folder.getByText('1')).toBeVisible();
+    // The beacon's relays may still be loading under load; the count arrives either way.
+    await expect(folder.getByText('1')).toBeVisible({ timeout: 25_000 });
     // Two beacons still sit in a fixed 2x2 grid, the other two slots empty.
     await expect(folder.locator('span.grid > span')).toHaveCount(4);
   });

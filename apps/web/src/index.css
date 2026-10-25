@@ -217,3 +217,15 @@
 .md-spoiler { background: rgb(0 0 0 / 0.45); border-radius: 3px; }
 .md-codeblock { font-family: var(--font-mono); font-size: 0.875rem; }
 .md-fence { color: var(--color-fg-muted); }
+
+/* Accessibility preferences (lib/a11yPrefs.ts). */
+html[data-underline-links="true"] [role="log"] a,
+html[data-underline-links="true"] [role="note"] a { text-decoration: underline; }
+html[data-reduced-motion="on"] *,
+html[data-reduced-motion="on"] *::before,
+html[data-reduced-motion="on"] *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}

@@ -83,6 +83,7 @@ export function toBeacon(b: Raw): Beacon {
     afkChannelId: b.afkChannelId ?? null,
     afkTimeout: b.afkTimeout ?? 300,
     verificationLevel: b.verificationLevel ?? 'none',
+    explicitFilter: b.explicitFilter ?? 'off',
     invitesPausedUntil: b.invitesPausedUntil ?? null,
     dmsPausedUntil: b.dmsPausedUntil ?? null,
     tag: b.tag ?? null,

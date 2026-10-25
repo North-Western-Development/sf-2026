@@ -11,7 +11,7 @@ export type ModalState =
   | { kind: 'notificationSettings'; beaconId: string }
   | { kind: 'createMesh' }
   | { kind: 'addAffiliate' }
-  | { kind: 'confirm'; title: string; body: string; confirmLabel: string; danger?: boolean; onConfirm: () => Promise<void> | void }
+  | { kind: 'confirm'; title: string; body: string; confirmLabel: string; danger?: boolean; onConfirm: () => Promise<void> | void; cancelLabel?: string; onCancel?: () => void }
   | { kind: 'prompt'; title: string; label: string; initial?: string; maxLength?: number; confirmLabel?: string; onSubmit: (value: string) => Promise<void> | void }
   | { kind: 'leaving'; href: string }
   | { kind: 'quickScan' }

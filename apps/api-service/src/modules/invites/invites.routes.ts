@@ -19,6 +19,7 @@ import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js'
 import { buildMember } from '../../lib/members.js';
 import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
 import { postWelcome } from '../../lib/system-messages.js';
+import { defaultAllowDms } from '../../lib/dm-access.js';
 
 const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const ALLOWED_MAX_AGE = [0, 1800, 3600, 21600, 43200, 86400, 604800];
@@ -281,6 +282,7 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         joinMethod: 'invite',
         joinInviteCode: invite.code,
         invitedBy: invite.inviterId,
+        allowDms: await defaultAllowDms(db, token.transmitterId),
       });
       requiresOnboarding = true;
 

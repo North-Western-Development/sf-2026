@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Tooltip } from '@subspace/ui';
 import { isTrustedLink, openLeavingDialog } from '../../lib/links';
 import { highlightNow, loadHljs } from '../../lib/highlight';
+import { clockOptions, locale } from '../../lib/locale';
 
 // ---------------------------------------------------------------------------
 // AST
@@ -229,22 +230,22 @@ function formatTimestamp(unix: number, style: string): string {
   const d = new Date(unix * 1000);
   if (Number.isNaN(d.getTime())) return String(unix);
   const opts: Record<string, Intl.DateTimeFormatOptions> = {
-    t: { timeStyle: 'short' },
-    T: { timeStyle: 'medium' },
+    t: { timeStyle: 'short', ...clockOptions() },
+    T: { timeStyle: 'medium', ...clockOptions() },
     d: { dateStyle: 'short' },
     D: { dateStyle: 'long' },
-    f: { dateStyle: 'long', timeStyle: 'short' },
-    F: { dateStyle: 'full', timeStyle: 'short' },
+    f: { dateStyle: 'long', timeStyle: 'short', ...clockOptions() },
+    F: { dateStyle: 'full', timeStyle: 'short', ...clockOptions() },
   };
   if (style === 'R') {
     const diff = (d.getTime() - Date.now()) / 1000;
-    const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+    const rtf = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' });
     const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
       ['year', 31536000], ['month', 2592000], ['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1],
     ];
     for (const [unit, secs] of units) if (Math.abs(diff) >= secs || unit === 'second') return rtf.format(Math.round(diff / secs), unit);
   }
-  return new Intl.DateTimeFormat(undefined, opts[style] ?? opts.f).format(d);
+  return new Intl.DateTimeFormat(locale(), opts[style] ?? opts.f).format(d);
 }
 
 function Spoiler({ children }: { children: React.ReactNode }) {
