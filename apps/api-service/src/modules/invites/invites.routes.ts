@@ -18,6 +18,7 @@ import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hi
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 import { buildMember } from '../../lib/members.js';
 import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
+import { postWelcome } from '../../lib/system-messages.js';
 
 const BASE62 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const ALLOWED_MAX_AGE = [0, 1800, 3600, 21600, 43200, 86400, 604800];
@@ -289,6 +290,7 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       );
       await publishGatewayEvent(app, 'BEACON_CREATE', { beacon }, { transmitterIds: [token.transmitterId] });
       await publishSessionRefresh(app, [token.transmitterId]);
+      await postWelcome(app, db, invite.beaconId, token.transmitterId);
     }
 
     return reply.send({ beacon, requiresOnboarding });

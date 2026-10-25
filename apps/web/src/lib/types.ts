@@ -63,6 +63,23 @@ export interface Beacon {
   suppressCustomFonts?: boolean;
   rulesText?: string | null;
   memberCount?: number;
+  // Engagement
+  systemChannelId?: string | null;
+  welcomeMessages?: boolean;
+  welcomeWave?: boolean;
+  setupTips?: boolean;
+  defaultNotifications?: 'all' | 'mentions' | null;
+  afkChannelId?: string | null;
+  afkTimeout?: number;
+  // Safety Setup / Security Actions
+  verificationLevel?: 'none' | 'low' | 'medium' | 'high' | 'highest';
+  invitesPausedUntil?: string | null;
+  dmsPausedUntil?: string | null;
+  // Beacon Tag and Widget
+  tag?: string | null;
+  tagBadge?: string | null;
+  widgetEnabled?: boolean;
+  widgetChannelId?: string | null;
 }
 
 export interface Relay {
@@ -160,7 +177,7 @@ export interface Transmission {
   encrypted?: unknown | null;
   e2ee?: 'pending' | 'ok' | 'other-device' | 'failed';
   encryptedAttachments?: Array<{ url: string; key: string; filename: string; mimeType: string; size: number }>;
-  type: 'default' | 'reply' | 'system_join' | 'system_pin' | 'system_call' | 'system_encryption';
+  type: 'default' | 'reply' | 'system_join' | 'system_tips' | 'system_pin' | 'system_call' | 'system_encryption';
   /** Client-only: optimistic send state. */
   pending?: boolean;
   failed?: boolean;

@@ -23,6 +23,7 @@ import { useChatPrefs } from '../../lib/chatPrefs';
 import { copyText } from '../../lib/clipboard';
 import { prefetchProfile } from '../profile/useProfile';
 import { RichInput, type RichInputHandle } from '../common/RichInput';
+import { JoinMessage, SetupTipsMessage } from './SystemMessages';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂'];
 
@@ -235,6 +236,9 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
       </div>
     );
   }
+
+  if (m.type === 'system_join') return <JoinMessage m={m} channelKey={key} beaconId={beaconId} onOpenProfile={openProfile} />;
+  if (m.type === 'system_tips') return <SetupTipsMessage m={m} beaconId={beaconId} />;
 
   if (m.type === 'system_pin') {
     return (

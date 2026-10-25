@@ -15,6 +15,7 @@ import {
   Info,
   LayoutGrid,
   Link2,
+  Megaphone,
   Plus,
   ScrollText,
   Search,
@@ -47,6 +48,7 @@ import { UserName } from '../common/UserName';
 import { loadGlyphs, type Glyph } from '../chat/EmojiPicker';
 import { RelaysTab } from './beacon/RelaysTab';
 import { OnboardingQuestionsEditor } from './beacon/OnboardingQuestionsEditor';
+import { EngagementTab } from './beacon/EngagementTab';
 
 // Stable fallbacks: a fresh {} / [] inside a selector would re-render forever.
 const EMPTY_MEMBERS: Record<string, Member> = {};
@@ -810,13 +812,17 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
         {
           heading: beacon.name,
           items: [
-            ...(manageBeacon ? [{ id: 'overview', icon: <Info />, label: 'Overview' }] : []),
-            ...(can(perms, PERMISSIONS.MANAGE_CLEARANCES) ? [{ id: 'clearances', icon: <ShieldCheck />, label: term('clearance', true) }] : []),
+            ...(manageBeacon ? [{ id: 'overview', icon: <Info />, label: `${term('beacon')} Profile` }] : []),
+            ...(manageBeacon ? [{ id: 'engagement', icon: <Megaphone />, label: 'Engagement' }] : []),
             ...(manageRelays ? [{ id: 'relays', icon: <Hash />, label: term('relay', true) }] : []),
+          ],
+        },
+        {
+          heading: 'Expression',
+          items: [
             ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ id: 'glyphs', icon: <Smile />, label: term('glyph', true) }] : []),
             { id: 'stickers', icon: <Sticker />, label: 'Stickers', comingSoon: true },
             { id: 'soundboard', icon: <AudioLines />, label: 'Soundboard', comingSoon: true },
-            { id: 'widget', icon: <LayoutGrid />, label: 'Widget', comingSoon: true },
           ],
         },
         {
@@ -831,6 +837,7 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
                 navigate(`/channels/${beaconId}/member-safety`);
               },
             },
+            ...(can(perms, PERMISSIONS.MANAGE_CLEARANCES) ? [{ id: 'clearances', icon: <ShieldCheck />, label: term('clearance', true) }] : []),
             ...(can(perms, PERMISSIONS.CREATE_INVITES) ? [{ id: 'invites', icon: <Link2 />, label: 'Invites' }] : []),
             ...(can(perms, PERMISSIONS.BAN_MEMBERS) ? [{ id: 'bans', icon: <Gavel />, label: 'Bans' }] : []),
           ],
@@ -848,6 +855,7 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           items: [
             ...(manageBeacon ? [{ id: 'onboarding', icon: <Flag />, label: 'Onboarding' }] : []),
             { id: 'insights', icon: <BarChart3 />, label: 'Beacon Insights', comingSoon: true },
+            { id: 'widget', icon: <LayoutGrid />, label: 'Widget', comingSoon: true },
             { id: 'template', icon: <Copy />, label: 'Beacon Template', comingSoon: true },
           ],
         },
@@ -893,6 +901,7 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
       {tab === 'invites' && <InvitesTab beaconId={beaconId} />}
       {tab === 'bans' && <BansTab beaconId={beaconId} />}
       {tab === 'onboarding' && <OnboardingTab beaconId={beaconId} />}
+      {tab === 'engagement' && <EngagementTab beaconId={beaconId} />}
     </SettingsLayout>
   );
 }

@@ -50,7 +50,7 @@ export function beaconMenu(beaconId: string, navigate: (path: string) => void, o
   const pages: ContextMenuItem[] = [
     ...(manageBeacon ? [{ label: `${term('beacon')} Profile`, onClick: settings('overview') }] : []),
     soon(`${term('beacon')} Tag`),
-    soon('Engagement'),
+    ...(manageBeacon ? [{ label: 'Engagement', onClick: settings('engagement') }] : []),
     ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ label: term('glyph', true), onClick: settings('glyphs') }] : []),
     soon('Stickers'),
     soon('Soundboard'),

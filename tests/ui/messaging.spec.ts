@@ -69,7 +69,7 @@ test.describe('Messaging', () => {
     await me.api.send(relay.id, 'original text');
     await signIn(page, me, `/channels/${beacon.id}/${relay.id}`);
 
-    const { id } = (await me.api.get(`/relays/${relay.id}/transmissions`)).transmissions[0];
+    const { id } = (await me.api.get(`/relays/${relay.id}/transmissions`)).transmissions.find((t: any) => t.content === 'original text');
     const msg = page.locator(`#msg-${id}`);
     await msg.hover();
     await msg.getByRole('button', { name: 'Edit' }).click();

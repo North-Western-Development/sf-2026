@@ -1,4 +1,4 @@
-import { eq, and, inArray, or, notificationSettings, beaconMembers } from '@subspace/database';
+import { eq, and, inArray, or, notificationSettings, beaconMembers, beacons } from '@subspace/database';
 
 export interface ScopeRef {
   scopeType: 'relay' | 'category' | 'beacon' | 'link' | 'mesh' | 'global';
@@ -18,6 +18,9 @@ export interface EffectiveNotification {
 export const INFINITE_MUTE = new Date('9999-12-31T00:00:00.000Z');
 
 export async function defaultLevelForRelay(db: any, beaconId: string): Promise<'all' | 'mentions'> {
+  // The beacon's Default Notification Settings (Engagement), else all under 100 members.
+  const [beacon] = await db.select({ level: beacons.defaultNotifications }).from(beacons).where(eq(beacons.id, beaconId)).limit(1);
+  if (beacon?.level === 'all' || beacon?.level === 'mentions') return beacon.level;
   const members = await db.select().from(beaconMembers).where(eq(beaconMembers.beaconId, beaconId));
   return members.length > 100 ? 'mentions' : 'all';
 }

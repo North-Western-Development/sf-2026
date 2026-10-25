@@ -102,7 +102,8 @@ export const memberSafetyRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       .selectDistinct({ transmitterId: transmissions.transmitterId })
       .from(transmissions)
       .innerJoin(relays, eq(transmissions.relayId, relays.id))
-      .where(and(eq(relays.beaconId, beaconId), gte(transmissions.createdAt, cutoff), inArray(transmissions.transmitterId, quiet.map((m: any) => m.transmitterId))));
+      // Only what they wrote: a welcome line is authored by the member but is not activity.
+      .where(and(eq(relays.beaconId, beaconId), gte(transmissions.createdAt, cutoff), inArray(transmissions.type, ['default', 'reply']), inArray(transmissions.transmitterId, quiet.map((m: any) => m.transmitterId))));
     const activeIds = new Set(active.map((a: any) => a.transmitterId));
     return quiet.map((m: any) => m.transmitterId).filter((id: string) => !activeIds.has(id));
   }

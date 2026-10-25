@@ -29,6 +29,8 @@ import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js'
 import { validateMediaUrl } from '../../lib/media.js';
 import { buildMember, buildMembers } from '../../lib/members.js';
 import { isQuarantined, QUARANTINED } from '../../lib/quarantine.js';
+import { postWelcome, setUpSystemChannel } from '../../lib/system-messages.js';
+import { audit, diff } from '../../lib/audit.js';
 
 export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
@@ -117,10 +119,12 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       { beaconId: newBeacon.id, parentId: textBand.id, name: 'general', type: 'text', position: 0 },
       { beaconId: newBeacon.id, parentId: voiceBand.id, name: 'General', type: 'comm_link', position: 0 },
     ]);
+    await setUpSystemChannel(app, db, newBeacon.id, token.transmitterId);
+    const [created] = await db.select().from(beacons).where(eq(beacons.id, newBeacon.id)).limit(1);
 
     return reply.status(201).send({
       message: 'Beacon established successfully',
-      beacon: newBeacon,
+      beacon: created ?? newBeacon,
       everyoneClearance: {
         ...everyoneClearance,
         permissions: everyoneClearance.permissions.toString(),
@@ -255,12 +259,55 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
 
-    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.ADMINISTRATOR)) {
-      return reply.status(403).send({ error: 'Only owner or administrator may modify Beacon parameters' });
+    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_BEACON)) {
+      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_BEACON clearance' });
     }
 
     const body = request.body as any;
     const updates: Record<string, any> = { updatedAt: new Date() };
+    const bad = (error: string) => reply.status(400).send({ error, code: 'INVALID_SETTING' });
+
+    // A relay setting must name a relay of the right kind in this beacon (or null to clear it).
+    const relayOf = async (id: unknown, type: string) => {
+      if (id === null) return true;
+      if (typeof id !== 'string') return false;
+      const [r] = await db.select({ id: relays.id }).from(relays).where(and(eq(relays.id, id), eq(relays.beaconId, beaconId), eq(relays.type, type))).limit(1);
+      return !!r;
+    };
+    for (const [key, type] of [['systemChannelId', 'text'], ['afkChannelId', 'comm_link'], ['widgetChannelId', 'text']] as const) {
+      if (body[key] === undefined) continue;
+      if (!(await relayOf(body[key], type))) return bad(`${key} must be a ${type === 'text' ? 'text' : 'comm-link'} relay in this beacon`);
+      updates[key] = body[key];
+    }
+    for (const key of ['welcomeMessages', 'welcomeWave', 'setupTips', 'widgetEnabled']) {
+      if (body[key] !== undefined) updates[key] = Boolean(body[key]);
+    }
+    if (body.defaultNotifications !== undefined) {
+      if (![null, 'all', 'mentions'].includes(body.defaultNotifications)) return bad('defaultNotifications must be all, mentions or null');
+      updates.defaultNotifications = body.defaultNotifications;
+    }
+    if (body.afkTimeout !== undefined) {
+      if (![60, 300, 900, 1800, 3600].includes(body.afkTimeout)) return bad('afkTimeout must be 60, 300, 900, 1800 or 3600 seconds');
+      updates.afkTimeout = body.afkTimeout;
+    }
+    if (body.verificationLevel !== undefined) {
+      if (!['none', 'low', 'medium', 'high', 'highest'].includes(body.verificationLevel)) return bad('Unknown verificationLevel');
+      updates.verificationLevel = body.verificationLevel;
+    }
+    if (body.tag !== undefined) {
+      if (body.tag !== null && !/^[A-Za-z0-9]{2,4}$/.test(body.tag)) return bad('A tag is 2 to 4 letters or digits');
+      updates.tag = body.tag ? body.tag.toUpperCase() : null;
+    }
+    if (body.tagBadge !== undefined) {
+      if (body.tagBadge !== null && (typeof body.tagBadge !== 'string' || [...body.tagBadge].length > 8)) return bad('tagBadge must be one emoji');
+      updates.tagBadge = body.tagBadge;
+    }
+    for (const key of ['invitesPausedUntil', 'dmsPausedUntil']) {
+      if (body[key] === undefined) continue;
+      const until = body[key] === null ? null : new Date(body[key]);
+      if (until && (Number.isNaN(until.getTime()) || until.getTime() > Date.now() + 24 * 3600_000 + 60_000)) return bad(`${key} must be within the next 24 hours`);
+      updates[key] = until;
+    }
 
     if (body.name !== undefined) updates.name = body.name.trim();
     if (body.description !== undefined) updates.description = body.description?.trim() || null;
@@ -277,6 +324,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(400).send({ error: 'Invalid media URL for bannerUrl', code: 'INVALID_MEDIA_URL' });
     }
 
+    const [before] = await db.select().from(beacons).where(eq(beacons.id, beaconId)).limit(1);
     const [updatedBeacon] = await db
       .update(beacons)
       .set(updates)
@@ -284,6 +332,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       .returning();
 
     await publishGatewayEvent(app, 'BEACON_UPDATE', { beacon: updatedBeacon }, { beaconId });
+    const changes = diff(before ?? {}, updatedBeacon, Object.keys(updates).filter((k) => k !== 'updatedAt'));
+    if (changes.length) await audit(db, { beaconId, actorId: token.transmitterId, action: 'beacon_update', targetType: 'beacon', targetId: beaconId, targetName: updatedBeacon.name, changes });
 
     return reply.send({
       message: 'Beacon parameters updated',
@@ -391,6 +441,7 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
 
     await publishGatewayEvent(app, 'MEMBER_ADD', { beaconId, member: await buildMember(db, (app as any).redis, beaconId, newMember.transmitterId) }, { beaconId });
     await publishSessionRefresh(app, await resolveBeaconAudience(db, beaconId));
+    await postWelcome(app, db, beaconId, token.transmitterId);
 
     return reply.status(201).send({
       message: 'Joined Beacon successfully. Onboarding required.',

@@ -44,8 +44,10 @@ export function effectiveNotification(s: SubspaceState, key: ChannelKey): Effect
     if (isMuted(setting)) muted = true;
     if (level === 'inherit' && setting && setting.level !== 'inherit') level = setting.level;
   }
-  const { type } = parseChannelKey(key);
-  const fallback = type === 'link' || type === 'mesh' ? 'all' : 'mentions';
+  const { type, id } = parseChannelKey(key);
+  // A beacon's Default Notification Settings, when its admins set one (Engagement).
+  const beaconDefault = type === 'relay' ? s.beacons[s.relays[id]?.beaconId ?? '']?.defaultNotifications : null;
+  const fallback = type === 'link' || type === 'mesh' ? 'all' : beaconDefault ?? 'mentions';
   return {
     level: level === 'inherit' ? fallback : level,
     muted,
@@ -139,6 +141,8 @@ export function maybeNotify(key: ChannelKey, t: Transmission, title: string, onO
   const s = getState();
   const me = s.me;
   if (!me || t.author.id === me.id) return;
+  // Join lines and setup tips are not worth a ping.
+  if (t.type === 'system_join' || t.type === 'system_tips') return;
   if (s.presence[me.id]?.status === 'dnd') return;
   const viewing = s.activeChannel === key && document.visibilityState === 'visible' && document.hasFocus();
   if (viewing) return;

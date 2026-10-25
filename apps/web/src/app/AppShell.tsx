@@ -26,6 +26,7 @@ import { lastRelay, useUi } from './ui';
 import { useIsMobile } from './mobile';
 import { useGlobalShortcuts } from './shortcuts';
 import { preloadEmojiSheet } from '../lib/emoji';
+import { startAfkWatch } from '../features/voice/afk';
 
 function Boot({ children }: { children: React.ReactNode }) {
   const ready = useStore((s) => s.ready);
@@ -53,9 +54,11 @@ function Boot({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  // Once signed in and idle, fetch the emoji sheet so pickers and messages draw immediately.
+  // Once signed in and idle, fetch the emoji sheet so the picker opens fully drawn; watch for
+  // idling in a comm-link (the inactive comm-link move).
   useEffect(() => {
     if (!ready) return;
+    startAfkWatch();
     const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
     idle(() => preloadEmojiSheet());
   }, [ready]);

@@ -57,6 +57,8 @@ export const transmitters = pgTable('transmitters', {
   /** Staff quarantine: the account can read but not post in beacons, DM non-friends or join beacons. */
   quarantinedAt: timestamp('quarantined_at', { withTimezone: true }),
   quarantineReason: text('quarantine_reason'),
+  /** The beacon whose Beacon Tag they wear beside their name (Discord's server tags). */
+  tagBeaconId: uuid('tag_beacon_id'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -94,6 +96,31 @@ export const beacons = pgTable('beacons', {
   isDiscoverable: boolean('is_discoverable').default(false).notNull(),
   suppressCustomFonts: boolean('suppress_custom_fonts').default(false).notNull(),
   rulesText: text('rules_text'),
+  // Engagement (Discord's): system messages go to the system relay.
+  systemChannelId: uuid('system_channel_id'),
+  /** A random welcome line when someone joins. */
+  welcomeMessages: boolean('welcome_messages').default(true).notNull(),
+  /** Welcome lines carry a "Wave to say hi!" button. */
+  welcomeWave: boolean('welcome_wave').default(true).notNull(),
+  /** A setup checklist for the owner when the beacon is new. */
+  setupTips: boolean('setup_tips').default(true).notNull(),
+  /** 'all' | 'mentions'; null keeps the size-based default (all under 100 members). */
+  defaultNotifications: text('default_notifications'),
+  /** Members idle in a comm-link this long (seconds) move to the inactive one, muted. */
+  afkChannelId: uuid('afk_channel_id'),
+  afkTimeout: integer('afk_timeout').default(300).notNull(),
+  // Safety Setup.
+  /** 'none' | 'low' (verified email) | 'medium' (account older than 5 minutes) | 'high' (member for 10 minutes) | 'highest' (two-factor on). */
+  verificationLevel: text('verification_level').default('none').notNull(),
+  /** Security Actions: joining by invite, and DMs between members who are not affiliates, are paused until then. */
+  invitesPausedUntil: timestamp('invites_paused_until', { withTimezone: true }),
+  dmsPausedUntil: timestamp('dms_paused_until', { withTimezone: true }),
+  /** Beacon Tag: up to 4 characters members can wear beside their name, with an emoji badge. */
+  tag: text('tag'),
+  tagBadge: text('tag_badge'),
+  /** Widget: public JSON and an embeddable card; joins through an invite to this relay. */
+  widgetEnabled: boolean('widget_enabled').default(false).notNull(),
+  widgetChannelId: uuid('widget_channel_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -458,6 +485,7 @@ export const beaconEmojis = pgTable('beacon_emojis', {
 
 export * from './schema-messaging.js';
 export * from './schema-community.js';
+export * from './schema-moderation.js';
 
 /**
  * One-time data migrations applied by api-service on boot (see apps/api-service/src/lib/data-migrations.ts).

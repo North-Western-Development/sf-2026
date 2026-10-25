@@ -16,6 +16,7 @@ export function Dropdown<T extends string>({
   label,
   required,
   placeholder = 'Select…',
+  hideLabel,
 }: {
   value: T | '';
   options: Array<DropdownOption<T>>;
@@ -23,6 +24,8 @@ export function Dropdown<T extends string>({
   label: string;
   required?: boolean;
   placeholder?: string;
+  /** The label still names the control for screen readers; the page shows its own. */
+  hideLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [focus, setFocus] = useState(0);
@@ -62,7 +65,7 @@ export function Dropdown<T extends string>({
 
   return (
     <div ref={ref} className="relative">
-      <span id={`${id}-label`} className="mb-1.5 block text-sm font-semibold text-fg">
+      <span id={`${id}-label`} className={hideLabel ? 'sr-only' : 'mb-1.5 block text-sm font-semibold text-fg'}>
         {label}
         {required && <span className="ml-0.5 text-danger">*</span>}
       </span>

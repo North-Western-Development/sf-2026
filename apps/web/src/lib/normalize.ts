@@ -74,6 +74,20 @@ export function toBeacon(b: Raw): Beacon {
     suppressCustomFonts: !!b.suppressCustomFonts,
     rulesText: b.rulesText ?? null,
     memberCount: b.memberCount,
+    systemChannelId: b.systemChannelId ?? null,
+    welcomeMessages: b.welcomeMessages ?? true,
+    welcomeWave: b.welcomeWave ?? true,
+    setupTips: b.setupTips ?? true,
+    defaultNotifications: b.defaultNotifications ?? null,
+    afkChannelId: b.afkChannelId ?? null,
+    afkTimeout: b.afkTimeout ?? 300,
+    verificationLevel: b.verificationLevel ?? 'none',
+    invitesPausedUntil: b.invitesPausedUntil ?? null,
+    dmsPausedUntil: b.dmsPausedUntil ?? null,
+    tag: b.tag ?? null,
+    tagBadge: b.tagBadge ?? null,
+    widgetEnabled: !!b.widgetEnabled,
+    widgetChannelId: b.widgetChannelId ?? null,
   };
 }
 
