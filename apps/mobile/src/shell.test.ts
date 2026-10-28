@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { injectedBridge, normalizeServer, parseShellMessage, staysInApp } from './shell';
+import { androidPushState, injectedBridge, iosPushState, normalizeServer, parseShellMessage, pushUpdateScript, staysInApp, type PushState } from './shell';
 
 describe('mobile shell helpers', () => {
   it('accepts https instances and local http only, reduced to the origin', () => {
@@ -30,10 +30,39 @@ describe('mobile shell helpers', () => {
   it('the injected bridge replaces Notification and posts to the shell', () => {
     const posted: string[] = [];
     const win: any = { ReactNativeWebView: { postMessage: (m: string) => posted.push(m) } };
-    new Function('window', injectedBridge('ExponentPushToken[abc]', 'android'))(win);
-    expect(win.subspaceNative).toMatchObject({ platform: 'android', pushToken: 'ExponentPushToken[abc]' });
+    const push: PushState = { target: { kind: 'apns', token: 'ab'.repeat(32) }, status: 'on', reason: 'r' };
+    new Function('window', injectedBridge(push, 'ios'))(win);
+    expect(win.subspaceNative).toMatchObject({ platform: 'ios', push: push.target, pushStatus: { status: 'on', reason: 'r' } });
     expect(win.Notification.permission).toBe('granted');
     new win.Notification('Nova', { body: 'hello', tag: 'link:1' });
     expect(JSON.parse(posted[0])).toEqual({ type: 'notify', title: 'Nova', body: 'hello', tag: 'link:1' });
+  });
+
+  it('a new push state reaches the open page', () => {
+    const events: string[] = [];
+    const win: any = { subspaceNative: { push: null }, dispatchEvent: (e: Event) => events.push(e.type) };
+    const state: PushState = { target: { kind: 'unifiedpush', endpoint: 'https://push.example/up1', p256dh: 'k', auth: 'a' }, status: 'on', reason: 'r' };
+    new Function('window', pushUpdateScript(state))(win);
+    expect(win.subspaceNative.push).toEqual(state.target);
+    expect(events).toEqual(['subspace-native-push']);
+  });
+
+  it('says why iOS push is unavailable', () => {
+    const config = { apns: true, unifiedpush: true, ntfy: null };
+    expect(iosPushState(null, true, 'ab').status).toBe('unavailable');
+    expect(iosPushState({ ...config, apns: false }, true, 'ab').reason).toMatch(/no Apple push key/);
+    expect(iosPushState(config, false, 'ab').reason).toMatch(/iOS Settings/);
+    expect(iosPushState(config, true, null).reason).toMatch(/sideloaded/);
+    expect(iosPushState(config, true, 'ab')).toMatchObject({ status: 'on', target: { kind: 'apns', token: 'ab' } });
+  });
+
+  it("points Android at a UnifiedPush app, and this server's ntfy", () => {
+    const config = { apns: false, unifiedpush: true, ntfy: 'https://push.subspace.click' };
+    expect(androidPushState(config, true, 0, null).reason).toContain('ntfy and set its server to https://push.subspace.click');
+    expect(androidPushState(config, true, 1, null).status).toBe('waiting');
+    expect(androidPushState(config, false, 1, null).status).toBe('unavailable');
+    const on = androidPushState(config, true, 1, { endpoint: 'https://push.subspace.click/upX?up=1', p256dh: 'k', auth: 'a' });
+    expect(on).toMatchObject({ status: 'on', target: { kind: 'unifiedpush', endpoint: 'https://push.subspace.click/upX?up=1' } });
+    expect(on.reason).toMatch(/push.subspace.click/);
   });
 });

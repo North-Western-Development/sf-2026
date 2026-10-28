@@ -56,15 +56,63 @@ export function parseShellMessage(raw: string): ShellMessage | null {
   }
 }
 
+export type PushTarget = { kind: 'apns'; token: string } | { kind: 'unifiedpush'; endpoint: string; p256dh: string; auth: string };
+
+/** What the instance can send (GET /api/v1/push/config); null when it could not be asked. */
+export interface PushConfig {
+  apns: boolean;
+  unifiedpush: boolean;
+  ntfy: string | null;
+}
+
+/** Whether this install gets pushes, and in words for the settings page when it does not. */
+export interface PushState {
+  target: PushTarget | null;
+  status: 'on' | 'waiting' | 'unavailable';
+  reason: string;
+}
+
+const CLOSED = 'Notifications arrive only while Subspace is open.';
+
+export function iosPushState(config: PushConfig | null, permission: boolean, token: string | null): PushState {
+  const off = (reason: string): PushState => ({ target: null, status: 'unavailable', reason });
+  if (!config) return off(`Could not ask this server about push. ${CLOSED}`);
+  if (!config.apns) return off(`This server has no Apple push key set up. ${CLOSED}`);
+  if (!permission) return off('Notifications are turned off for Subspace in iOS Settings.');
+  // Sideloaded builds lack the push entitlement, so iOS never hands them a token.
+  if (!token) return off(`This copy of the app cannot receive push (sideloaded builds cannot). ${CLOSED}`);
+  return { target: { kind: 'apns', token }, status: 'on', reason: 'Push notifications come through Apple. They say only that something arrived, never who sent it or what it says.' };
+}
+
+export function androidPushState(config: PushConfig | null, permission: boolean, distributors: number, endpoint: { endpoint: string; p256dh: string; auth: string } | null): PushState {
+  const ntfy = config?.ntfy ? ` and set its server to ${config.ntfy}` : '';
+  if (!permission) return { target: null, status: 'unavailable', reason: 'Notifications are turned off for Subspace in Android settings.' };
+  if (!distributors) return { target: null, status: 'unavailable', reason: `Install a UnifiedPush app such as ntfy${ntfy} to get notifications while Subspace is closed.` };
+  if (!endpoint) return { target: null, status: 'waiting', reason: 'Waiting for your UnifiedPush app to connect.' };
+  let host = endpoint.endpoint;
+  try {
+    host = new URL(endpoint.endpoint).host;
+  } catch {}
+  return {
+    target: { kind: 'unifiedpush', ...endpoint },
+    status: 'on',
+    reason: `Push notifications come through UnifiedPush (${host}), encrypted so only this phone can read them.`,
+  };
+}
+
+/** Hands a new push state to the page that is already open. */
+export const pushUpdateScript = (state: PushState) =>
+  `(function () { if (!window.subspaceNative) return; window.subspaceNative.push = ${JSON.stringify(state.target)}; window.subspaceNative.pushStatus = ${JSON.stringify({ status: state.status, reason: state.reason })}; window.dispatchEvent(new Event('subspace-native-push')); })(); true;`;
+
 /**
  * Runs in the page before the web app: tells it it is inside the native shell, and routes the
  * web Notification API (which mobile WebViews lack) to native notifications.
  */
-export function injectedBridge(pushToken: string | null, platform: string): string {
+export function injectedBridge(push: PushState, platform: string): string {
   return `(function () {
   if (window.subspaceNative) return;
   var post = function (m) { try { window.ReactNativeWebView.postMessage(JSON.stringify(m)); } catch (e) {} };
-  window.subspaceNative = { platform: ${JSON.stringify(platform)}, pushToken: ${JSON.stringify(pushToken)}, post: post };
+  window.subspaceNative = { platform: ${JSON.stringify(platform)}, push: ${JSON.stringify(push.target)}, pushStatus: ${JSON.stringify({ status: push.status, reason: push.reason })}, post: post };
   function NativeNotification(title, options) {
     post({ type: 'notify', title: String(title), body: options && options.body ? String(options.body) : '', tag: options && options.tag ? String(options.tag) : undefined });
     this.onclick = null;

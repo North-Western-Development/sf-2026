@@ -518,14 +518,14 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       const authorName = formatted.author?.displayName || formatted.author?.username || 'Someone';
       const preview = body.encrypted ? 'Sent an encrypted transmission' : pushText(content) || (attachments.length ? 'Sent an attachment' : '');
       if (channel.channelType === 'link' || channel.channelType === 'mesh') {
-        queuePush(app, recipientIds.filter((id) => id !== token.transmitterId), { title: authorName, body: preview, path: `/channels/@me/${channelId}` }, [
+        queuePush(app, recipientIds.filter((id) => id !== token.transmitterId), { kind: 'message', title: authorName, body: preview, path: `/channels/@me/${channelId}` }, [
           { type: channel.channelType, id: channelId },
         ]);
       } else if (parsed.mentions.length) {
         queuePush(
           app,
           parsed.mentions.filter((id) => id !== token.transmitterId && recipientIds.includes(id)),
-          { title: `${authorName} mentioned you`, body: preview, path: `/channels/${channel.beaconId}/${channel.relayId}` },
+          { kind: 'mention', title: `${authorName} mentioned you`, body: preview, path: `/channels/${channel.beaconId}/${channel.relayId}` },
           [{ type: 'relay', id: channel.relayId! }, { type: 'beacon', id: channel.beaconId! }]
         );
       }

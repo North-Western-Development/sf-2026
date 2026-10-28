@@ -10,7 +10,8 @@
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "bundle": "expo export --platform android --output-dir dist"
+    "bundle": "expo export --platform android --output-dir dist",
+    "build:android": "node scripts/build-android.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -28,5 +29,14 @@
     "@types/react": "~19.2.0",
     "typescript": "^5.7.3",
     "vitest": "^3.0.7"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "expo-notifications"
+        ]
+      }
+    }
   }
 }

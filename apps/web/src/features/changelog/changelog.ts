@@ -23,6 +23,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-10-28d',
+    title: 'Subspace on your phone',
+    added: [
+      {
+        title: 'Get the Apps',
+        body: 'User Settings › Get the Apps has Subspace for Windows, Android and iPhone.',
+        platforms: ['web', 'desktop'],
+      },
+      {
+        title: 'Push notifications without the middlemen',
+        body: 'On Android, notifications come through a UnifiedPush app such as ntfy, encrypted so only your phone can read them. On iPhone they come from Apple and say only that something arrived. User Settings › Notifications shows whether this phone gets them, and what to do if not.',
+        platforms: ['mobile'],
+      },
+    ],
+  },
+  {
     id: '2026-10-28c',
     title: 'The Inbox, reminders and scheduled transmissions',
     added: [

@@ -10,10 +10,11 @@ Run in order, as root on the server. All scripts are safe to re-run.
 | 4 | `04-services.sh` | Sandboxed systemd units and nginx (port 80 for certificates, loopback `127.0.0.1:8080` for testing) |
 | 5 | `deploy.sh` (on your machine) | Uploads the working tree; `release.sh` builds it as `subspace-build`, pushes the schema as the owner role, switches `current` and restarts |
 | 6 | `05-certs.sh` | Let's Encrypt for every name once DNS points here; turns on HTTPS and LiveKit's TURN over TLS |
+| 7 | `06-push.sh` | ntfy at `push.<domain>` for Android push (UnifiedPush), and the APNs key for iOS if one is in place ([Mobile push](../../apps/docs/operate/push.md)) |
 
 ## Names (A records to the server)
 
-`subspace.click`, `www.subspace.click`, `docs.subspace.click`, `storage.subspace.click` (MinIO console, staff addresses only), `turn.subspace.click` (LiveKit TURN).
+`subspace.click`, `www.subspace.click`, `docs.subspace.click`, `storage.subspace.click` (MinIO console, staff addresses only), `turn.subspace.click` (LiveKit TURN), `push.subspace.click` (ntfy, for Android push).
 
 ## Open ports
 

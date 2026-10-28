@@ -10,6 +10,7 @@ import {
   Keyboard,
   KeyRound,
   Code2,
+  Download,
   Gamepad2,
   Languages,
   Laptop,
@@ -34,6 +35,7 @@ import { signOut, setMyPresence, loadBeacon } from '../../data/actions';
 import { setNotificationSetting } from '../../data/notificationActions';
 import { readNotifyPrefs, writeNotifyPrefs, requestDesktopPermission, playPing } from '../../data/notifications';
 import { http, ApiError } from '../../lib/http';
+import { inAppShell, nativeShell, NATIVE_PUSH_EVENT } from '../../lib/native';
 import { pickImage, uploadMedia } from '../../lib/media';
 import { userTag } from '../../lib/normalize';
 import { setChatPrefs, useChatPrefs } from '../../lib/chatPrefs';
@@ -59,6 +61,7 @@ import {
 import { Avatar, PresenceDot } from '../common/Avatar';
 import { saveCustomStatus } from '../user/StatusModal';
 import { ActivityTab } from './user/ActivityTab';
+import { GetAppsTab } from './user/GetAppsTab';
 import { UserName } from '../common/UserName';
 import { ProfileEffect } from '../common/Decorations';
 import { Dropdown } from '../common/Dropdown';
@@ -1286,6 +1289,29 @@ function PrivacyTab({ me }: { me: SelfUser & Record<string, any> }) {
   );
 }
 
+/** In the mobile app: whether this phone gets pushes, and why not when it does not. */
+function MobilePushSection() {
+  const [status, setStatus] = useState(() => nativeShell()?.pushStatus);
+  useEffect(() => {
+    const update = () => setStatus(nativeShell()?.pushStatus);
+    window.addEventListener(NATIVE_PUSH_EVENT, update);
+    return () => window.removeEventListener(NATIVE_PUSH_EVENT, update);
+  }, []);
+  if (!status) return null;
+  const label = { on: 'On', waiting: 'Connecting', unavailable: 'Unavailable' }[status.status];
+  return (
+    <SettingsSection id="mobile-push" title="Push Notifications" description="Notifications on this phone while Subspace is closed.">
+      <div className="flex items-start gap-3 rounded-md bg-raised p-4" role="status">
+        <span className={clsx('mt-1.5 h-2 w-2 shrink-0 rounded-full', status.status === 'on' ? 'bg-online' : status.status === 'waiting' ? 'bg-warning' : 'bg-fg-subtle')} aria-hidden />
+        <div>
+          <p className="text-sm font-medium text-fg">{label}</p>
+          <p className="mt-0.5 text-sm text-fg-muted">{status.reason}</p>
+        </div>
+      </div>
+    </SettingsSection>
+  );
+}
+
 function NotificationsTab() {
   const [prefs, setPrefs] = useState(readNotifyPrefs);
   const [permission, setPermission] = useState<string>(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
@@ -1296,6 +1322,7 @@ function NotificationsTab() {
   };
   return (
     <>
+      <MobilePushSection />
       <SettingsSection id="desktop" title="Desktop & Sounds">
         <Switch
           label="Enable Desktop Notifications"
@@ -1827,6 +1854,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
           : []),
         {
           items: [
+            ...(inAppShell() ? [] : [{ id: 'get-apps', icon: <Download />, label: 'Get the Apps' }]),
             { id: 'whats-new', icon: <Sparkles />, label: "What's New", onClick: () => openModal({ kind: 'whatsNew' }) },
             {
               id: 'logout',
@@ -1862,6 +1890,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
       {tab === 'keybinds' && <KeybindsTab />}
       {tab === 'accessibility' && <AccessibilityTab />}
       {tab === 'language' && <LanguageTimeTab />}
+      {tab === 'get-apps' && <GetAppsTab />}
     </SettingsLayout>
   );
 }

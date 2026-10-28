@@ -137,7 +137,7 @@ export const callRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     };
     await writeCall(call, UNANSWERED_TTL_SECONDS);
     await announce('CALL_CREATE', call);
-    queuePush(app, call.ringing, { title: 'Incoming call', body: `${formatted.author?.displayName || formatted.author?.username || 'Someone'} is calling`, path: `/channels/@me/${channelId}` }, [
+    queuePush(app, call.ringing, { kind: 'call', title: 'Incoming call', body: `${formatted.author?.displayName || formatted.author?.username || 'Someone'} is calling`, path: `/channels/@me/${channelId}` }, [
       { type: channelType, id: channelId },
     ]);
     return reply.status(201).send({ call: publicCall(call) });

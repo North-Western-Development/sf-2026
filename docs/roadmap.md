@@ -91,7 +91,7 @@ Status key:
 | Cloud drive import (Google Drive, OneDrive, Dropbox) | Done | OAuth + PKCE, browser-bound state, encrypted tokens; tested against a provider mock |
 | Unread markers, mentions, notification levels and mutes | Done | |
 | Desktop notifications and ping sound | Done | |
-| Mobile push (DMs, mentions, incoming calls) | Done | Expo push; respects mutes, mobile-push-off and Do Not Disturb |
+| Mobile push (DMs, mentions, incoming calls) | Done | No relay: UnifiedPush (self-hosted ntfy, RFC 8291 encrypted) on Android, APNs direct on iOS when a key is set, shown as unavailable otherwise; respects mutes, mobile-push-off and Do Not Disturb |
 
 ### Moderation and instance staff
 
@@ -110,8 +110,8 @@ Status key:
 | :--- | :--- | :--- |
 | Web app (`apps/web`, React 19 + Vite) | Done | |
 | Desktop app (`apps/desktop`, Tauri v2) | Done | Native shell: connect screen, tray, close to tray, single instance, external links in the browser; 1.6 MB NSIS installer built on Windows |
-| Mobile app (`apps/mobile`, Expo SDK 57) | Done | Native shell: connect screen, WebView, notification bridge, push, haptics, permissions; Android bundle built |
-| Store releases (signed installers, App Store, Play Store) | Not started | Needs signing certificates and store accounts |
+| Mobile app (`apps/mobile`, Expo SDK 57) | Done | Native shell: connect screen, WebView, notification bridge, push, haptics, permissions; signed release APK built locally (no Firebase), unsigned IPA from a GitHub workflow; downloads in User Settings › Get the Apps |
+| Store releases (signed installers, App Store, Play Store) | Not started | Needs signing certificates and store accounts; an Apple Developer account also turns on iOS push |
 
 ### Deployment
 
@@ -150,5 +150,5 @@ Status key:
 ## 4. What is left
 
 1. **Production follow-ups** on `subspace.click`: SMTP and Twilio credentials, and the first instance-staff account.
-2. **Store releases:** desktop code signing, EAS builds and store listings for mobile.
+2. **Store releases:** desktop code signing, and store listings for mobile (an Apple Developer account for the App Store and iOS push).
 

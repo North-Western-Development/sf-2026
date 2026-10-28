@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'click.subspace'
+version = '0.1.0'
+
+android {
+  namespace "click.subspace.push"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // UnifiedPush: push through a distributor the person chose (such as ntfy), never Firebase.
+  implementation 'org.unifiedpush.android:connector:3.3.5'
+}

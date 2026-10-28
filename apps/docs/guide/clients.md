@@ -50,12 +50,23 @@ Each account remembers the newest entry it has seen on each platform. Someone wh
 
 - A connect screen, then the instance in a WebView with native notifications, haptics, Android back navigation, and camera and microphone permissions for calls.
 - The web Notification API is bridged to native notifications. Tapping a push opens the conversation it was about.
+- Push goes through UnifiedPush on Android and straight to Apple on iOS, with no relay in between; see [Mobile push](/operate/push). The Android app contains no Google or Firebase code.
+
+Download it at `/downloads/mobile/` on an instance that publishes it:
+
+- **Android:** `Subspace-Frequency.apk`. Allow installs from your browser when Android asks.
+- **iOS:** `Subspace-Frequency.ipa`, unsigned, for sideloading with [AltStore](https://altstore.io), SideStore or Sideloadly, which sign it with your own Apple ID. Sideloaded copies never receive push: notifications arrive only while the app is open. Copies signed with a free Apple ID stop opening after 7 days until they are re-signed.
 
 ```bash
-pnpm --filter @subspace/mobile start        # Expo dev server
+pnpm --filter @subspace/mobile start          # Expo dev server
 pnpm --filter @subspace/mobile typecheck
 pnpm --filter @subspace/mobile test
-pnpm --filter @subspace/mobile bundle       # production JS bundle for Android
+pnpm --filter @subspace/mobile build:android  # signed release APK in apps/mobile/build
 ```
 
-For store builds use EAS (`eas build`). Push notifications need an EAS project id in `app.json` (`extra.eas.projectId`); see [Mobile push](/operate/push).
+### Publishing a release
+
+1. Bump `version`, `android.versionCode` and `ios.buildNumber` in `apps/mobile/app.json`. Android only installs a higher `versionCode` over an installed copy.
+2. Build the APK with `build:android`. It needs JDK 17 or later, the Android SDK, and the release key: `~/.subspace/android-release.jks` with its passwords in `android-release.properties`, kept off the repository. Back the key up. Without it, installed copies can only be replaced by uninstalling first.
+3. Build the IPA on macOS. The **iOS app (unsigned IPA)** GitHub workflow (`.github/workflows/ios-ipa.yml`) does it on GitHub's Mac runners; download its `ios-ipa` artifact into `apps/mobile/build/`.
+4. Run `deploy/server/publish-mobile.sh` to upload whichever of the two exist.

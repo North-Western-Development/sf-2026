@@ -57,6 +57,13 @@
       "when": 1793175436546,
       "tag": "0007_custom_activities",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793228607738,
+      "tag": "0008_self_hosted_push",
+      "breakpoints": true
     }
   ]
 }

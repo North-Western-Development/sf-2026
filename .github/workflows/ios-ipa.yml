@@ -1,0 +1,54 @@
+# The iOS app as an unsigned .ipa, for sideloading (AltStore, SideStore, Sideloadly re-sign it
+# with the person's own Apple ID). iOS apps can only be built on macOS, hence GitHub's runners.
+# Sideloaded copies cannot receive push: Apple gives the push entitlement only to apps signed by
+# a paid developer account. Publish the result with deploy/server/publish-mobile.sh.
+name: iOS app (unsigned IPA)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['mobile-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        working-directory: .
+        run: pnpm install --frozen-lockfile --filter @subspace/mobile...
+      - name: Generate the Xcode project
+        run: npx expo prebuild --platform ios --clean --no-install
+      - name: Pods
+        run: cd ios && pod install
+      - name: Build (unsigned)
+        run: |
+          WORKSPACE=$(ls -d ios/*.xcworkspace | head -1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -archivePath build/Subspace.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" archive | tail -40
+      - name: Package
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          mkdir -p build/ipa/Payload
+          cp -R build/Subspace.xcarchive/Products/Applications/*.app build/ipa/Payload/
+          (cd build/ipa && zip -qry "../Subspace-Frequency-$VERSION.ipa" Payload)
+          echo "IPA=apps/mobile/build/Subspace-Frequency-$VERSION.ipa" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: ${{ env.IPA }}
+          if-no-files-found: error

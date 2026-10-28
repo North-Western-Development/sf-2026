@@ -202,7 +202,7 @@ export async function safeGet(rawUrl: string, opts: SafeGetOptions = {}): Promis
  * A POST to an outside server (bot interaction endpoints), under the same rules as safeGet: the
  * host is resolved and checked, the connection pinned to that address, redirects not followed.
  */
-export async function safePost(rawUrl: string, body: string, headers: Record<string, string>, opts: { timeoutMs?: number; maxBytes?: number } = {}): Promise<SafeResponse> {
+export async function safePost(rawUrl: string, body: string | Buffer, headers: Record<string, string>, opts: { timeoutMs?: number; maxBytes?: number } = {}): Promise<SafeResponse> {
   const url = new URL(rawUrl);
   const pinned = await resolveSafe(url);
   const maxBytes = opts.maxBytes ?? 256 * 1024;

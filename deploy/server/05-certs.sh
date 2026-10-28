@@ -8,7 +8,7 @@ set -euo pipefail
 DOMAIN="${DOMAIN:-subspace.click}"
 : "${CERT_EMAIL:?set CERT_EMAIL}"
 
-for name in "$DOMAIN" "www.$DOMAIN" "docs.$DOMAIN" "storage.$DOMAIN" "turn.$DOMAIN"; do
+for name in "$DOMAIN" "www.$DOMAIN" "docs.$DOMAIN" "storage.$DOMAIN" "turn.$DOMAIN" "push.$DOMAIN"; do
   ip=$(getent ahostsv4 "$name" | awk 'NR==1{print $1}')
   [ "$ip" = "$(curl -fsS -4 https://api.ipify.org)" ] || { echo "$name does not point here yet ($ip)"; exit 1; }
 done
@@ -27,7 +27,7 @@ EOF
 chmod 755 /etc/letsencrypt/renewal-hooks/deploy/subspace.sh
 
 certbot certonly --webroot -w /var/www/certbot --cert-name "$DOMAIN" \
-  -d "$DOMAIN" -d "www.$DOMAIN" -d "docs.$DOMAIN" -d "storage.$DOMAIN" -d "turn.$DOMAIN" \
+  -d "$DOMAIN" -d "www.$DOMAIN" -d "docs.$DOMAIN" -d "storage.$DOMAIN" -d "turn.$DOMAIN" -d "push.$DOMAIN" \
   --email "$CERT_EMAIL" --agree-tos --no-eff-email --non-interactive \
   --deploy-hook /etc/letsencrypt/renewal-hooks/deploy/subspace.sh
 systemctl enable --now certbot.timer

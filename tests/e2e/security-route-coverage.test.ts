@@ -23,6 +23,7 @@ const PUBLIC: Record<string, string> = {
   'GET /api/v1/auth/directives': 'platform rules shown on the sign-up page',
   'GET /api/v1/invites/:code': 'invite preview for signed-out visitors',
   'GET /api/v1/system/info': 'instance name and terminology, no user data',
+  'GET /api/v1/push/config': 'which push the instance can send (APNs configured, its ntfy server), no user data',
   'GET /api/v1/embed-proxy': 'embed images load in <img> tags; only fetches URLs the server signed',
   'POST /api/v1/oauth2/token': 'OAuth2 token endpoint; the client authenticates with its secret (Basic or body)',
   'POST /api/v1/oauth2/token/revoke': 'OAuth2 revocation; the client authenticates with its secret',

@@ -56,8 +56,12 @@ Generate secrets with `openssl rand -hex 32`. In production a missing required s
 
 | Variable | Default | Meaning |
 | :--- | :--- | :--- |
-| `EXPO_ACCESS_TOKEN` | unset | Only with Expo "enhanced push security". |
-| `EXPO_PUSH_URL` | Expo's endpoint | Override for testing. |
+| `APNS_KEY_FILE` / `APNS_KEY` | unset | The APNs key (`.p8`) from your Apple Developer account, as a file or its contents. Without it iOS push is unavailable. |
+| `APNS_KEY_ID`, `APNS_TEAM_ID` | unset | That key's id and your team id. |
+| `APNS_TOPIC` | `click.subspace.mobile` | The iOS app's bundle id. |
+| `APNS_SANDBOX` | `false` | `true` for development builds of the app. |
+| `APNS_URL` | Apple's host | Override for testing. |
+| `UNIFIEDPUSH_SERVER` | unset | This instance's ntfy server (`https://push.example.com`), which the Android app points people at. |
 
 ## Development only
 

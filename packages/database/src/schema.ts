@@ -590,9 +590,16 @@ export const e2eeOneTimePreKeys = pgTable('e2ee_one_time_pre_keys', {
   primaryKey({ columns: [table.deviceId, table.keyId] }),
 ]);
 
-/** Expo push tokens of the mobile app installs a transmitter is signed in on. */
+/**
+ * Where to push for the mobile app installs a transmitter is signed in on: an APNs device token
+ * (kind apns), or a UnifiedPush endpoint URL with the install's Web Push keys (kind unifiedpush).
+ */
 export const pushTokens = pgTable('push_tokens', {
   token: text('token').primaryKey(),
+  kind: text('kind').default('apns').notNull(), // 'apns' | 'unifiedpush'
+  /** UnifiedPush only: the install's P-256 public key and auth secret (base64url), to encrypt for it. */
+  p256dh: text('p256dh'),
+  auth: text('auth'),
   transmitterId: snowflake('transmitter_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   platform: text('platform').default('unknown').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

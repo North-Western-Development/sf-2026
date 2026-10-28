@@ -19,8 +19,12 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Subspace uses the camera for video in calls and Comm-Links.",
         "NSMicrophoneUsageDescription": "Subspace uses the microphone for voice in calls and Comm-Links.",
-        "UIBackgroundModes": ["audio", "remote-notification"]
-      }
+        "UIBackgroundModes": [
+          "audio",
+          "remote-notification"
+        ]
+      },
+      "buildNumber": "1"
     },
     "android": {
       "package": "click.subspace.mobile",
@@ -28,15 +32,30 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#030305"
       },
-      "permissions": ["CAMERA", "RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS", "POST_NOTIFICATIONS", "VIBRATE"]
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "POST_NOTIFICATIONS"
+      ],
+      "versionCode": 1,
+      "blockedPermissions": [
+        "com.google.android.c2dm.permission.RECEIVE",
+        "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "plugins": [
       [
         "expo-notifications",
         {
-          "color": "#3B8EF2"
+          "color": "#3B8EF2",
+          "mode": "production"
         }
-      ]
+      ],
+      "./plugins/with-android-build"
     ]
   }
 }

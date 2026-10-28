@@ -1,54 +1,56 @@
 import { useEffect, useRef, useState } from 'react';
 import { BackHandler, Linking, PermissionsAndroid, Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
-import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
-import Constants from 'expo-constants';
-import { colors, injectedBridge, parseShellMessage, staysInApp } from './shell';
+import { colors, injectedBridge, parseShellMessage, pushUpdateScript, staysInApp, type PushState } from './shell';
+import { onNotificationOpen, showLocal, startPush } from './push';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
-});
-
-/** Ask for what calls and notifications need, once. */
+/** Ask for what calls need, once (notifications are asked for by startPush). */
 async function requestPermissions() {
   if (Platform.OS === 'android') {
     await PermissionsAndroid.requestMultiple([PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, PermissionsAndroid.PERMISSIONS.CAMERA]).catch(() => {});
   }
-  await Notifications.requestPermissionsAsync().catch(() => {});
 }
 
-/** An Expo push token for this install, or null without a configured EAS project. */
-async function pushToken(): Promise<string | null> {
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-  if (!projectId) return null;
-  try {
-    return (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-  } catch {
-    return null;
-  }
-}
+const WORKING: PushState = { target: null, status: 'waiting', reason: 'Checking push notifications.' };
 
 /** The Subspace instance in a WebView, with native notifications, haptics and back navigation. */
 export function InstanceScreen({ server }: { server: string }) {
   const web = useRef<WebView>(null);
-  const [token, setToken] = useState<string | null | undefined>(undefined);
   const canGoBack = useRef(false);
+  // The bridge is injected once, with what was known at load; later changes are handed to the page.
+  const [initialPush, setInitialPush] = useState<PushState | null>(null);
+  const loaded = useRef(false);
 
   useEffect(() => {
-    void requestPermissions().then(pushToken).then(setToken);
-  }, []);
+    let first = true;
+    let stop = () => {};
+    void requestPermissions().then(() => {
+      stop = startPush(server, (state) => {
+        if (first) {
+          first = false;
+          setInitialPush(state);
+        } else web.current?.injectJavaScript(pushUpdateScript(state));
+      });
+    });
+    // Do not hold the page back if push takes long to settle.
+    const timer = setTimeout(() => first && ((first = false), setInitialPush(WORKING)), 4000);
+    return () => {
+      clearTimeout(timer);
+      stop();
+    };
+  }, [server]);
 
   // Tapping a push opens what it was about (only paths on this instance).
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const path = response.notification.request.content.data?.path;
-      if (typeof path === 'string' && path.startsWith('/') && !path.startsWith('//')) {
-        web.current?.injectJavaScript(`window.location.assign(${JSON.stringify(server + path)}); true;`);
-      }
-    });
-    return () => sub.remove();
-  }, [server]);
+  useEffect(
+    () =>
+      onNotificationOpen((path) => {
+        const go = () => web.current?.injectJavaScript(`window.location.assign(${JSON.stringify(server + path)}); true;`);
+        if (loaded.current) go();
+        else setTimeout(go, 1500);
+      }),
+    [server]
+  );
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -63,11 +65,11 @@ export function InstanceScreen({ server }: { server: string }) {
     const msg = parseShellMessage(event.nativeEvent.data);
     if (msg?.type === 'notify') {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      void Notifications.scheduleNotificationAsync({ content: { title: msg.title, body: msg.body, data: { tag: msg.tag } }, trigger: null });
+      showLocal(msg.title, msg.body);
     }
   };
 
-  if (token === undefined) return <View style={styles.screen} />;
+  if (!initialPush) return <View style={styles.screen} />;
   return (
     <View style={styles.screen}>
       <WebView
@@ -75,9 +77,10 @@ export function InstanceScreen({ server }: { server: string }) {
         source={{ uri: server }}
         style={styles.web}
         originWhitelist={['https://*', 'http://*', 'about:*', 'blob:*', 'data:*']}
-        injectedJavaScriptBeforeContentLoaded={injectedBridge(token, Platform.OS)}
+        injectedJavaScriptBeforeContentLoaded={injectedBridge(initialPush, Platform.OS)}
         onMessage={onMessage}
         onNavigationStateChange={(nav) => (canGoBack.current = nav.canGoBack)}
+        onLoadEnd={() => (loaded.current = true)}
         onShouldStartLoadWithRequest={(req) => {
           if (staysInApp(server, req.url)) return true;
           void Linking.openURL(req.url);
@@ -92,7 +95,6 @@ export function InstanceScreen({ server }: { server: string }) {
         mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
         allowsBackForwardNavigationGestures
         pullToRefreshEnabled={false}
-        decelerationRate="normal"
         webviewDebuggingEnabled={__DEV__}
       />
     </View>
