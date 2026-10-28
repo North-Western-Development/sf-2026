@@ -21,19 +21,17 @@ hero:
 
 features:
   - title: Beacons and relays
-    details: Communities with text relays, forums, galleries and Comm-Links, clearances (roles) with 64-bit permissions, invites, bans and discovery.
+    details: Communities with text relays, forums, galleries and Comm-Links, plus roles, invites and discovery.
   - title: Voice, video and screen share
-    details: Comm-Links and direct calls on a LiveKit SFU, with ringing, missed calls and screen sharing.
-  - title: End-to-end encryption
-    details: Direct links can turn on X3DH and Double Ratchet encryption; encrypted calls and Comm-Links encrypt every frame in the browser.
-  - title: Secure by default
-    details: Every route needs a session unless it says otherwise, device sessions revoke instantly, passkeys and authenticator 2FA are built in.
+    details: Comm-Links and direct calls on your own LiveKit server, with ringing and screen sharing.
+  - title: Private and secure
+    details: End-to-end encrypted direct links and calls, passkeys and two-factor sign-in, and sessions you can revoke instantly.
   - title: Web, desktop and mobile
-    details: A React web app, a Tauri desktop app and an Expo mobile app with push notifications.
+    details: The web app, a desktop app, and apps for Android and iPhone, with push that never passes through a third party.
   - title: A developer platform
-    details: Bots with slash commands and a real-time gateway, webhooks, Sign in with Subspace (OAuth2) and Rich Presence, with SDKs for JavaScript, Deno, Python, Java, C#, C++, Unity and Unreal Engine on the instance's own package registry.
+    details: Bots, slash commands, webhooks, Sign in with Subspace and Rich Presence, with SDKs from JavaScript to Unreal Engine.
     link: /developers/
     linkText: Developer docs
   - title: Yours to operate
-    details: One compose file, one domain, a migrate step, and guides for TLS, email, backups and moderation.
+    details: One Linux server you control, with guides for TLS, email, backups and moderation.
 ---

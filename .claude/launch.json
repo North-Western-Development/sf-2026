@@ -4,14 +4,35 @@
     {
       "name": "stack",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:native"],
+      "runtimeArgs": [
+        "dev:native"
+      ],
       "port": 5173
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@subspace/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@subspace/web",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "docs",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@subspace/docs",
+        "exec",
+        "vitepress",
+        "dev",
+        "--port",
+        "5180",
+        "--strictPort"
+      ],
+      "port": 5180
     }
   ]
 }
