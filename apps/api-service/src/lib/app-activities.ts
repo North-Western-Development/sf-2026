@@ -22,10 +22,12 @@ import { resolveSafe } from './safe-fetch.js';
 export const ACTIVITY_URL_MAX = 500;
 const LOOPBACK = ['localhost', '127.0.0.1', '[::1]', '::1'];
 
-/** This instance's own hostnames (PUBLIC_ORIGIN, comma-separated). */
+/** This instance's own hostnames: PUBLIC_ORIGIN and WEBAUTHN_ORIGINS (comma-separated). */
 function ownHosts(): string[] {
-  return (process.env.PUBLIC_ORIGIN || '')
+  return [process.env.PUBLIC_ORIGIN, process.env.WEBAUTHN_ORIGINS]
+    .join(',')
     .split(',')
+    .filter((o) => o.trim())
     .map((o) => {
       try {
         return new URL(o.trim()).hostname.toLowerCase();
@@ -46,10 +48,14 @@ const siteOf = (host: string) => {
   return labels.length >= 3 && !/^\d+$/.test(labels[labels.length - 1]) ? labels.slice(1).join('.') : host;
 };
 
-/** Whether a host is ours or same-site with us (subdomains can set cookies for our site). */
-export function isOwnSite(hostname: string): boolean {
+/**
+ * Whether a host is ours or same-site with us (subdomains can set cookies for our site).
+ * `also`: more of our names, such as the host the request came in on.
+ */
+export function isOwnSite(hostname: string, also: string[] = []): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, '');
-  return ownHosts().some((own) => {
+  const names = [...ownHosts(), ...also.map((h) => h.toLowerCase().replace(/\.$/, '')).filter(Boolean)];
+  return names.some((own) => {
     if (host === own) return true;
     if (LOOPBACK.includes(own)) return false; // localhost has no "site" to share
     const site = siteOf(own);
@@ -62,7 +68,7 @@ export function isOwnSite(hostname: string): boolean {
  * no credentials or #fragment (the client puts its handshake there), not on our own site, and not
  * resolving to a private or loopback address (in production; tests allow-list localhost).
  */
-export async function checkActivityUrl(raw: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+export async function checkActivityUrl(raw: string, requestHost?: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   let url: URL;
   try {
     url = new URL(raw.trim());
@@ -73,7 +79,11 @@ export async function checkActivityUrl(raw: string): Promise<{ ok: true; url: st
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && !prod && LOOPBACK.includes(url.hostname))) return { ok: false, error: 'Activities must be served over https://' };
   if (url.username || url.password) return { ok: false, error: 'Leave the username and password out of the URL' };
   if (url.hash) return { ok: false, error: 'Leave the #fragment out: Subspace adds its own' };
-  if (isOwnSite(url.hostname)) return { ok: false, error: 'Activities must run on your own domain, not on this instance or a subdomain of it' };
+  // The host the request came in on, unless it is loopback (that names this machine, not a site).
+  const also = requestHost && !LOOPBACK.includes(requestHost.toLowerCase()) ? [requestHost] : [];
+  // Without knowing our own names we cannot tell our site from theirs: refuse rather than guess.
+  if (prod && !ownHosts().length && !also.length) return { ok: false, error: 'This instance has no PUBLIC_ORIGIN set, so Activities cannot be registered yet' };
+  if (isOwnSite(url.hostname, also)) return { ok: false, error: 'Activities must run on your own domain, not on this instance or a subdomain of it' };
   try {
     await resolveSafe(url);
   } catch {

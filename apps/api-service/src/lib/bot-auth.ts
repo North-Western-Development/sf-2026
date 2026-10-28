@@ -29,8 +29,34 @@ export async function resolveBotToken(db: any, token: string): Promise<BotIdenti
   return who;
 }
 
-/** A reset or deleted bot token stops working at once. */
-export const forgetBotTokens = () => cache.clear();
+const FORGET_CHANNEL = 'bot-tokens:forget';
+
+/**
+ * A reset or deleted bot token stops working at once: here, and (through Redis) on every other
+ * API instance, whose caches would otherwise still accept it for up to a minute.
+ */
+export async function forgetBotTokens(redis?: { publish(channel: string, message: string): Promise<unknown> } | null) {
+  cache.clear();
+  await redis?.publish(FORGET_CHANNEL, '1').catch(() => {});
+}
+
+/** Clear this instance's cache whenever another one forgets tokens. Returns a stop function. */
+export async function listenForForgottenTokens(redis: { duplicate(options?: object): any } | null): Promise<() => Promise<void>> {
+  if (!redis) return async () => {};
+  // Its own connection, which (unlike the shared client) keeps reconnecting and resubscribes.
+  const sub = redis.duplicate({ lazyConnect: false, enableOfflineQueue: true, maxRetriesPerRequest: null, retryStrategy: (n: number) => Math.min(n * 500, 10_000) });
+  sub.on?.('error', () => {});
+  sub.on('message', (channel: string) => {
+    if (channel === FORGET_CHANNEL) cache.clear();
+  });
+  await sub.subscribe(FORGET_CHANNEL);
+  return async () => {
+    await sub.quit().catch(() => sub.disconnect());
+  };
+}
+
+/** For tests: how many tokens this instance remembers. */
+export const cachedBotTokens = () => cache.size;
 
 /**
  * What a bot may call: reading beacons it is in, messages, reactions, pins, threads, polls,

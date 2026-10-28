@@ -124,7 +124,7 @@ export const botRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (!ctx.bot) return reply.status(404).send({ error: 'This application has no bot', code: 'NO_BOT' });
     const token = botToken(ctx.bot.userId);
     const [bot] = await db.update(appBots).set({ tokenHash: hashSecret(token) }).where(eq(appBots.appId, ctx.app.id)).returning();
-    forgetBotTokens();
+    await forgetBotTokens((app as any).redis);
     // Connections opened with the old token close now, not when they next reconnect.
     await revokeSessions(app, ctx.bot.userId);
     return reply.send({ bot: botView(bot, token) });
@@ -137,7 +137,7 @@ export const botRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     // Its account goes too: memberships and its clearances with it.
     await db.delete(clearances).where(eq(clearances.managedBy, ctx.bot.userId));
     await db.delete(transmitters).where(eq(transmitters.id, ctx.bot.userId));
-    forgetBotTokens();
+    await forgetBotTokens((app as any).redis);
     await revokeSessions(app, ctx.bot.userId);
     return reply.send({ deleted: true });
   });

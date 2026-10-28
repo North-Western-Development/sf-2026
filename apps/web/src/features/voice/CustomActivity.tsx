@@ -248,7 +248,9 @@ function ActivityFrame({ activity }: { activity: Activity }) {
         src={target.src}
         sandbox={ACTIVITY_SANDBOX}
         allow={ACTIVITY_ALLOW}
-        referrerPolicy="no-referrer"
+        // Only our origin (already in the URL fragment): lets the SDK check who framed it where
+        // the browser has no ancestorOrigins.
+        referrerPolicy="origin"
         // A fresh, throwaway storage partition where the browser supports it: the frame cannot
         // recognise this person from cookies it set elsewhere.
         {...({ credentialless: '' } as Record<string, string>)}

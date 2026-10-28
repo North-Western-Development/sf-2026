@@ -54,6 +54,8 @@ export interface SdkEvents {
 export interface WindowLike {
   parent: unknown;
   location: { hash: string; ancestorOrigins?: { length: number; [i: number]: string } };
+  /** document.referrer: set by the browser, so a page framing the activity cannot forge it. */
+  document?: { referrer: string };
   addEventListener(type: 'message', fn: (e: MessageEvent) => void): void;
   removeEventListener(type: 'message', fn: (e: MessageEvent) => void): void;
   crypto?: { getRandomValues<T extends ArrayBufferView | null>(a: T): T };
@@ -106,6 +108,14 @@ export function readLaunchParams(hash: string): { frameId: string | null; parent
   return { frameId: frameId && /^[0-9a-f]{32}$/.test(frameId) ? frameId : null, parentOrigin, instanceId: params.get('instance_id') };
 }
 
+function originOf(url: string | undefined): string | null {
+  try {
+    return url ? new URL(url).origin : null;
+  } catch {
+    return null;
+  }
+}
+
 function randomNonce(win: WindowLike): string {
   const bytes = new Uint8Array(16);
   const c = win.crypto ?? (globalThis as any).crypto;
@@ -153,10 +163,15 @@ export class ActivitySdk {
       this.setupError = new ActivitySdkError('ORIGIN_NOT_ALLOWED', `${origin} is not in allowedOrigins`);
       origin = null;
     } else {
-      // Where the browser can say who really framed us (Chromium, Safari), it must agree.
+      // Who really framed us, as the browser says: ancestorOrigins (Chromium, Safari), else the
+      // referrer Subspace sends (Firefox). A page that frames the activity can claim any
+      // parent_origin, but cannot forge either of these; it can only hide the referrer.
       const ancestors = this.win.location.ancestorOrigins;
-      if (ancestors && ancestors.length > 0 && ancestors[0] !== origin) {
-        this.setupError = new ActivitySdkError('ORIGIN_MISMATCH', 'The page framing this activity is not the one it claims to be');
+      const framer = ancestors && ancestors.length > 0 ? ancestors[0] : originOf(this.win.document?.referrer);
+      if (framer ? framer !== origin : !options.allowedOrigins) {
+        this.setupError = framer
+          ? new ActivitySdkError('ORIGIN_MISMATCH', 'The page framing this activity is not the one it claims to be')
+          : new ActivitySdkError('ORIGIN_UNVERIFIED', 'This browser does not say which page framed the activity: set allowedOrigins');
         origin = null;
       }
     }

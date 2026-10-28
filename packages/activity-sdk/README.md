@@ -99,7 +99,7 @@ sdk.destroy();                                           // stop listening
 ```
 
 Errors are `ActivitySdkError` with a `code`: `NOT_LAUNCHED` (not opened from Subspace),
-`NOT_FRAMED`, `ORIGIN_NOT_ALLOWED`, `ORIGIN_MISMATCH`, `TIMEOUT`, `USER_CANCELLED`, `RATE_LIMITED`,
+`NOT_FRAMED`, `ORIGIN_NOT_ALLOWED`, `ORIGIN_MISMATCH`, `ORIGIN_UNVERIFIED`, `TIMEOUT`, `USER_CANCELLED`, `RATE_LIMITED`,
 `INVALID_SCOPE`, `TOO_LARGE`, `UNKNOWN_COMMAND`, `BUSY`, `NOT_IN_ACTIVITY`.
 
 ## What your page can and cannot do

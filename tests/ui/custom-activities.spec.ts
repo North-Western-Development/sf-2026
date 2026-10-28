@@ -117,10 +117,12 @@ test.describe('Custom activities', () => {
     const crew = await register('player', 'Player Two');
     const root = await register('actstaff', 'Activity Staff');
     await promoteToStaff(root, 3);
-    const created = await me.api.post('/applications', { name: 'Star Counter' });
+    // A name of its own: approved activities from earlier runs stay in everyone's launcher.
+    const NAME = `Star Counter ${Date.now().toString(36)}`;
+    const created = await me.api.post('/applications', { name: NAME });
     const appId: string = created.application.id;
     const activityUrl = `http://127.0.0.1:${port}/activity.html?client=${appId}`;
-    await me.api.put(`/applications/${appId}/activity`, { name: 'Star Counter', description: 'Count stars together', url: activityUrl, maxParticipants: 4 });
+    await me.api.put(`/applications/${appId}/activity`, { name: NAME, description: 'Count stars together', url: activityUrl, maxParticipants: 4 });
     await root.api.put(`/console/activities/${appId}/approval`, {});
 
     const { beacon, relays } = await me.api.createBeacon('Observatory');
@@ -131,20 +133,21 @@ test.describe('Custom activities', () => {
     await page.getByRole('button', { name: /^Join / }).click();
     await expect(page.getByRole('main').getByRole('button', { name: 'Disconnect' })).toBeVisible({ timeout: 20_000 });
     await page.getByRole('main').getByRole('button', { name: 'Start an Activity' }).click();
-    await page.getByRole('dialog', { name: 'Activities' }).getByRole('button', { name: 'Star Counter' }).click();
+    await page.getByRole('dialog', { name: 'Activities' }).getByRole('button', { name: NAME }).click();
 
     // The privacy notice comes first; nothing loads before Continue.
-    const notice = page.getByRole('dialog', { name: 'Open Star Counter?' });
-    await expect(notice).toContainText(`Star Counter by ${me.transmitter.username} will see your username, avatar and who is in this activity.`);
+    const notice = page.getByRole('dialog', { name: `Open ${NAME}?` });
+    await expect(notice).toContainText(`${NAME} by ${me.transmitter.username} will see your username, avatar and who is in this activity.`);
     await expect(notice).toContainText('they can see your IP address');
     await expect(notice).toContainText(`Runs at http://127.0.0.1:${port}`);
-    await expect(page.locator('iframe[title="Star Counter"]')).toHaveCount(0);
+    await expect(page.locator(`iframe[title="${NAME}"]`)).toHaveCount(0);
     await notice.getByRole('button', { name: 'Continue' }).click();
 
-    const stage = page.getByRole('region', { name: 'Star Counter' });
-    const iframe = stage.locator('iframe[title="Star Counter"]');
+    const stage = page.getByRole('region', { name: NAME });
+    const iframe = stage.locator(`iframe[title="${NAME}"]`);
     await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox');
-    await expect(iframe).toHaveAttribute('referrerpolicy', 'no-referrer');
+    // Only our origin (already in the fragment), so the SDK can check its parent where there is no ancestorOrigins.
+    await expect(iframe).toHaveAttribute('referrerpolicy', 'origin');
     await expect(iframe).toHaveAttribute('credentialless', '');
     const allow = (await iframe.getAttribute('allow'))!;
     expect(allow).toContain("camera 'none'");
@@ -156,7 +159,7 @@ test.describe('Custom activities', () => {
     expect(launch.get('parent_origin')).toBe(BASE_URL);
 
     // Handshake: the SDK gets me and the instance.
-    const mine = page.frameLocator('iframe[title="Star Counter"]');
+    const mine = page.frameLocator(`iframe[title="${NAME}"]`);
     await expect(mine.locator('#status')).toHaveText('ready', { timeout: 15_000 });
     await expect(mine.locator('#user')).toHaveText(me.transmitter.username);
     await expect(mine.locator('#people li')).toHaveCount(1);
@@ -184,10 +187,10 @@ test.describe('Custom activities', () => {
     await theirs.context().grantPermissions(['microphone']);
     await theirs.getByRole('button', { name: /^Join / }).click();
     await expect(theirs.getByRole('main').getByRole('button', { name: 'Disconnect' })).toBeVisible({ timeout: 20_000 });
-    const banner = theirs.getByRole('status').filter({ hasText: 'Star Counter' });
+    const banner = theirs.getByRole('status').filter({ hasText: NAME });
     await banner.getByRole('button', { name: 'Join Activity' }).click();
-    await theirs.getByRole('dialog', { name: 'Open Star Counter?' }).getByRole('button', { name: 'Continue' }).click();
-    const other = theirs.frameLocator('iframe[title="Star Counter"]');
+    await theirs.getByRole('dialog', { name: `Open ${NAME}?` }).getByRole('button', { name: 'Continue' }).click();
+    const other = theirs.frameLocator(`iframe[title="${NAME}"]`);
     await expect(other.locator('#status')).toHaveText('ready', { timeout: 15_000 });
     await expect(other.locator('#instance')).toHaveText(instanceId!);
     await expect(other.locator('#people li')).toHaveCount(2);
@@ -200,7 +203,7 @@ test.describe('Custom activities', () => {
 
     // authorize(): Subspace asks them, then the frame gets a code its backend can redeem.
     await other.locator('#authorize').click();
-    const consent = theirs.getByRole('dialog', { name: 'Authorize Star Counter' });
+    const consent = theirs.getByRole('dialog', { name: `Authorize ${NAME}` });
     await expect(consent).toContainText('Know your username, tag and avatar');
     await consent.getByRole('button', { name: 'Authorize' }).click();
     await expect(other.locator('#code')).toHaveText(/^[\w-]{40,}$/);
@@ -214,11 +217,11 @@ test.describe('Custom activities', () => {
     expect(who.user.id).toBe(crew.transmitter.id);
 
     // Leaving removes the frame entirely; the other person's frame hears they left.
-    await theirs.getByRole('region', { name: 'Star Counter' }).getByRole('button', { name: 'Leave Activity' }).click();
-    await expect(theirs.locator('iframe[title="Star Counter"]')).toHaveCount(0);
+    await theirs.getByRole('region', { name: NAME }).getByRole('button', { name: 'Leave Activity' }).click();
+    await expect(theirs.locator(`iframe[title="${NAME}"]`)).toHaveCount(0);
     await expect(mine.locator('#people li')).toHaveCount(1);
     await stage.getByRole('button', { name: 'Leave Activity' }).click();
-    await expect(page.locator('iframe[title="Star Counter"]')).toHaveCount(0);
+    await expect(page.locator(`iframe[title="${NAME}"]`)).toHaveCount(0);
     await me.api.delete(`/applications/${appId}`);
   });
 });

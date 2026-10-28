@@ -22,8 +22,8 @@ describe('Security: custom activity URL rules', () => {
     process.env.PUBLIC_ORIGIN = env.PUBLIC_ORIGIN;
     process.env.UNFURL_ALLOW_PRIVATE_HOSTS = env.UNFURL_ALLOW_PRIVATE_HOSTS;
   });
-  const refusedAs = async (url: string, why: RegExp) => {
-    const r = await checkActivityUrl(url);
+  const refusedAs = async (url: string, why: RegExp, host?: string) => {
+    const r = await checkActivityUrl(url, host);
     expect(r.ok, url).toBe(false);
     if (!r.ok) expect(r.error, url).toMatch(why);
   };
@@ -72,14 +72,26 @@ describe('Security: custom activity URL rules', () => {
     expect((await checkActivityUrl('https://1.1.1.1/' + 'a'.repeat(600))).ok).toBe(false);
   });
 
-  it('with PUBLIC_ORIGIN unset there is no "own site" to refuse (documented dependency)', () => {
-    const saved = process.env.PUBLIC_ORIGIN;
+  // Fixed (was a security bug): with PUBLIC_ORIGIN unset nothing counted as our own site.
+  it('with PUBLIC_ORIGIN unset, the request host and WEBAUTHN_ORIGINS still count, and production refuses outright', async () => {
+    const saved = { p: process.env.PUBLIC_ORIGIN, w: process.env.WEBAUTHN_ORIGINS, n: process.env.NODE_ENV };
     process.env.PUBLIC_ORIGIN = '';
+    delete process.env.WEBAUTHN_ORIGINS;
     try {
-      // This fails open: deployments must set PUBLIC_ORIGIN (the client's frameSrcFor refuses our origin too).
       expect(isOwnSite('chat.subspace.test')).toBe(false);
+      expect(isOwnSite('chat.subspace.test', ['app.subspace.test'])).toBe(true);
+      await refusedAs('https://chat.subspace.test/a', /own domain/, 'app.subspace.test');
+      process.env.WEBAUTHN_ORIGINS = 'https://subspace.test';
+      expect(isOwnSite('chat.subspace.test')).toBe(true);
+      delete process.env.WEBAUTHN_ORIGINS;
+      process.env.NODE_ENV = 'production';
+      await refusedAs('https://1.1.1.1/a', /no PUBLIC_ORIGIN/);
+      expect((await checkActivityUrl('https://1.1.1.1/a', 'app.subspace.test')).ok).toBe(true);
     } finally {
-      process.env.PUBLIC_ORIGIN = saved;
+      process.env.PUBLIC_ORIGIN = saved.p;
+      if (saved.w === undefined) delete process.env.WEBAUTHN_ORIGINS;
+      else process.env.WEBAUTHN_ORIGINS = saved.w;
+      process.env.NODE_ENV = saved.n;
     }
   });
 });

@@ -7,13 +7,15 @@ const FRAME = 'a'.repeat(32);
 const CLIENT = '123456789012345678';
 const hashFor = (origin = PARENT, frame = FRAME) => `#frame_id=${frame}&parent_origin=${encodeURIComponent(origin)}&instance_id=42`;
 
-function fakeWindow(hash = hashFor(), ancestorOrigins?: string[]) {
+/** referrer: what the browser reports; Subspace frames with referrerPolicy="origin", so its origin by default. */
+function fakeWindow(hash = hashFor(), ancestorOrigins?: string[], referrer = `${PARENT}/`) {
   const listeners = new Set<(e: MessageEvent) => void>();
   const posted: Array<{ msg: any; origin: string }> = [];
   const parent = { postMessage: (msg: any, origin: string) => posted.push({ msg, origin }) };
   const win: WindowLike = {
     parent,
     location: { hash, ...(ancestorOrigins ? { ancestorOrigins: Object.assign([...ancestorOrigins], { length: ancestorOrigins.length }) } : {}) },
+    document: { referrer },
     addEventListener: (_t, fn) => listeners.add(fn),
     removeEventListener: (_t, fn) => listeners.delete(fn),
     crypto: globalThis.crypto,
@@ -184,17 +186,31 @@ describe('Activity SDK: hostile launch parameters and replies (security)', () =>
     expect(readLaunchParams(`#frame_id=${FRAME}&parent_origin=${encodeURIComponent('https://evil.example/x')}&parent_origin=${encodeURIComponent(PARENT)}`).parentOrigin).toBeNull();
   });
 
-  it('without allowedOrigins, and where the browser cannot name the parent (no ancestorOrigins), the URL decides: so identity must come from authorize()', async () => {
-    // Firefox has no location.ancestorOrigins: a page that frames the activity itself can claim any parent_origin.
-    const f = fakeWindow(hashFor('https://evil.example'));
-    const sdk = new ActivitySdk({ clientId: CLIENT, window: f.win });
-    expect(sdk.parentOrigin).toBe('https://evil.example');
-    // The handshake goes only to that origin, so Subspace's real data never reaches anyone else...
-    void sdk.ready().catch(() => {});
-    expect(f.posted[0].origin).toBe('https://evil.example');
-    sdk.destroy();
-    // ...and with allowedOrigins set the same page refuses to start.
-    await expect(new ActivitySdk({ clientId: CLIENT, window: fakeWindow(hashFor('https://evil.example')).win, allowedOrigins: [PARENT] }).ready()).rejects.toMatchObject({ code: 'ORIGIN_NOT_ALLOWED' });
+  // Fixed (was a security bug): Firefox has no location.ancestorOrigins, so a page that framed the
+  // activity itself could claim any parent_origin. The browser-set referrer now has to agree.
+  it('where the browser has no ancestorOrigins, the referrer must name the claimed parent', async () => {
+    // A hostile page frames the activity and claims to be Subspace: the referrer says who it is.
+    const claims = fakeWindow(hashFor(), undefined, 'https://evil.example/');
+    // It hides the referrer (referrerpolicy="no-referrer"): nothing to check, so no start.
+    const hidden = fakeWindow(hashFor('https://evil.example'), undefined, '');
+    for (const [f, code] of [[claims, 'ORIGIN_MISMATCH'], [hidden, 'ORIGIN_UNVERIFIED']] as const) {
+      const sdk = new ActivitySdk({ clientId: CLIENT, window: f.win });
+      expect(sdk.parentOrigin).toBeNull();
+      await expect(sdk.ready()).rejects.toMatchObject({ code });
+      expect(f.posted).toHaveLength(0);
+    }
+    // With allowedOrigins pinned, a missing referrer is fine: postMessage only reaches that origin.
+    const pinned = fakeWindow(hashFor(), undefined, '');
+    expect(new ActivitySdk({ clientId: CLIENT, window: pinned.win, allowedOrigins: [PARENT] }).parentOrigin).toBe(PARENT);
+    // Subspace itself (referrer = its origin) starts without allowedOrigins.
+    expect(new ActivitySdk({ clientId: CLIENT, window: fakeWindow(hashFor(), undefined).win }).parentOrigin).toBe(PARENT);
+    // A page that names itself honestly is its real parent, as in every browser: only allowedOrigins
+    // (and frame-ancestors on the activity's own page) keep other sites from hosting it.
+    const honest = fakeWindow(hashFor('https://evil.example'), undefined, 'https://evil.example/game');
+    expect(new ActivitySdk({ clientId: CLIENT, window: honest.win }).parentOrigin).toBe('https://evil.example');
+    await expect(new ActivitySdk({ clientId: CLIENT, window: honest.win, allowedOrigins: [PARENT] }).ready()).rejects.toMatchObject({ code: 'ORIGIN_NOT_ALLOWED' });
+    // ancestorOrigins, where present, wins over the referrer.
+    expect(new ActivitySdk({ clientId: CLIENT, window: fakeWindow(hashFor(), [PARENT], 'https://evil.example/').win }).parentOrigin).toBe(PARENT);
   });
 
   it('hostile replies (prototype keys, huge payloads, non-string codes) never throw out of the message handler', async () => {

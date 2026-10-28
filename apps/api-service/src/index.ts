@@ -122,6 +122,13 @@ export async function buildApp() {
   // Decorate app with db and redis clients
   (app as any).db = dbStatus === 'connected' && dbClient ? dbClient.db : null;
   (app as any).redis = redisStatus === 'connected' ? redisClient : null;
+  // A bot token reset on any instance clears every instance's token cache.
+  const { listenForForgottenTokens } = await import('./lib/bot-auth.js');
+  const stopTokenListener = await listenForForgottenTokens((app as any).redis).catch((err) => {
+    app.log.warn({ err }, 'Could not listen for bot token resets');
+    return async () => {};
+  });
+  app.addHook('onClose', async () => stopTokenListener());
   if ((app as any).db) {
     await syncCommendationCatalog((app as any).db).catch((err) => app.log.warn({ err }, 'Could not sync the commendation catalog'));
     await ensureDefaultStaffRoles((app as any).db).catch((err) => app.log.warn({ err }, 'Could not create the built-in staff ranks'));

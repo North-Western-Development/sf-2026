@@ -149,5 +149,8 @@ most, 30 events a second per person (shared with built-in activity events), neve
 - The frame sees the person's IP address and whatever they type into it. The notice says so;
   the instance cannot see or limit what the developer does with it.
 - `credentialless` is Chromium-only; elsewhere the frame gets normal (partitioned) third-party storage.
-- `location.ancestorOrigins` is not available in Firefox, so there the SDK relies on
-  `allowedOrigins` and on `postMessage`'s `targetOrigin` to find the real parent.
+- The SDK checks who really framed it: `location.ancestorOrigins` where the browser has it, and
+  in Firefox the referrer Subspace sends (`referrerPolicy="origin"`, only the origin already in
+  the URL). A page that hides its referrer is refused unless `allowedOrigins` is set. Any site
+  can still frame your page under its own name, as in every browser: set `allowedOrigins`
+  and `frame-ancestors` to keep it to Subspace.

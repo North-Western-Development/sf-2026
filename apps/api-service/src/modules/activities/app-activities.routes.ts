@@ -5,6 +5,14 @@ import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { appWithRole } from '../../lib/app-access.js';
 import { checkActivityUrl, launchableActivities, publicActivityApp, ACTIVITY_URL_MAX } from '../../lib/app-activities.js';
 
+/** The hostname a request came in on (no port): one of our own names, whatever PUBLIC_ORIGIN says. */
+const hostOf = (host: string | undefined) => {
+  try {
+    return host ? new URL(`http://${host}`).hostname : undefined;
+  } catch {
+    return undefined;
+  }
+};
 const isId = (s: unknown): s is string => typeof s === 'string' && /^[1-9][0-9]{0,18}$/.test(s);
 
 /** What its developers see of an application's Activity. */
@@ -67,7 +75,7 @@ export const appActivityRoutes: FastifyPluginAsync = async (app: FastifyInstance
       const ctx = await appFor(request, reply, 'developer');
       if (!ctx) return;
       const body = request.body as { name: string; description?: string | null; url: string; maxParticipants?: number };
-      const checked = await checkActivityUrl(body.url);
+      const checked = await checkActivityUrl(body.url, hostOf(request.headers.host));
       if (!checked.ok) return reply.status(400).send({ error: checked.error, code: 'INVALID_ACTIVITY_URL' });
       const [existing] = await db.select().from(appActivities).where(eq(appActivities.appId, ctx.app.id)).limit(1);
       const values = {
