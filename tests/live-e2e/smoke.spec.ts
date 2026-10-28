@@ -175,19 +175,24 @@ test.describe.serial('Live instance smoke test', () => {
     // The SFU reports the other person's (fake) microphone as speaking: media got through.
     await expect(theirs.getByRole('group', { name: one.user.displayName })).toHaveAttribute('data-speaking', 'true', { timeout: 40_000 });
     // The candidate type of every connected path: "relay" means through the TURN server.
-    const paths = await page.evaluate(async () => {
-      const types: string[] = [];
-      for (const pc of (window as any).__pcs as RTCPeerConnection[]) {
-        if (pc.connectionState !== 'connected') continue;
-        const stats = await pc.getStats();
-        stats.forEach((r: any) => {
-          if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') types.push(stats.get(r.localCandidateId)?.candidateType);
-        });
-      }
-      return types;
-    });
-    console.log(`media paths: ${paths.join(', ')}`);
-    expect(paths.length).toBeGreaterThan(0);
+    // The path each transport selected (or, without that, its nominated pair), once one is up.
+    const mediaPaths = () =>
+      page.evaluate(async () => {
+        const types: string[] = [];
+        for (const pc of (window as any).__pcs as RTCPeerConnection[]) {
+          const stats = await pc.getStats();
+          const selected = new Set<string>();
+          stats.forEach((r: any) => r.type === 'transport' && r.selectedCandidatePairId && selected.add(r.selectedCandidatePairId));
+          stats.forEach((r: any) => {
+            if (r.type !== 'candidate-pair' || r.state !== 'succeeded') return;
+            if (selected.size ? selected.has(r.id) : r.nominated) types.push(stats.get(r.localCandidateId)?.candidateType);
+          });
+        }
+        return { types, states: ((window as any).__pcs as RTCPeerConnection[]).map((pc) => pc.connectionState) };
+      });
+    await expect.poll(async () => (await mediaPaths()).types.length, { timeout: 20_000 }).toBeGreaterThan(0);
+    const { types: paths, states } = await mediaPaths();
+    console.log(`media paths: ${paths.join(', ')} (connections: ${states.join(', ')})`);
     // LIVE_EXPECT_RELAY=1 on an instance with LIVEKIT_FORCE_RELAY=true.
     if (process.env.LIVE_EXPECT_RELAY) expect(paths.every((t) => t === 'relay'), `media paths: ${paths.join(', ')}`).toBe(true);
     await page.getByRole('main').getByRole('button', { name: 'Disconnect' }).click();
