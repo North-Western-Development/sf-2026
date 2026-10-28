@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { startScheduler } from '../features/schedule/scheduled';
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useNavigate, useParams } from 'react-router';
 import { useStore } from '../data/store';
 import { bootstrap, loadBeacon } from '../data/actions';
@@ -29,6 +30,7 @@ import { useIsMobile } from './mobile';
 import { useGlobalShortcuts } from './shortcuts';
 import { preloadEmojiSheet } from '../lib/emoji';
 import { startAfkWatch } from '../features/voice/afk';
+import { showWhatsNewOnce } from '../features/changelog/WhatsNew';
 
 function Boot({ children }: { children: React.ReactNode }) {
   const ready = useStore((s) => s.ready);
@@ -61,8 +63,12 @@ function Boot({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     startAfkWatch();
+    // What's New, once, after an update that affects this platform.
+    showWhatsNewOnce();
     const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500));
     idle(() => preloadEmojiSheet());
+    // Transmissions this device scheduled (they are kept per account, so after sign-in).
+    return startScheduler();
   }, [ready]);
 
   if (!ready) {

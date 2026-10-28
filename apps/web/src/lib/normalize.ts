@@ -33,6 +33,8 @@ export function toUserRef(raw: Raw | null | undefined, fallbackId = ''): UserRef
     // Partial payloads (message authors carry no profile effect) must not wipe what is known.
     ...('avatarDecoration' in r ? { avatarDecoration: r.avatarDecoration ?? null } : {}),
     ...('profileEffect' in r ? { profileEffect: r.profileEffect ?? null } : {}),
+    ...(r.botKind ? { botKind: r.botKind } : {}),
+    ...(r.botVerified ? { botVerified: true } : {}),
   };
 }
 
@@ -60,8 +62,10 @@ export function toRelay(r: Raw): Relay {
     topic: r.topic ?? null,
     position: r.position ?? 0,
     isUnhideable: !!r.isUnhideable,
+    slowmodeSeconds: Number(r.slowmodeSeconds) || 0,
     isHidden: !!r.isHidden,
     isE2ee: !!r.isE2ee,
+    isAnnouncement: !!r.isAnnouncement,
     myPermissions: r.myPermissions,
     lastTransmissionId: r.lastTransmissionId ?? null,
   };
@@ -106,6 +110,7 @@ export function toClearance(c: Raw): Clearance {
     position: c.position ?? 0,
     permissions: String(c.permissions ?? '0'),
     hoist: !!c.hoist,
+    mentionable: !!c.mentionable,
     allowDelegation: !!c.allowDelegation,
   };
 }
@@ -126,6 +131,8 @@ export function toMember(m: Raw, beaconId: string): Member {
     pronouns: m.member?.pronouns ?? null,
     hasCompletedOnboarding: m.hasCompletedOnboarding ?? true,
     timeoutUntil: m.timeoutUntil ?? null,
+    serverMuted: !!m.serverMuted,
+    serverDeafened: !!m.serverDeafened,
   };
 }
 
@@ -158,6 +165,8 @@ export function toTransmission(t: Raw): Transmission {
     editedAt: t.editedAt ?? (t.isEdited ? t.updatedAt : null) ?? null,
     attachments: Array.isArray(t.attachments) ? t.attachments : [],
     stickers: Array.isArray(t.stickers) ? t.stickers : [],
+    poll: t.poll ?? null,
+    voiceMessage: !!t.voiceMessage,
     thread: t.thread ?? null,
     forwarded: t.forwarded ?? null,
     mentions: t.mentions ?? [],
@@ -172,6 +181,10 @@ export function toTransmission(t: Raw): Transmission {
     e2ee: t.encrypted ? 'pending' : undefined,
     type: t.type ?? (t.replyTo ? 'reply' : 'default'),
     nonce: t.nonce,
+    webhookId: t.webhookId ?? null,
+    publishedAt: t.publishedAt ?? null,
+    crosspost: t.crosspost ?? null,
+    interaction: t.interaction ? { name: t.interaction.name, user: t.interaction.user ? toUserRef(t.interaction.user) : null } : null,
   };
 }
 
@@ -184,6 +197,7 @@ export function toEditPatch(t: Raw): Partial<Transmission> {
     mentions: n.mentions,
     mentionRoles: n.mentionRoles,
     mentionEveryone: n.mentionEveryone,
+    publishedAt: n.publishedAt,
     ...(n.encrypted ? { encrypted: n.encrypted, e2ee: 'pending' as const } : {}),
   };
 }
@@ -221,6 +235,7 @@ export function toMesh(m: Raw): Mesh {
     members: (m.members ?? []).map((u: Raw) => toUserRef(u)),
     lastTransmissionId: m.lastTransmissionId ?? null,
     lastTransmissionAt: m.lastTransmissionAt ?? m.updatedAt ?? null,
+    encryptedAt: m.encryptedAt ?? null,
   };
 }
 

@@ -20,8 +20,8 @@ describe('Phase 8: Archival, Visual Relays & Subspace Search E2E Suite', () => {
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const commanderId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-  const explorerId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  const commanderId = '416404954512140970';
+  const explorerId = '808045449963355067';
 
   /** Insert a vault file record owned by `ownerId` and return its id. */
   async function seedVaultFile(ownerId: string, filename: string, mimeType: string): Promise<string> {

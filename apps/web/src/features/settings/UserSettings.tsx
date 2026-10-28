@@ -10,6 +10,7 @@ import {
   Keyboard,
   KeyRound,
   Code2,
+  Gamepad2,
   Languages,
   Laptop,
   Link2,
@@ -26,6 +27,7 @@ import {
   User,
   UserPen,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { useStore, setState } from '../../data/store';
 import { signOut, setMyPresence, loadBeacon } from '../../data/actions';
@@ -35,6 +37,7 @@ import { http, ApiError } from '../../lib/http';
 import { pickImage, uploadMedia } from '../../lib/media';
 import { userTag } from '../../lib/normalize';
 import { setChatPrefs, useChatPrefs } from '../../lib/chatPrefs';
+import { THEMES, setTheme, useTheme } from '../../lib/theme';
 import { ensureDevice } from '../../lib/e2ee/client';
 import { term, PRESENCE_LABELS } from '../../lib/strings';
 import type { DisplayNameStyle, SelfUser, Presence } from '../../lib/types';
@@ -55,12 +58,13 @@ import {
 } from './SettingsLayout';
 import { Avatar, PresenceDot } from '../common/Avatar';
 import { saveCustomStatus } from '../user/StatusModal';
+import { ActivityTab } from './user/ActivityTab';
 import { UserName } from '../common/UserName';
 import { ProfileEffect } from '../common/Decorations';
 import { Dropdown } from '../common/Dropdown';
 import { KEYBINDS } from '../../lib/keybinds';
 import { AccessibilityTab, LanguageTimeTab, SafetySettings } from './user/DisplayTabs';
-import { MicTest } from './user/VoiceTools';
+import { MicTest, InputModeSettings } from './user/VoiceTools';
 import { ClipSettings } from '../voice/ClipsUI';
 import { ConnectionsTab } from './user/ConnectionsTab';
 import { AuthorizedAppsTab, DeveloperAppsTab } from './user/AppsTabs';
@@ -1387,6 +1391,9 @@ function VoiceTab() {
           <MicTest />
         </div>
       </SettingsSection>
+      <SettingsSection id="input-mode" title="Input Mode">
+        <InputModeSettings />
+      </SettingsSection>
       <SettingsSection id="video" title="Video">
         {pick('videoinput', 'videoInput', 'Camera')}
       </SettingsSection>
@@ -1399,6 +1406,7 @@ function VoiceTab() {
 
 function AppearanceTab() {
   const compact = useChatPrefs((p) => p.compact);
+  const theme = useTheme((t) => t.theme);
   const [scale, setScale] = useState(() => Number(localStorage.getItem('subspace_font_scale') || '16'));
   useEffect(() => {
     document.documentElement.style.fontSize = `${scale}px`;
@@ -1410,16 +1418,25 @@ function AppearanceTab() {
   }, [scale]);
   return (
     <>
-      <SettingsSection id="theme" title="Theme" description="Subspace is dark by design.">
-        <div className="flex gap-3">
-          <span
-            className="flex h-14 w-14 items-center justify-center rounded-full ring-2 ring-brand ring-offset-2 ring-offset-base"
-            style={{
-              background: 'linear-gradient(135deg, var(--color-void) 55%, var(--color-brand) 55%, var(--color-brand-sky))',
-            }}
-            aria-label="Deep Space (active)"
-            title="Deep Space"
-          />
+      <SettingsSection id="theme" title="Theme" description="Subspace is dark by design. Saved on this device.">
+        <div role="radiogroup" aria-label="Theme" className="flex gap-4">
+          {THEMES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="radio"
+              aria-checked={theme === t.id}
+              aria-label={t.name}
+              onClick={() => setTheme(t.id)}
+              className="flex flex-col items-center gap-1.5 text-xs text-fg-muted"
+            >
+              <span
+                className={clsx('h-14 w-14 rounded-full ring-offset-2 ring-offset-base', theme === t.id ? 'ring-2 ring-brand' : 'ring-1 ring-line-strong hover:ring-fg-subtle')}
+                style={{ background: t.id === 'amoled' ? 'linear-gradient(135deg, #000 55%, #2840B0 55%, #3353D6)' : 'linear-gradient(135deg, #030305 55%, #3B8EF2 55%, #3DCBFF)' }}
+              />
+              <span className={clsx(theme === t.id && 'font-semibold text-fg')}>{t.name}</span>
+            </button>
+          ))}
           <ComingSoon label="More themes">
             <span className="h-14 w-14 rounded-full bg-[#1E2140]" />
           </ComingSoon>
@@ -1471,6 +1488,12 @@ function ChatTab() {
           label="Show embeds and preview website links pasted into chat"
           checked={prefs.showEmbeds}
           onChange={(v) => setChatPrefs({ showEmbeds: v })}
+        />
+        <Switch
+          label="Show notes in the profile panel"
+          description="Your private note about someone, at the bottom of their profile beside your Direct Link. Only you ever see notes."
+          checked={prefs.notesInProfilePanel}
+          onChange={(v) => setChatPrefs({ notesInProfilePanel: v })}
         />
       </SettingsSection>
     </>
@@ -1767,6 +1790,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
             { id: 'profile', icon: <UserPen />, label: 'Profiles' },
             { id: 'status', icon: <Smile />, label: 'Status' },
             { id: 'privacy', icon: <Shield />, label: 'Data & Privacy' },
+            { id: 'activity', icon: <Gamepad2 />, label: 'Activity Privacy' },
             { id: 'notifications', icon: <Bell />, label: 'Notifications' },
             { id: 'devices', icon: <Laptop />, label: 'Devices' },
             {
@@ -1803,6 +1827,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
           : []),
         {
           items: [
+            { id: 'whats-new', icon: <Sparkles />, label: "What's New", onClick: () => openModal({ kind: 'whatsNew' }) },
             {
               id: 'logout',
               icon: <LogOut />,
@@ -1825,6 +1850,7 @@ export function UserSettings({ tab: initialTab }: { tab?: string }) {
       {tab === 'profile' && <ProfilesTab me={me} view={beaconProfile ? 'beacon' : 'user'} initialBeacon={initialBeacon} />}
       {tab === 'status' && <StatusTab me={me} />}
       {tab === 'privacy' && <PrivacyTab me={me as any} />}
+      {tab === 'activity' && <ActivityTab />}
       {tab === 'notifications' && <NotificationsTab />}
       {tab === 'devices' && <DevicesTab />}
       {tab === 'connections' && <ConnectionsTab />}

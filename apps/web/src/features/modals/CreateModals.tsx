@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { clsx } from 'clsx';
-import { ChevronRight, Hash, Image as ImageIcon, MessagesSquare, Podcast, Search, Volume2, Check, Copy, Users, Lock } from 'lucide-react';
+import { ChevronRight, Hash, Megaphone, Image as ImageIcon, MessagesSquare, Podcast, Search, Volume2, Check, Copy, Users, Lock } from 'lucide-react';
 import { Button, Input, Modal } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, setState, getState } from '../../data/store';
@@ -149,8 +149,12 @@ export function CreateBeaconModal() {
 // Create relay / band
 // ---------------------------------------------------------------------------
 
-const RELAY_TYPES: Array<{ type: RelayKind; icon: React.ReactNode; label: string; description: string }> = [
+/** 'announcement' is a text relay whose posts can be published to the relays that follow it. */
+type RelayChoice = RelayKind | 'announcement';
+
+const RELAY_TYPES: Array<{ type: RelayChoice; icon: React.ReactNode; label: string; description: string }> = [
   { type: 'text', icon: <Hash className="h-6 w-6" />, label: term('textRelay'), description: 'Send transmissions, images, GIFs, emoji, opinions, and puns' },
+  { type: 'announcement', icon: <Megaphone className="h-6 w-6" />, label: 'Announcement Relay', description: `Important updates that other ${term('beacon', true).toLowerCase()} can follow into their own relays` },
   { type: 'comm_link', icon: <Volume2 className="h-6 w-6" />, label: term('commLink'), description: 'Hang out together with voice, video, and Holo-Cast' },
   { type: 'stage', icon: <Podcast className="h-6 w-6" />, label: 'Stage', description: 'Host talks and events: speakers talk, everyone else listens' },
   { type: 'archival', icon: <MessagesSquare className="h-6 w-6" />, label: term('archival'), description: 'Create a space for organized discussions' },
@@ -169,12 +173,12 @@ async function createRelay(beaconId: string, body: Record<string, unknown>) {
 
 export function CreateRelayModal({ beaconId, parentId, type: initialType }: { beaconId: string; parentId?: string | null; type?: string }) {
   const navigate = useNavigate();
-  const [type, setType] = useState<RelayKind>((initialType as RelayKind) ?? 'text');
+  const [type, setType] = useState<RelayChoice>((initialType as RelayChoice) ?? 'text');
   const [name, setName] = useState('');
   const [isPrivate, setPrivate] = useState(false);
   const [busy, setBusy] = useState(false);
   const band = useStore((s) => (parentId ? s.relays[parentId] : undefined));
-  const normalized = type === 'text' ? name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') : name;
+  const normalized = type === 'text' || type === 'announcement' ? name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') : name;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -182,7 +186,13 @@ export function CreateRelayModal({ beaconId, parentId, type: initialType }: { be
     setBusy(true);
     try {
       const siblings = Object.values(getState().relays).filter((r) => r.beaconId === beaconId && r.parentId === (parentId ?? null));
-      const relay = await createRelay(beaconId, { name: normalized.trim(), type, parentId: parentId ?? null, position: siblings.length });
+      const relay = await createRelay(beaconId, {
+        name: normalized.trim(),
+        type: type === 'announcement' ? 'text' : type,
+        ...(type === 'announcement' ? { isAnnouncement: true } : {}),
+        parentId: parentId ?? null,
+        position: siblings.length,
+      });
       if (isPrivate) {
         const everyone = getState().clearances[beaconId]?.find((c) => c.position === 0);
         if (everyone) await http.put(`/beacons/${beaconId}/relays/${relay.id}/overwrites/${everyone.id}`, { targetType: 'clearance', allow: '0', deny: '1' }).catch(() => toast('Relay created, but it could not be made private yet.', 'error'));
@@ -222,7 +232,7 @@ export function CreateRelayModal({ beaconId, parentId, type: initialType }: { be
           ))}
         </div>
         <div className="mt-5">
-          <Input label={`${term('relay')} name`} placeholder={type === 'text' ? 'new-relay' : 'New Relay'} value={type === 'text' ? normalized : name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus required />
+          <Input label={`${term('relay')} name`} placeholder={type === 'text' || type === 'announcement' ? 'new-relay' : 'New Relay'} value={type === 'text' || type === 'announcement' ? normalized : name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus required />
         </div>
         <label className="mt-5 flex cursor-pointer items-center justify-between gap-4">
           <span>

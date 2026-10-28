@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { and, eq, desc, inArray, beaconMembers, beaconStickers, beacons, gifFavorites, relays, soundboardSounds, resolveRelayAudience } from '@subspace/database';
-import { PERMISSIONS, hasPermission } from '@subspace/constants';
+import { PERMISSIONS, hasPermission, canCreateExpressions, canEditExpression } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 import { validateMediaUrl } from '../../lib/media.js';
 import { publishGatewayEvent } from '../../lib/events.js';
@@ -45,15 +45,22 @@ const SOUND_BODY = {
 export const expressionRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
 
-  async function member(request: any, reply: any, perm?: bigint) {
+  /** A member of the beacon; with `expressions`, one who may add them (Create or Manage Expressions). */
+  async function member(request: any, reply: any, expressions = false) {
     const token = extractAuthToken(request);
     if (!token) return reply.status(401).send({ error: 'Authentication required' }), null;
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' }), null;
     const { id: beaconId } = request.params as { id: string };
     const actor = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
     if (!actor) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' }), null;
-    if (perm && !hasPermission(actor.effectivePermissions, perm)) return reply.status(403).send({ error: 'Transmitter lacks MANAGE_GLYPHS clearance' }), null;
-    return { beaconId, actorId: token.transmitterId };
+    if (expressions && !canCreateExpressions(actor.effectivePermissions)) return reply.status(403).send({ error: 'Transmitter lacks CREATE_EXPRESSIONS clearance', code: 'MISSING_PERMISSIONS' }), null;
+    return { beaconId, actorId: token.transmitterId as string, perms: actor.effectivePermissions as bigint };
+  }
+  /** Someone else's sticker or sound needs Manage Expressions. */
+  function mayEdit(ctx: { actorId: string; perms: bigint }, row: { creatorId: string | null } | undefined, reply: any) {
+    if (!row) return reply.status(404).send({ error: 'Not found' }), false;
+    if (!canEditExpression(ctx.perms, row.creatorId === ctx.actorId)) return reply.status(403).send({ error: 'Only its creator, or someone with Manage Expressions, can change it', code: 'MISSING_PERMISSIONS' }), false;
+    return true;
   }
 
   const changed = (beaconId: string, kind: 'stickers' | 'sounds') => publishGatewayEvent(app, 'BEACON_EXPRESSIONS_UPDATE', { beaconId, kind }, { beaconId });
@@ -82,7 +89,7 @@ export const expressionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
   });
 
   app.post('/beacons/:id/stickers', { schema: { body: { ...STICKER_BODY, required: ['name', 'emoji', 'url'] } } }, async (request, reply) => {
-    const ctx = await member(request, reply, PERMISSIONS.MANAGE_GLYPHS);
+    const ctx = await member(request, reply, true);
     if (!ctx) return;
     const body = request.body as { name: string; description?: string | null; emoji: string; url: string };
     if (!(await validateMediaUrl(db, ctx.actorId, body.url, ['sticker']))) return reply.status(400).send({ error: 'Invalid media URL for sticker', code: 'INVALID_MEDIA_URL' });
@@ -98,9 +105,11 @@ export const expressionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
   });
 
   app.patch('/beacons/:id/stickers/:stickerId', { schema: { body: STICKER_BODY } }, async (request, reply) => {
-    const ctx = await member(request, reply, PERMISSIONS.MANAGE_GLYPHS);
+    const ctx = await member(request, reply, true);
     if (!ctx) return;
     const { stickerId } = request.params as { stickerId: string };
+    const [row] = await db.select({ creatorId: beaconStickers.creatorId }).from(beaconStickers).where(and(eq(beaconStickers.id, stickerId), eq(beaconStickers.beaconId, ctx.beaconId))).limit(1);
+    if (!mayEdit(ctx, row, reply)) return;
     const { url: _url, ...body } = request.body as Record<string, any>;
     const [sticker] = await db.update(beaconStickers).set(body).where(and(eq(beaconStickers.id, stickerId), eq(beaconStickers.beaconId, ctx.beaconId))).returning();
     if (!sticker) return reply.status(404).send({ error: 'Sticker not found' });
@@ -109,9 +118,11 @@ export const expressionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
   });
 
   app.delete('/beacons/:id/stickers/:stickerId', async (request, reply) => {
-    const ctx = await member(request, reply, PERMISSIONS.MANAGE_GLYPHS);
+    const ctx = await member(request, reply, true);
     if (!ctx) return;
     const { stickerId } = request.params as { stickerId: string };
+    const [row] = await db.select({ creatorId: beaconStickers.creatorId }).from(beaconStickers).where(and(eq(beaconStickers.id, stickerId), eq(beaconStickers.beaconId, ctx.beaconId))).limit(1);
+    if (!mayEdit(ctx, row, reply)) return;
     const [sticker] = await db.delete(beaconStickers).where(and(eq(beaconStickers.id, stickerId), eq(beaconStickers.beaconId, ctx.beaconId))).returning();
     if (!sticker) return reply.status(404).send({ error: 'Sticker not found' });
     await audit(db, { beaconId: ctx.beaconId, actorId: ctx.actorId, action: 'sticker_delete', targetType: 'sticker', targetId: sticker.id, targetName: sticker.name });
@@ -128,7 +139,7 @@ export const expressionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
   });
 
   app.post('/beacons/:id/sounds', { schema: { body: { ...SOUND_BODY, required: ['name', 'url'] } } }, async (request, reply) => {
-    const ctx = await member(request, reply, PERMISSIONS.MANAGE_GLYPHS);
+    const ctx = await member(request, reply, true);
     if (!ctx) return;
     const body = request.body as { name: string; emoji?: string | null; url: string; volume?: number };
     if (!(await validateMediaUrl(db, ctx.actorId, body.url, ['sound']))) return reply.status(400).send({ error: 'Invalid media URL for sound', code: 'INVALID_MEDIA_URL' });
@@ -144,9 +155,11 @@ export const expressionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
   });
 
   app.patch('/beacons/:id/sounds/:soundId', { schema: { body: SOUND_BODY } }, async (request, reply) => {
-    const ctx = await member(request, reply, PERMISSIONS.MANAGE_GLYPHS);
+    const ctx = await member(request, reply, true);
     if (!ctx) return;
     const { soundId } = request.params as { soundId: string };
+    const [row] = await db.select({ creatorId: soundboardSounds.creatorId }).from(soundboardSounds).where(and(eq(soundboardSounds.id, soundId), eq(soundboardSounds.beaconId, ctx.beaconId))).limit(1);
+    if (!mayEdit(ctx, row, reply)) return;
     const { url: _url, ...body } = request.body as Record<string, any>;
     const [sound] = await db.update(soundboardSounds).set(body).where(and(eq(soundboardSounds.id, soundId), eq(soundboardSounds.beaconId, ctx.beaconId))).returning();
     if (!sound) return reply.status(404).send({ error: 'Sound not found' });
@@ -155,9 +168,11 @@ export const expressionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
   });
 
   app.delete('/beacons/:id/sounds/:soundId', async (request, reply) => {
-    const ctx = await member(request, reply, PERMISSIONS.MANAGE_GLYPHS);
+    const ctx = await member(request, reply, true);
     if (!ctx) return;
     const { soundId } = request.params as { soundId: string };
+    const [row] = await db.select({ creatorId: soundboardSounds.creatorId }).from(soundboardSounds).where(and(eq(soundboardSounds.id, soundId), eq(soundboardSounds.beaconId, ctx.beaconId))).limit(1);
+    if (!mayEdit(ctx, row, reply)) return;
     const [sound] = await db.delete(soundboardSounds).where(and(eq(soundboardSounds.id, soundId), eq(soundboardSounds.beaconId, ctx.beaconId))).returning();
     if (!sound) return reply.status(404).send({ error: 'Sound not found' });
     await audit(db, { beaconId: ctx.beaconId, actorId: ctx.actorId, action: 'sound_delete', targetType: 'sound', targetId: sound.id, targetName: sound.name });
@@ -248,7 +263,7 @@ export const expressionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         body: {
           type: 'object',
           additionalProperties: false,
-          properties: { soundId: { type: 'string', format: 'uuid' }, defaultSound: { type: 'string', enum: DEFAULT_SOUNDS } },
+          properties: { soundId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' }, defaultSound: { type: 'string', enum: DEFAULT_SOUNDS } },
         },
       },
     },

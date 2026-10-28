@@ -4,6 +4,7 @@ import { clsx } from 'clsx';
 import { ChevronDown, Clock, Dog, Flag, Gamepad2, Heart, Lightbulb, Lock, Plane, Pizza, Search, Smile, Hand, X } from 'lucide-react';
 import { GifPanel, StickerPanel, type Gif, type Sticker } from './ExpressionPanels';
 import { useStore } from '../../data/store';
+import { beaconPermissions, can, PERMISSIONS } from '../../data/permissions';
 import { http, optional } from '../../lib/http';
 import { EMOJI, EMOJI_CATEGORIES, findEmoji, spriteStyle, type EmojiEntry } from '../../lib/emoji';
 import { rememberGlyphs } from './resolvers';
@@ -84,7 +85,7 @@ const TONE_SAMPLE = EMOJI.find((e) => e.slug === 'clap')!;
  * beacon sections and a footer naming the hovered emoji. `onPick` receives a unicode emoji
  * or `custom:<glyphId>`.
  *
- * Glyphs from other beacons are shown but locked: a beacon only accepts its own glyphs.
+ * Glyphs the member may not use here (another beacon's without Use External Glyphs) are shown locked.
  * `glyphs="none"` (custom status) shows emoji only.
  */
 export function EmojiPicker({
@@ -181,8 +182,11 @@ export function EmojiPicker({
   }, [onClose]);
 
   const q = query.trim().toLowerCase().replace(/^:|:$/g, '').replace(/\s+/g, '_');
+  // In a beacon: its own glyphs need Use Signal Glyphs, other beacons' Use External Glyphs.
+  const ownOk = useStore((s) => !beaconId || can(beaconPermissions(s, beaconId), PERMISSIONS.USE_SIGNAL_GLYPHS));
+  const externalOk = useStore((s) => !beaconId || can(beaconPermissions(s, beaconId), PERMISSIONS.USE_EXTERNAL_GLYPHS));
   const sections = useMemo<SectionData[]>(() => {
-    const glyphItem = (g: Glyph, bId: string): Item => ({ kind: 'glyph', glyph: g, beaconId: bId, locked: bId !== beaconId });
+    const glyphItem = (g: Glyph, bId: string): Item => ({ kind: 'glyph', glyph: g, beaconId: bId, locked: bId === beaconId ? !ownOk : !externalOk });
     const out: SectionData[] = [];
     if (!q && recent.length) {
       const items = recent
@@ -209,7 +213,7 @@ export function EmojiPicker({
       if (list.length) out.push({ key: `cat:${ci}`, title, icon: CATEGORY_ICON[ci], items: list.map((e) => toned(e, tone)) });
     });
     return out;
-  }, [q, recent, beaconList, glyphsByBeacon, beaconId, tone]);
+  }, [q, recent, beaconList, glyphsByBeacon, beaconId, tone, ownOk, externalOk]);
 
   const byKey = useMemo(() => {
     const m = new Map<string, Item>();

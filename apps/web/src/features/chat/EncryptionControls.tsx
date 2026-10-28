@@ -4,7 +4,8 @@ import { Modal } from '@subspace/ui';
 import { useStore, setState } from '../../data/store';
 import { http, ApiError } from '../../lib/http';
 import { ensureDevice, safetyNumbers } from '../../lib/e2ee/client';
-import type { DirectLink } from '../../lib/types';
+import type { DirectLink, Mesh } from '../../lib/types';
+import { Avatar } from '../common/Avatar';
 import { confirmAction, toast } from '../../app/ui';
 import { HeaderButton } from './ChannelView';
 
@@ -35,6 +36,68 @@ export function EncryptionButton({ link }: { link: DirectLink }) {
         try {
           const { encryptedAt } = await http.post<{ encryptedAt: string }>(`/e2ee/links/${link.id}/enable`);
           setState((s) => ({ links: { ...s.links, [link.id]: { ...s.links[link.id], encryptedAt } } }));
+        } catch (err) {
+          toast(err instanceof ApiError ? err.message : 'Could not turn on encryption', 'error');
+        }
+      },
+    });
+
+  return (
+    <HeaderButton label="Turn On Encryption" onClick={turnOn}>
+      <LockOpen className="h-5 w-5" />
+    </HeaderButton>
+  );
+}
+
+/** The same for a group DM: every member needs a device; verify any member's safety numbers. */
+export function MeshEncryptionButton({ mesh }: { mesh: Mesh }) {
+  const [picking, setPicking] = useState(false);
+  const [verifying, setVerifying] = useState<{ id: string; name: string } | null>(null);
+  const meId = useStore((s) => s.me?.id);
+  const others = mesh.members.filter((m) => m.id !== meId);
+
+  if (mesh.encryptedAt) {
+    return (
+      <>
+        <HeaderButton label="End-to-End Encrypted" active onClick={() => setPicking(true)}>
+          <Lock className="h-5 w-5 text-online" />
+        </HeaderButton>
+        {picking && (
+          <Modal isOpen onClose={() => setPicking(false)} title="Verify Encryption" description="Pick someone to compare safety numbers with." maxWidth="sm">
+            <ul aria-label="Members to verify" className="space-y-1">
+              {others.map((m) => (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPicking(false);
+                      setVerifying({ id: m.id, name: m.displayName || m.username });
+                    }}
+                    className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-hover"
+                  >
+                    <Avatar user={m} size={32} />
+                    <span className="text-sm font-medium text-fg">{m.displayName || m.username}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Modal>
+        )}
+        {verifying && meId && <SafetyNumbers myId={meId} other={verifying} onClose={() => setVerifying(null)} />}
+      </>
+    );
+  }
+
+  const turnOn = () =>
+    confirmAction({
+      title: 'Turn on end-to-end encryption?',
+      body: 'Transmissions and calls in this group from now on are encrypted on your devices, so not even Subspace can read them. This cannot be turned off. Everyone here needs a device that supports encryption, people added later read only from when they join, and someone who leaves cannot read what follows.',
+      confirmLabel: 'Turn On',
+      onConfirm: async () => {
+        if (!meId || !(await ensureDevice(meId))) return toast('This browser cannot store encryption keys.', 'error');
+        try {
+          const { encryptedAt } = await http.post<{ encryptedAt: string }>(`/e2ee/meshes/${mesh.id}/enable`);
+          setState((s) => ({ meshes: { ...s.meshes, [mesh.id]: { ...s.meshes[mesh.id], encryptedAt } } }));
         } catch (err) {
           toast(err instanceof ApiError ? err.message : 'Could not turn on encryption', 'error');
         }

@@ -1,3 +1,7 @@
+import http from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../../apps/api-service/src/index.js';
@@ -9,8 +13,8 @@ describe('Account extras', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const pilot = { id: 'fe100000-0000-4000-8000-000000000001', username: 'acx_pilot' };
-  const other = { id: 'fe100000-0000-4000-8000-000000000002', username: 'acx_other' };
+  const pilot = { id: '801756946623496193', username: 'acx_pilot' };
+  const other = { id: '801756946623496194', username: 'acx_other' };
   const users = [pilot, other];
   const PASSWORD = 'correct horse battery';
   const auth = (u: { id: string; username: string }) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
@@ -90,6 +94,108 @@ describe('Account extras', () => {
     expect((await call('DELETE', '/users/@me/phone', pilot, { password: 'wrong' })).json().code).toBe('PASSWORD_INCORRECT');
     expect((await call('DELETE', '/users/@me/phone', pilot, { password: PASSWORD })).json().phone).toBeNull();
     expect((await call('GET', '/auth/me', pilot)).json().transmitter.phone).toBeNull();
+  });
+
+  it('rations codes and verifications, voids a code after too many guesses, and refuses VPNs', async () => {
+    if (!db) return;
+    const redis = (app as any).redis;
+    const saved = { ...process.env };
+    const keys = async () => {
+      const found: string[] = await redis.keys('phone:*');
+      if (found.length) await redis.del(...found);
+    };
+    try {
+      await keys();
+      Object.assign(process.env, { PHONE_CODES_PER_USER: '2/24h', PHONE_VERIFY_PER_USER: '1/30d', PHONE_CODE_ATTEMPTS: '3' });
+      const send = () => call('POST', '/users/@me/phone', other, { phone: '+15550100777', password: PASSWORD });
+      expect((await send()).json().sent).toBe(true);
+      // Three wrong guesses and the code is void, even the right one afterwards.
+      const code = await lastCode();
+      const wrong = code === '000000' ? '111111' : '000000';
+      expect((await call('POST', '/users/@me/phone/verify', other, { code: wrong })).json().code).toBe('INVALID_CODE');
+      expect((await call('POST', '/users/@me/phone/verify', other, { code: wrong })).json().code).toBe('INVALID_CODE');
+      expect((await call('POST', '/users/@me/phone/verify', other, { code: wrong })).json().code).toBe('CODE_ATTEMPTS_EXCEEDED');
+      expect((await call('POST', '/users/@me/phone/verify', other, { code })).json().code).toBe('INVALID_CODE');
+
+      expect((await send()).json().sent).toBe(true);
+      expect((await call('POST', '/users/@me/phone/verify', other, { code: await lastCode() })).json().phone).toBe('+15550100777');
+      // Two codes a day: the third is refused. One verification a month: a new number waits.
+      Object.assign(process.env, { PHONE_CODES_PER_USER: '5/24h' });
+      const again = (await call('POST', '/users/@me/phone', other, { phone: '+15550100778', password: PASSWORD })).json();
+      expect(again).toMatchObject({ code: 'PHONE_RATE_LIMITED', limit: 'PHONE_VERIFY_PER_USER' });
+      Object.assign(process.env, { PHONE_CODES_PER_USER: '2/24h', PHONE_VERIFY_PER_USER: '5/30d' });
+      expect((await call('POST', '/users/@me/phone', other, { phone: '+15550100778', password: PASSWORD })).json()).toMatchObject({ code: 'PHONE_RATE_LIMITED', limit: 'PHONE_CODES_PER_USER' });
+
+      // Only the listed countries, and never from a VPN range.
+      await keys();
+      process.env.PHONE_COUNTRIES = '+44';
+      expect((await send()).json().code).toBe('PHONE_COUNTRY_BLOCKED');
+      delete process.env.PHONE_COUNTRIES;
+      const list = path.join(os.tmpdir(), `vpn-ranges-${process.pid}.txt`);
+      fs.writeFileSync(list, '# test ranges\n203.0.113.0/24\n127.0.0.0/8\n');
+      process.env.PHONE_VPN_BLOCKLIST = list;
+      expect((await send()).json().code).toBe('PHONE_VPN_BLOCKED');
+      fs.rmSync(list);
+    } finally {
+      for (const k of Object.keys(process.env)) if (k.startsWith('PHONE_') && !(k in saved)) delete process.env[k];
+      Object.assign(process.env, saved);
+      await keys();
+      await db.update(transmitters).set({ phone: null, phoneVerifiedAt: null }).where(eq(transmitters.id, other.id));
+    }
+  });
+
+  it('verifies mobile numbers only (no VoIP), and never a number another account verified first', async () => {
+    if (!db) return;
+    const redis = (app as any).redis;
+    const clear = async () => {
+      const keys: string[] = await redis.keys('phone:*');
+      if (keys.length) await redis.del(...keys);
+    };
+    // A stand-in for Twilio Lookup's line type intelligence.
+    const types: Record<string, string> = { '+15550100801': 'nonFixedVoip', '+15550100802': 'mobile', '+15550100803': 'tollFree' };
+    const lookup = http.createServer((req, res) => {
+      const number = decodeURIComponent(/PhoneNumbers\/([^?]+)/.exec(req.url ?? '')?.[1] ?? '');
+      const ok = req.headers.authorization === `Basic ${Buffer.from('AC-test:secret').toString('base64')}`;
+      res.writeHead(ok ? 200 : 401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ phone_number: number, valid: true, line_type_intelligence: { type: types[number] ?? 'unknown' } }));
+    });
+    await new Promise<void>((r) => lookup.listen(0, '127.0.0.1', () => r()));
+    const saved = { ...process.env };
+    try {
+      await clear();
+      // Lookup credentials without TWILIO_FROM: texts still go to the dev outbox.
+      Object.assign(process.env, { TWILIO_ACCOUNT_SID: 'AC-test', TWILIO_AUTH_TOKEN: 'secret', TWILIO_LOOKUP_BASE: `http://127.0.0.1:${(lookup.address() as any).port}` });
+      const send = (u: typeof pilot, phone: string) => call('POST', '/users/@me/phone', u, { phone, password: PASSWORD });
+      expect((await send(pilot, '+15550100801')).json()).toMatchObject({ code: 'PHONE_LINE_TYPE_REFUSED', lineType: 'nonfixedvoip' });
+      expect((await send(pilot, '+15550100803')).json()).toMatchObject({ code: 'PHONE_LINE_TYPE_REFUSED', lineType: 'tollfree' });
+
+      // Both ask for the same mobile number; whoever confirms first keeps it.
+      expect((await send(pilot, '+15550100802')).json().sent).toBe(true);
+      const pilotCode = await lastCode();
+      expect((await send(other, '+15550100802')).json().sent).toBe(true);
+      expect((await call('POST', '/users/@me/phone/verify', other, { code: await lastCode() })).json().phone).toBe('+15550100802');
+      expect((await call('POST', '/users/@me/phone/verify', pilot, { code: pilotCode })).json().code).toBe('PHONE_TAKEN');
+      // And nobody is sent a code for it any more.
+      expect((await send(pilot, '+15550100802')).json().code).toBe('PHONE_TAKEN');
+    } finally {
+      for (const k of ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_LOOKUP_BASE']) if (!(k in saved)) delete process.env[k];
+      Object.assign(process.env, saved);
+      lookup.close();
+      await clear();
+      await db.update(transmitters).set({ phone: null, phoneVerifiedAt: null, phonePending: null }).where(or(eq(transmitters.id, pilot.id), eq(transmitters.id, other.id)));
+    }
+  });
+
+  it('turns phone verification off when texts cannot be sent', async () => {
+    const saved = process.env.SMS_DEV_OUTBOX;
+    try {
+      delete process.env.SMS_DEV_OUTBOX;
+      expect((await call('GET', '/users/@me/phone/config', pilot)).json()).toEqual({ available: false });
+      expect((await call('POST', '/users/@me/phone', pilot, { phone: '+15550100199', password: PASSWORD })).json().code).toBe('SMS_UNAVAILABLE');
+    } finally {
+      process.env.SMS_DEV_OUTBOX = saved;
+    }
+    expect((await call('GET', '/users/@me/phone/config', pilot)).json()).toEqual({ available: true });
   });
 
   it('saves a known avatar decoration and profile effect, shows them to others, and refuses unknown ones', async () => {

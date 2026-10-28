@@ -12,8 +12,22 @@ import {
   createLocalScreenTracks,
   ConnectionState,
   ExternalE2EEKeyProvider,
+  KeyProviderEvent,
+  createKeyMaterialFromString,
 } from 'livekit-client';
 import { gateMicrophone, inputDeviceId } from '../lib/voicePrefs';
+
+/**
+ * The shared frame keys of an encrypted room, by index. A rotated key is first installed for
+ * receiving only, then made the sending key once everyone has it, so no frame goes unreadable.
+ */
+class RoomKeyProvider extends ExternalE2EEKeyProvider {
+  async setIndexedKey(key: string, index: number, makeCurrent: boolean) {
+    const material = await createKeyMaterialFromString(key);
+    if (makeCurrent) this.onSetEncryptionKey(material, undefined, index);
+    else this.emit(KeyProviderEvent.SetKey, { key: material, keyIndex: index }, false);
+  }
+}
 
 export type SpeakingCallback = (speakerIdentities: string[]) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
@@ -36,9 +50,12 @@ export class LiveKitRoomManager {
   private localVideoTrack: LocalVideoTrack | null = null;
   private localScreenTrack: LocalVideoTrack | null = null;
   private attachedAudioElements: Map<string, HTMLAudioElement> = new Map();
+  /** Whose audio each element plays, for Priority Speaker ducking. */
+  private audioOwners = new WeakMap<HTMLAudioElement, string>();
+  private priorityTalkers: Set<string> = new Set();
   private isDeafened: boolean = false;
   private isMuted: boolean = false;
-  private keyProvider: ExternalE2EEKeyProvider | null = null;
+  private keyProvider: RoomKeyProvider | null = null;
 
   private speakingListeners: Set<SpeakingCallback> = new Set();
   private connectionStateListeners: Set<ConnectionStateCallback> = new Set();
@@ -54,9 +71,12 @@ export class LiveKitRoomManager {
     return !!this.keyProvider && !!this.room?.isE2EEEnabled;
   }
 
-  /** Set (or replace) the shared frame key of an encrypted room (base64url of 32 random bytes). */
-  public async setE2EEKey(key: string): Promise<void> {
-    await this.keyProvider?.setKey(key);
+  /**
+   * Set the shared frame key of an encrypted room (base64url of 32 random bytes) at a keyring
+   * index. `makeCurrent` false installs it for decrypting only; sending switches later.
+   */
+  public async setE2EEKey(key: string, index = 0, makeCurrent = true): Promise<void> {
+    await this.keyProvider?.setIndexedKey(key, index, makeCurrent);
   }
 
   public get isConnected(): boolean {
@@ -86,7 +106,7 @@ export class LiveKitRoomManager {
   public async connect(
     url: string,
     token: string,
-    options?: { canSpeak?: boolean; isMuted?: boolean; isDeafened?: boolean; e2ee?: boolean; e2eeKey?: string }
+    options?: { canSpeak?: boolean; isMuted?: boolean; isDeafened?: boolean; e2ee?: boolean; e2eeKey?: string; e2eeKeyIndex?: number; forceRelay?: boolean }
   ): Promise<Room> {
     if (this.room) {
       await this.disconnect();
@@ -97,7 +117,7 @@ export class LiveKitRoomManager {
 
     // End-to-end encrypted rooms: every audio/video frame is encrypted in a worker before it
     // leaves the browser, with a key only the participants hold (set via setE2EEKey).
-    this.keyProvider = options?.e2ee ? new ExternalE2EEKeyProvider() : null;
+    this.keyProvider = options?.e2ee ? new RoomKeyProvider() : null;
     const room = new Room({
       adaptiveStream: true,
       dynacast: true,
@@ -106,7 +126,7 @@ export class LiveKitRoomManager {
         : {}),
     });
     if (this.keyProvider) {
-      if (options?.e2eeKey) await this.keyProvider.setKey(options.e2eeKey);
+      if (options?.e2eeKey) await this.keyProvider.setIndexedKey(options.e2eeKey, options.e2eeKeyIndex ?? 0, true);
       await room.setE2EEEnabled(true);
     }
 
@@ -125,7 +145,9 @@ export class LiveKitRoomManager {
       if (track.kind === Track.Kind.Audio) {
         const el = track.attach() as HTMLAudioElement;
         el.muted = this.isDeafened;
+        this.audioOwners.set(el, participant.identity);
         this.attachedAudioElements.set(track.sid || participant.identity, el);
+        this.applyDucking();
       }
       this.trackSubscribedListeners.forEach(cb => cb(track, publication, participant));
     });
@@ -143,7 +165,9 @@ export class LiveKitRoomManager {
       this.trackUnsubscribedListeners.forEach(cb => cb(track, publication, participant));
     });
 
-    await room.connect(url, token);
+    // forceRelay (the instance's LIVEKIT_FORCE_RELAY): media only through LiveKit's TURN server,
+    // whose address and credentials come with the join response.
+    await room.connect(url, token, options?.forceRelay ? { rtcConfig: { iceTransportPolicy: 'relay' } } : undefined);
 
     // Auto-publish audio if permitted and microphone is unmuted
     if (options?.canSpeak !== false) {
@@ -189,6 +213,77 @@ export class LiveKitRoomManager {
         console.warn('Failed to enable mic:', err);
       }
     }
+  }
+
+  private speakingStart: Promise<void> | null = null;
+
+  /**
+   * On a Stage: publish the microphone once a moderator made us a speaker. The server grants
+   * publishing through LiveKit first; the grant can reach this connection a moment after the
+   * Stage update does, so wait for it.
+   */
+  public startSpeaking(): Promise<void> {
+    if (!this.room || this.localAudioTrack) return Promise.resolve();
+    this.speakingStart ??= this.publishStageMic().finally(() => (this.speakingStart = null));
+    return this.speakingStart;
+  }
+
+  private async publishStageMic(): Promise<void> {
+    const room = this.room;
+    if (!room) return;
+    if (!room.localParticipant.permissions?.canPublish) {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          room.off(RoomEvent.ParticipantPermissionsChanged, check);
+          clearTimeout(timer);
+          resolve();
+        };
+        const check = () => room.localParticipant.permissions?.canPublish && done();
+        const timer = setTimeout(done, 8000);
+        room.on(RoomEvent.ParticipantPermissionsChanged, check);
+      });
+    }
+    if (this.room !== room || this.localAudioTrack) return;
+    try {
+      const audioTrack = await createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, deviceId: inputDeviceId() });
+      if (this.isMuted) await audioTrack.mute();
+      this.localAudioTrack = audioTrack;
+      await room.localParticipant.publishTrack(audioTrack);
+      this.stopGate = gateMicrophone(audioTrack.mediaStreamTrack, () => audioTrack.isMuted);
+    } catch (err) {
+      console.warn('Could not start speaking:', err);
+    }
+  }
+
+  /** Back to a Stage's audience: stop publishing the microphone and any camera or Holo-Cast. */
+  public async stopSpeaking(): Promise<void> {
+    await this.speakingStart?.catch(() => {});
+    this.stopGate?.();
+    this.stopGate = null;
+    const tracks = [this.localAudioTrack, this.localVideoTrack, this.localScreenTrack];
+    this.localAudioTrack = this.localVideoTrack = this.localScreenTrack = null;
+    for (const t of tracks) {
+      if (!t) continue;
+      await this.room?.localParticipant.unpublishTrack(t).catch(() => {});
+      t.stop();
+    }
+  }
+
+  /**
+   * Priority Speaker: while someone holding it talks, everyone else is played at a fifth of
+   * their volume, as Discord does.
+   */
+  public setPriorityTalkers(identities: string[]): void {
+    this.priorityTalkers = new Set(identities);
+    this.applyDucking();
+  }
+
+  private applyDucking() {
+    const ducking = this.priorityTalkers.size > 0;
+    this.attachedAudioElements.forEach((el) => {
+      const owner = this.audioOwners.get(el) ?? '';
+      el.volume = ducking && !this.priorityTalkers.has(owner) ? 0.2 : 1;
+    });
   }
 
   public setDeafened(deafened: boolean): void {
@@ -312,3 +407,4 @@ export class LiveKitRoomManager {
 }
 
 export const rtcManager = new LiveKitRoomManager();
+

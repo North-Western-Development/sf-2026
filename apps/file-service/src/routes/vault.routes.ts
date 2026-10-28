@@ -1,13 +1,11 @@
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
-import { eq, and, desc, sql, transmitters, vaultFiles } from '@subspace/database';
+import { eq, and, desc, sql, transmitters, vaultFiles, storageLimitsFor } from '@subspace/database';
 import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from '../s3.js';
 import { getCloudIntegrations } from '../integrations/index.js';
 import crypto from 'crypto';
 
 const JWT_SECRET = getJwtSecret();
-export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB per file default
-export const DEFAULT_USER_QUOTA_BYTES = 500 * 1024 * 1024; // 500MB personal quota
 
 /** Bytes a transmitter already stores in the vault. */
 export async function vaultBytesUsed(db: any, transmitterId: string): Promise<number> {
@@ -62,8 +60,8 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    * Request presigned S3 upload URL.
    * Invariants:
    * 1. Mandatory disclaimer gate: transmitter.hasAcceptedUploadDisclaimer must be true.
-   * 2. Quota check: cannot exceed personal instance quota.
-   * 3. Max file size: cannot exceed 50MB.
+   * 2. Quota check: cannot exceed the account's quota (its storage group's, or the default).
+   * 3. Max file size: the same, per upload. The size is signed into the upload URL.
    */
   app.post('/upload-ticket', async (request, reply) => {
     const token = extractAuthToken(request);
@@ -100,9 +98,10 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(400).send({ error: 'Invalid sizeBytes parameter' });
     }
 
-    if (fileSize > MAX_FILE_SIZE_BYTES) {
+    const limits = await storageLimitsFor(db, token.transmitterId);
+    if (fileSize > limits.maxUploadBytes) {
       return reply.status(400).send({
-        error: `File exceeds maximum allowed upload size of ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
+        error: `File exceeds maximum allowed upload size of ${Math.round(limits.maxUploadBytes / (1024 * 1024))}MB`,
         code: 'FILE_TOO_LARGE',
       });
     }
@@ -117,21 +116,21 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     const totalUsedBytes = Number(existingFiles[0]?.totalUsed || 0);
 
-    if (totalUsedBytes + fileSize > DEFAULT_USER_QUOTA_BYTES) {
+    if (totalUsedBytes + fileSize > limits.quotaBytes) {
       return reply.status(403).send({
         error: 'Subspace Vault storage quota exceeded',
         code: 'STORAGE_QUOTA_EXCEEDED',
-        quotaBytes: DEFAULT_USER_QUOTA_BYTES,
+        quotaBytes: limits.quotaBytes,
         usedBytes: totalUsedBytes,
         requestedBytes: fileSize,
       });
     }
 
-    // Generate unique storage key: vaults/{transmitterId}/{uuid}_{sanitized_name}
+    // Generate unique storage key: vaults/{transmitterId}/{random}_{sanitized_name}
     const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const storageKey = `vaults/${token.transmitterId}/${crypto.randomUUID()}_${safeFilename}`;
 
-    const presignedUploadUrl = await s3.getPresignedUploadUrl(storageKey, mimeType, 900);
+    const presignedUploadUrl = await s3.getPresignedUploadUrl(storageKey, mimeType, 900, s3.bucket, Math.floor(fileSize));
 
     return reply.status(201).send({
       message: 'Upload ticket issued',
@@ -169,11 +168,12 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     } catch {
       return reply.status(400).send({ error: 'Upload to the ticketed URL before recording the file', code: 'NOT_UPLOADED' });
     }
-    if (head.sizeBytes <= 0 || head.sizeBytes > MAX_FILE_SIZE_BYTES) {
+    const limits = await storageLimitsFor(db, token.transmitterId);
+    if (head.sizeBytes <= 0 || head.sizeBytes > limits.maxUploadBytes) {
       await s3.deleteObject(storageKey).catch(() => {});
       return reply.status(400).send({ error: 'Uploaded file is empty or too large', code: 'FILE_TOO_LARGE' });
     }
-    if ((await vaultBytesUsed(db, token.transmitterId)) + head.sizeBytes > DEFAULT_USER_QUOTA_BYTES) {
+    if ((await vaultBytesUsed(db, token.transmitterId)) + head.sizeBytes > limits.quotaBytes) {
       await s3.deleteObject(storageKey).catch(() => {});
       return reply.status(403).send({ error: 'Subspace Vault storage quota exceeded', code: 'STORAGE_QUOTA_EXCEEDED' });
     }
@@ -270,7 +270,7 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    */
   app.get('/files/:id', { config: { public: true } }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.status(404).send({ error: 'File not found' });
+    if (!/^[1-9][0-9]{0,18}$/.test(id)) return reply.status(404).send({ error: 'File not found' });
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
     const [file] = await db.select().from(vaultFiles).where(eq(vaultFiles.id, id)).limit(1);
     if (!file || file.isQuarantined) return reply.status(404).send({ error: 'File not found' });
@@ -305,11 +305,14 @@ export const vaultRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       .where(eq(vaultFiles.transmitterId, token.transmitterId));
 
     const usedBytes = Number(usage[0]?.totalUsed || 0);
+    const limits = await storageLimitsFor(db, token.transmitterId);
 
     return reply.send({
-      quotaBytes: DEFAULT_USER_QUOTA_BYTES,
+      quotaBytes: limits.quotaBytes,
+      maxUploadBytes: limits.maxUploadBytes,
+      storageGroup: limits.group?.name ?? null,
       usedBytes,
-      remainingBytes: Math.max(0, DEFAULT_USER_QUOTA_BYTES - usedBytes),
+      remainingBytes: Math.max(0, limits.quotaBytes - usedBytes),
       fileCount: Number(usage[0]?.fileCount || 0),
       hasAcceptedUploadDisclaimer: transmitter?.hasAcceptedUploadDisclaimer || false,
     });

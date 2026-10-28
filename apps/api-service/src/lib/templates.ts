@@ -71,7 +71,7 @@ export async function snapshotOf(db: any, beaconId: string): Promise<TemplateSna
       parentKey: r.parentId ? keyOf.get(r.parentId) ?? null : null,
       position: r.position,
     })),
-    clearances: roles.map((c: any) => ({ name: c.name, color: c.color, position: c.position, permissions: c.permissions.toString(), hoist: c.hoist })),
+    clearances: roles.map((c: any) => ({ name: c.name, color: c.color, position: c.position, permissions: c.permissions.toString(), hoist: c.hoist, mentionable: c.mentionable })),
     settings: {
       defaultNotifications: beacon?.defaultNotifications ?? null,
       verificationLevel: beacon?.verificationLevel ?? 'none',
@@ -97,7 +97,7 @@ export async function applyTemplate(db: any, beaconId: string, snap: TemplateSna
     if (c.position === 0) {
       await db.update(clearances).set({ permissions: BigInt(c.permissions) }).where(and(eq(clearances.beaconId, beaconId), eq(clearances.position, 0)));
     } else {
-      await db.insert(clearances).values({ beaconId, name: c.name, color: c.color, position: c.position, permissions: BigInt(c.permissions), hoist: c.hoist });
+      await db.insert(clearances).values({ beaconId, name: c.name, color: c.color, position: c.position, permissions: BigInt(c.permissions), hoist: c.hoist, mentionable: !!c.mentionable });
     }
   }
   const s = snap.settings;

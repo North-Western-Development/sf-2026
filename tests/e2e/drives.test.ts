@@ -12,8 +12,8 @@ describe('Vault: cloud drive picker', () => {
   let app: FastifyInstance;
   let db: any;
   let mock: MockDrives;
-  const alice = { id: 'd4000000-0000-4000-8000-000000000001', username: 'drive_alice' };
-  const bob = { id: 'd4000000-0000-4000-8000-000000000002', username: 'drive_bob' };
+  const alice = { id: '485372473581502465', username: 'drive_alice' };
+  const bob = { id: '485372473581502466', username: 'drive_bob' };
   const tok = (u: typeof alice) => signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET);
   const inject = (method: string, url: string, user?: typeof alice, payload?: unknown, headers: Record<string, string> = {}) =>
     app.inject({ method: method as any, url, payload: payload as any, headers: { ...(user ? { authorization: `Bearer ${tok(user)}` } : {}), ...headers } });

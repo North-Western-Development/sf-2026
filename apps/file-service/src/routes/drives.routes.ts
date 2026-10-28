@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
-import { and, eq, driveConnections, transmitters, vaultFiles } from '@subspace/database';
+import { and, eq, driveConnections, transmitters, vaultFiles, storageLimitsFor } from '@subspace/database';
 import { getJwtSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from '../s3.js';
 import { DRIVES, DRIVE_PROVIDERS, DriveError, isDriveConfigured, type DriveAdapter, type DriveProviderId } from '../integrations/drives.js';
-import { extractAuthToken, MAX_FILE_SIZE_BYTES, DEFAULT_USER_QUOTA_BYTES, vaultBytesUsed } from './vault.routes.js';
+import { extractAuthToken, vaultBytesUsed } from './vault.routes.js';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const COOKIE = 'subspace_drive_oauth';
@@ -271,15 +271,16 @@ export const driveRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       const adapter = DRIVES[provider];
       try {
         const used = await vaultBytesUsed(db, token.transmitterId);
+        const { quotaBytes, maxUploadBytes } = await storageLimitsFor(db, token.transmitterId);
         const download = await withToken(token.transmitterId, adapter, async (t) => {
           const item = await adapter.metadata(t, fileId);
           if (!item.importable) throw new DriveError(item.isFolder ? 'Folders cannot be imported; open it and pick files.' : 'That item cannot be imported.', 400, 'NOT_IMPORTABLE');
-          if (item.size !== undefined && item.size > MAX_FILE_SIZE_BYTES) throw new DriveError('File is larger than the 50 MB upload limit.', 400, 'FILE_TOO_LARGE');
-          if (item.size !== undefined && used + item.size > DEFAULT_USER_QUOTA_BYTES) throw new DriveError('Subspace Vault storage quota exceeded', 403, 'STORAGE_QUOTA_EXCEEDED');
-          return adapter.download(t, item, MAX_FILE_SIZE_BYTES);
+          if (item.size !== undefined && item.size > maxUploadBytes) throw new DriveError(`File is larger than the ${Math.round(maxUploadBytes / 1048576)} MB upload limit.`, 400, 'FILE_TOO_LARGE');
+          if (item.size !== undefined && used + item.size > quotaBytes) throw new DriveError('Subspace Vault storage quota exceeded', 403, 'STORAGE_QUOTA_EXCEEDED');
+          return adapter.download(t, item, maxUploadBytes);
         });
         if (!download.body.length) throw new DriveError('That file is empty.', 400, 'EMPTY_FILE');
-        if (used + download.body.length > DEFAULT_USER_QUOTA_BYTES) throw new DriveError('Subspace Vault storage quota exceeded', 403, 'STORAGE_QUOTA_EXCEEDED');
+        if (used + download.body.length > quotaBytes) throw new DriveError('Subspace Vault storage quota exceeded', 403, 'STORAGE_QUOTA_EXCEEDED');
 
         const filename = download.filename.trim().slice(0, 255) || 'file';
         const storageKey = `vaults/${token.transmitterId}/${crypto.randomUUID()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;

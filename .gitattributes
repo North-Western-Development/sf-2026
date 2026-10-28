@@ -2,3 +2,9 @@
 *.conf text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
+
+# Server scripts and configs run on Linux.
+deploy/** text eol=lf
+
+# The SDKs ship copies of their sources inside the Unity and Unreal packages; keep them byte-identical.
+sdk/** text eol=lf

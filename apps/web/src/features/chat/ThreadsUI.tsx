@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
-import { Lock, MessagesSquare, X } from 'lucide-react';
+import { Lock, MessagesSquare, UserPlus, X } from 'lucide-react';
 import { Tooltip } from '@subspace/ui';
 import { useStore, setState } from '../../data/store';
 import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
@@ -20,6 +20,7 @@ export function ThreadsPopover({ relay, anchor, onClose }: { relay: Relay; ancho
   const navigate = useNavigate();
   const threads = useThreads((s) => s.byRelay[relay.id]);
   const canCreate = useStore((s) => can(relayPermissions(s, relay.id), PERMISSIONS.CREATE_THREADS));
+  const canCreatePrivate = useStore((s) => can(relayPermissions(s, relay.id), PERMISSIONS.CREATE_PRIVATE_THREADS));
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     void loadThreads(relay.id).catch(() => undefined);
@@ -55,6 +56,18 @@ export function ThreadsPopover({ relay, anchor, onClose }: { relay: Relay; ancho
             Create
           </button>
         )}
+        {canCreatePrivate && (
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              startThread(relay, navigate, undefined, true);
+            }}
+            className="flex items-center gap-1 rounded-md bg-overlay px-3 py-1 text-sm font-semibold text-fg ring-1 ring-line-strong hover:bg-hover"
+          >
+            <Lock className="h-3.5 w-3.5" /> Private
+          </button>
+        )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {!threads && <p className="py-6 text-center text-sm text-fg-subtle">Loading…</p>}
@@ -71,7 +84,10 @@ export function ThreadsPopover({ relay, anchor, onClose }: { relay: Relay; ancho
           >
             <MessagesSquare className="h-4 w-4 shrink-0 text-fg-subtle" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium text-fg">{t.title}</span>
+              <span className="flex items-center gap-1.5 truncate font-medium text-fg">
+                {t.title}
+                {t.isPrivate && <span className="rounded bg-active px-1 text-[10px] font-bold uppercase text-fg-muted">Private</span>}
+              </span>
               <span className="block text-xs text-fg-subtle">
                 {t.messageCount} {t.messageCount === 1 ? 'message' : 'messages'} · {formatMessageTime(t.lastTransmissionAt)}
               </span>
@@ -89,7 +105,9 @@ export function ThreadsPopover({ relay, anchor, onClose }: { relay: Relay; ancho
 export function TextThreadPane({ relay, threadId }: { relay: Relay; threadId: string }) {
   const navigate = useNavigate();
   const thread = useThreads((s) => s.byId[threadId]);
-  const canManage = useStore((s) => can(relayPermissions(s, relay.id), PERMISSIONS.MANAGE_TRANSMISSIONS));
+  const canManage = useStore((s) => can(relayPermissions(s, relay.id), PERMISSIONS.MANAGE_THREADS));
+  const [adding, setAdding] = useState(false);
+  const members = useStore((s) => s.members[relay.beaconId]);
   const key = channelKey('thread', threadId);
   useEffect(() => {
     if (!thread) void loadThreads(relay.id).catch(() => toast('Could not load the thread', 'error'));
@@ -115,6 +133,40 @@ export function TextThreadPane({ relay, threadId }: { relay: Relay; threadId: st
               <Lock className="h-4 w-4" />
             </button>
           </Tooltip>
+        )}
+        {thread?.isPrivate && (
+          <span className="relative">
+            <Tooltip content="Add Members" placement="bottom">
+              <button type="button" aria-label="Add Members" onClick={() => setAdding((v) => !v)} className="flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </Tooltip>
+            {adding && (
+              <select
+                aria-label="Add a member to this thread"
+                autoFocus
+                value=""
+                onBlur={() => setAdding(false)}
+                onChange={async (e) => {
+                  const id = e.target.value;
+                  if (!id) return;
+                  setAdding(false);
+                  await http
+                    .put(`/relays/${relay.id}/threads/${thread.id}/members/${id}`)
+                    .then(() => toast('Added to the thread', 'success'))
+                    .catch((err) => toast((err as Error).message, 'error'));
+                }}
+                className="absolute right-0 top-9 z-10 h-8 w-56 rounded-md border border-line bg-overlay px-1 text-sm text-fg shadow-pop"
+              >
+                <option value="">Choose a member…</option>
+                {Object.values(members ?? {}).map((m) => (
+                  <option key={m.transmitterId} value={m.transmitterId}>
+                    {m.nickname || m.user.displayName || m.user.username}
+                  </option>
+                ))}
+              </select>
+            )}
+          </span>
         )}
         <Tooltip content="Close" placement="bottom">
           <button type="button" aria-label="Close thread" onClick={() => navigate(`/channels/${relay.beaconId}/${relay.id}`)} className="flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg">

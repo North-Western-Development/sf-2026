@@ -1,9 +1,9 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { eq, relays } from '@subspace/database';
+import { and, eq, relays, beaconMembers } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 import { requireSecret } from '@subspace/crypto';
-import { createLiveKitAccessToken } from './livekit.js';
+import { createLiveKitAccessToken, forceRelay } from './livekit.js';
 import { readStage } from './stage.routes.js';
 
 const LIVEKIT_API_KEY = requireSecret('LIVEKIT_API_KEY', 'subspace_api_key');
@@ -60,6 +60,14 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
     // On a Stage only its speakers publish; everyone else joins as the audience.
     const audience = targetRelay.type === 'stage' && !(await readStage((app as any).redis, relayId)).speakers.includes(token.transmitterId);
 
+    const [member] = await db
+      .select({ muted: beaconMembers.serverMuted, deafened: beaconMembers.serverDeafened })
+      .from(beaconMembers)
+      .where(and(eq(beaconMembers.beaconId, targetRelay.beaconId), eq(beaconMembers.transmitterId, token.transmitterId)))
+      .limit(1);
+    const serverMuted = !!member?.muted;
+    const serverDeafened = !!member?.deafened;
+
     try {
       const roomToken = createLiveKitAccessToken({
         apiKey: LIVEKIT_API_KEY,
@@ -70,15 +78,21 @@ export const commLinkRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
         permissions: actorContext.effectivePermissions,
         isOwner: actorContext.isOwner,
         audience,
+        serverMuted,
+        serverDeafened,
       });
 
       return reply.send({
         message: 'Comm-Link access token issued',
         token: roomToken,
         livekitUrl: LIVEKIT_PUBLIC_URL,
+        forceRelay: forceRelay(),
         roomName: relayId,
-        canSpeak: !audience && (actorContext.isOwner || hasPermission(actorContext.effectivePermissions, PERMISSIONS.SPEAK_AUDIO)),
-        canHoloCast: !audience && (actorContext.isOwner || hasPermission(actorContext.effectivePermissions, PERMISSIONS.BROADCAST_HOLO_CAST)),
+        canSpeak: !audience && !serverMuted && !serverDeafened && (actorContext.isOwner || hasPermission(actorContext.effectivePermissions, PERMISSIONS.SPEAK_AUDIO)),
+        serverMuted,
+        serverDeafened,
+        canVideo: !audience && (actorContext.isOwner || hasPermission(actorContext.effectivePermissions, PERMISSIONS.BROADCAST_HOLO_CAST)),
+        canShareScreen: !audience && (actorContext.isOwner || hasPermission(actorContext.effectivePermissions, PERMISSIONS.SHARE_SCREEN)),
       });
     } catch (err: any) {
       return reply.status(403).send({

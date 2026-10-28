@@ -8,6 +8,7 @@ import {
   subspaceMeshes,
   subspaceMeshMembers,
   signalBlacklist,
+  canSeeThread,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { resolveBeaconActorContext, resolveRelayActorContext, ClearanceContext } from '../middleware/hierarchy.js';
@@ -24,6 +25,7 @@ export interface LoadedChannel {
   /** For relay: same as channelId. For thread: the parent relay id. */
   relayId?: string;
   threadLocked?: boolean;
+  threadPrivate?: boolean;
   participants?: string[];
 }
 
@@ -45,6 +47,7 @@ export async function loadChannel(db: any, channelType: string, channelId: strin
       beaconId: relay.beaconId,
       relayId: relay.id,
       threadLocked: thread.isLocked,
+      threadPrivate: thread.isPrivate,
     };
   }
   if (channelType === 'link') {
@@ -92,12 +95,16 @@ export async function checkChannelAccess(
     if (!actorContext || !hasPermission(actorContext.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
       return { allowed: false, status: 404, error: 'Channel not found or not visible' };
     }
+    if (channel.channelType === 'thread' && channel.threadPrivate && !(await canSeeThread(db, transmitterId, { id: channel.channelId, relayId: channel.relayId!, isPrivate: true }))) {
+      return { allowed: false, status: 404, error: 'Channel not found or not visible' };
+    }
     if (channel.channelType === 'thread' && channel.threadLocked && action === 'send') {
-      if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_TRANSMISSIONS)) {
+      if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_THREADS)) {
         return { allowed: false, status: 403, error: 'Archival thread is locked', code: 'THREAD_LOCKED', actorContext };
       }
     }
-    const required = RELAY_PERMISSION_FOR[action];
+    // Posting in a thread is its own permission (Send Transmissions in Threads).
+    const required = channel.channelType === 'thread' && action === 'send' ? PERMISSIONS.SEND_IN_THREADS : RELAY_PERMISSION_FOR[action];
     if (action === 'pin') {
       const allowed =
         hasPermission(actorContext.effectivePermissions, PERMISSIONS.PIN_TRANSMISSIONS) ||
@@ -159,6 +166,7 @@ export async function checkChannelAccess(
 }
 
 export function audienceForChannel(channel: LoadedChannel): Audience {
+  if (channel.channelType === 'thread' && channel.threadPrivate) return { threadId: channel.channelId };
   if (channel.channelType === 'relay' || channel.channelType === 'thread') return { relayId: channel.relayId! };
   if (channel.channelType === 'mesh') return { meshId: channel.channelId };
   return { transmitterIds: channel.participants || [] };

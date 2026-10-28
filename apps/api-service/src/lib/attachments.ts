@@ -24,7 +24,7 @@ export async function resolveVaultAttachments(db: any, ownerId: string, ids: unk
   if (!Array.isArray(ids) || ids.length > MAX_ATTACHMENTS || ids.some((id) => typeof id !== 'string')) return null;
   const unique = [...new Set(ids as string[])];
   if (unique.length === 0) return [];
-  if (unique.some((id) => !/^[0-9a-f-]{36}$/i.test(id))) return null;
+  if (unique.some((id) => !/^[1-9][0-9]{0,18}$/.test(id))) return null;
   const files = await db
     .select()
     .from(vaultFiles)

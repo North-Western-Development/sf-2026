@@ -25,9 +25,23 @@
   --vp-code-block-bg: #0d0f16;
 }
 
-.VPNavBar,
-.VPLocalNav {
-  background-color: rgb(3 3 5 / 0.85) !important;
+/*
+ * One colour for the whole top bar. VitePress paints only the nav's
+ * content area (--vp-nav-bg-color) on pages with a sidebar and leaves the
+ * gutters transparent, so the bar itself must not get a background of its
+ * own: a different one shows as a box at the right edge.
+ */
+:root,
+.dark {
+  --vp-nav-bg-color: var(--vp-c-bg);
+  --vp-local-nav-bg-color: var(--vp-c-bg);
+}
+
+/* The star is square: give it a little more room than the default 24px. */
+.VPNavBarTitle .logo {
+  height: 28px;
+  width: 28px;
+  object-fit: contain;
 }
 
 .VPHero .image-src {

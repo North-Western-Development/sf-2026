@@ -406,7 +406,8 @@ export const archivalRoutes: FastifyPluginAsync = async (app: FastifyInstance) =
       .where(eq(archivalThreads.id, threadId))
       .returning();
 
-    await publishGatewayEvent(app, 'THREAD_UPDATE', { relayId: updated.relayId, thread: updated }, { relayId: updated.relayId });
+    // A private thread's changes reach only its members (and Manage Threads), not the whole relay.
+    await publishGatewayEvent(app, 'THREAD_UPDATE', { relayId: updated.relayId, thread: updated }, { threadId: updated.id });
 
     return reply.send({
       message: 'Thread parameters updated',

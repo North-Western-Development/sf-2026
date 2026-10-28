@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { eq, transmissions } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { safeGet, resolveSafe, UnsafeUrlError } from '../../lib/safe-fetch.js';
-import { unfurlCached, verifyProxySignature, parsePageMetadata } from '../../lib/embeds.js';
+import { unfurlCached, verifyProxySignature, parsePageMetadata, proxied as proxyFor } from '../../lib/embeds.js';
 import { loadChannel, checkChannelAccess } from '../../lib/channels.js';
 import { deriveChannel } from '../../lib/transmissions.js';
 import { publishGatewayEvent, audienceForTransmission } from '../../lib/events.js';
@@ -91,12 +91,47 @@ export const unfurlRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
   );
 
   /**
+   * POST /api/v1/embed-proxy/sign  { urls }
+   * Proxy addresses for Rich Presence images: activities carry the game's own https URLs, and the
+   * people who see them load them through /embed-proxy instead of from the game's servers.
+   */
+  app.post(
+    '/embed-proxy/sign',
+    {
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['urls'],
+          properties: { urls: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 512 } } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const token = extractAuthToken(request);
+      if (!token) return reply.status(401).send({ error: 'Authentication required' });
+      const { urls } = request.body as { urls: string[] };
+      const proxied: Record<string, string> = {};
+      for (const url of urls) {
+        try {
+          if (new URL(url).protocol !== 'https:') continue;
+        } catch {
+          continue;
+        }
+        proxied[url] = proxyFor(url).proxyUrl;
+      }
+      return reply.send({ proxied });
+    }
+  );
+
+  /**
    * DELETE /api/v1/transmissions/:id/embeds
    * Remove a transmission's link previews (its author, or anyone who can manage transmissions).
    */
   app.delete(
     '/transmissions/:id/embeds',
-    { schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string', format: 'uuid' } } } } },
+    { schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } } } },
     async (request, reply) => {
       const token = extractAuthToken(request);
       if (!token) return reply.status(401).send({ error: 'Authentication required' });

@@ -102,12 +102,15 @@ export class SubspaceS3Storage {
     storageKey: string,
     contentType: string,
     expiresInSeconds = 900, // 15 minutes
-    bucket: string = this.bucket
+    bucket: string = this.bucket,
+    /** Signed into the URL: storage refuses a body of any other size. */
+    contentLength?: number
   ): Promise<string> {
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: storageKey,
       ContentType: contentType,
+      ...(contentLength ? { ContentLength: contentLength } : {}),
     });
     return getSignedUrl(this.signer, command, { expiresIn: expiresInSeconds });
   }

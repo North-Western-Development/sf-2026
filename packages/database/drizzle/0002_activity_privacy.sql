@@ -1,0 +1,1 @@
+ALTER TABLE "transmitters" ADD COLUMN "activity_visibility" text DEFAULT 'off' NOT NULL;

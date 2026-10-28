@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { authorizeCall, transmissions } from '@subspace/database';
 import { requireSecret } from '@subspace/crypto';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
-import { createLiveKitAccessToken } from '../media/livekit.js';
+import { createLiveKitAccessToken, forceRelay } from '../media/livekit.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { formatTransmission } from '../../lib/transmissions.js';
 import { loadChannel } from '../../lib/channels.js';
@@ -39,7 +39,7 @@ export const callRoom = (type: string, id: string) => `call-${type}-${id}`;
 const params = {
   type: 'object',
   required: ['channelType', 'channelId'],
-  properties: { channelType: { type: 'string', enum: ['link', 'mesh'] }, channelId: { type: 'string', format: 'uuid' } },
+  properties: { channelType: { type: 'string', enum: ['link', 'mesh'] }, channelId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
 };
 
 const publicCall = (c: CallRecord) => ({
@@ -80,7 +80,7 @@ export const callRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       const wanted = String((request.query as any).channels || '')
         .split(',')
         .map((k) => k.split(':'))
-        .filter(([t, id]) => (t === 'link' || t === 'mesh') && /^[0-9a-f-]{36}$/i.test(id ?? ''))
+        .filter(([t, id]) => (t === 'link' || t === 'mesh') && /^[1-9][0-9]{0,18}$/.test(id ?? ''))
         .slice(0, 200);
       const calls = [];
       for (const [type, id] of wanted) {
@@ -191,6 +191,6 @@ export const callRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       permissions: 0n,
       isOwner: true, // everyone in a DM call may speak, show video and share their screen
     });
-    return reply.send({ token: grant, livekitUrl: LIVEKIT_PUBLIC_URL, roomName, canSpeak: true, canHoloCast: true, call: publicCall(call) });
+    return reply.send({ token: grant, livekitUrl: LIVEKIT_PUBLIC_URL, forceRelay: forceRelay(), roomName, canSpeak: true, canVideo: true, canShareScreen: true, call: publicCall(call) });
   });
 };

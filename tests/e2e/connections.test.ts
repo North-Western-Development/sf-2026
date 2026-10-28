@@ -12,8 +12,8 @@ describe('Connections', () => {
   let app: FastifyInstance;
   let db: any;
   let mock: MockDrives;
-  const pilot = { id: 'fe300000-0000-4000-8000-000000000001', username: 'conn_pilot' };
-  const viewer = { id: 'fe300000-0000-4000-8000-000000000002', username: 'conn_viewer' };
+  const pilot = { id: '814732829158539265', username: 'conn_pilot' };
+  const viewer = { id: '814732829158539266', username: 'conn_viewer' };
   const tok = (u: typeof pilot) => signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET);
   const inject = (method: string, url: string, user?: typeof pilot, payload?: unknown, headers: Record<string, string> = {}) =>
     app.inject({ method: method as any, url, payload: payload as any, headers: { ...(user ? { authorization: `Bearer ${tok(user)}` } : {}), ...headers } });

@@ -18,9 +18,9 @@ describe('Text Relays, Transmissions & Direct Messaging E2E Suite', () => {
   let app: FastifyInstance;
 
   // Transmitters
-  const userAId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-  const userBId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-  const userCId = 'cccccccc-cccc-cccc-cccc-cccccccccccc'; // Non-shared beacon user
+  const userAId = '416404954512140970';
+  const userBId = '808045449963355067';
+  const userCId = '299685945414569164'; // Non-shared beacon user
 
   let tokenA: string;
   let tokenB: string;
@@ -330,16 +330,16 @@ describe('Text Relays, Transmissions & Direct Messaging E2E Suite', () => {
 
     // 1. Exceeding 10 members -> rejected
     const tooManyMembers = [
-      '11111111-1111-1111-1111-111111111111',
-      '22222222-2222-2222-2222-222222222222',
-      '33333333-3333-3333-3333-333333333333',
-      '44444444-4444-4444-4444-444444444444',
-      '55555555-5555-5555-5555-555555555555',
-      '66666666-6666-6666-6666-666666666666',
-      '77777777-7777-7777-7777-777777777777',
-      '88888888-8888-8888-8888-888888888888',
-      '99999999-9999-9999-9999-999999999999',
-      'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      '491640495451214097',
+      '883280990902428194',
+      '374921486353642291',
+      '766561981804856388',
+      '258202477256070485',
+      '649842972707284582',
+      '141483468158498679',
+      '533123963609712776',
+      '924764459060926873',
+      '651803472605802222',
     ];
     const invalidMeshRes = await app.inject({
       method: 'POST',

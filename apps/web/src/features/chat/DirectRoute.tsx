@@ -9,19 +9,53 @@ import { Avatar } from '../common/Avatar';
 import { UserName } from '../common/UserName';
 import { openModal } from '../../app/ui';
 import { CallButtons, CallPanel } from '../voice/DmCall';
-import { EncryptionButton } from './EncryptionControls';
+import { EncryptionButton, MeshEncryptionButton } from './EncryptionControls';
+import { ProfileGameActivity } from '../activity/ActivityViews';
+import { NotebookPen } from 'lucide-react';
+import { Tooltip } from '@subspace/ui';
+import { useProfile, type FullProfile } from '../profile/useProfile';
+import { ProfileNote, noteBoxNear } from '../profile/ProfileParts';
+import { useChatPrefs } from '../../lib/chatPrefs';
 
 function DmProfilePanel({ user }: { user: UserRef }) {
   const status = useStore((s) => s.presence[user.id]?.customStatus?.text);
+  const profile = useProfile(user.id) as FullProfile | null;
+  const showNote = useChatPrefs((p) => p.notesInProfilePanel) && !user.botKind;
   return (
     <aside aria-label="Profile" className="w-[340px] shrink-0 overflow-y-auto bg-raised">
       <div className="h-[120px] bg-brand-gradient" />
       <div className="-mt-12 px-4">
         <Avatar user={user} size={92} showPresence ring="var(--color-raised)" className="rounded-full ring-[6px] ring-raised" />
         <div className="mt-3">
-          <UserName user={user} className="block text-xl font-bold" />
+          <div className="flex items-center gap-2">
+            <UserName user={user} className="block text-xl font-bold" />
+            {!user.botKind && (
+              <Tooltip content={profile?.note ? 'Edit Note (only visible to you)' : 'Add Note (only visible to you)'}>
+                <button
+                  type="button"
+                  aria-label={profile?.note ? 'Edit Note' : 'Add Note'}
+                  onClick={(e) => {
+                    // The note box is at the bottom; with it hidden, the full profile has one.
+                    const box = noteBoxNear(e.currentTarget, user.id);
+                    if (box) box.focus();
+                    else openModal({ kind: 'profile', userId: user.id });
+                  }}
+                  className="rounded p-0.5 text-fg-muted hover:bg-hover hover:text-fg"
+                >
+                  <NotebookPen className="h-4 w-4" aria-hidden />
+                </button>
+              </Tooltip>
+            )}
+          </div>
           <p className="text-sm text-fg-muted">{userTag(user)}</p>
-          {status && <p className="mt-2 text-sm text-fg">{status}</p>}
+          {status && (
+            <p title={status} className="mt-2 line-clamp-2 text-sm text-fg [overflow-wrap:anywhere] hover:line-clamp-none">
+              {status}
+            </p>
+          )}
+        </div>
+        <div className="mt-4 empty:hidden">
+          <ProfileGameActivity userId={user.id} />
         </div>
         <button
           type="button"
@@ -30,6 +64,11 @@ function DmProfilePanel({ user }: { user: UserRef }) {
         >
           View Full Profile
         </button>
+        {showNote && profile && (
+          <div className="mb-4 mt-4 border-t border-line pt-3">
+            <ProfileNote userId={user.id} initial={profile.note} maxLength={profile.noteMaxLength} />
+          </div>
+        )}
       </div>
     </aside>
   );
@@ -87,7 +126,12 @@ export function DirectRoute() {
         icon={<Users className="h-6 w-6" />}
         title={name}
         placeholder={`Transmit to ${name}`}
-        actions={<CallButtons channelKey={channelKey('mesh', mesh.id)} />}
+        actions={
+          <>
+            <MeshEncryptionButton mesh={mesh} />
+            <CallButtons channelKey={channelKey('mesh', mesh.id)} />
+          </>
+        }
         banner={<CallPanel channelKey={channelKey('mesh', mesh.id)} />}
         aside={
           <aside aria-label="Members" className="w-60 shrink-0 overflow-y-auto bg-raised px-2 pb-4">
@@ -108,6 +152,11 @@ export function DirectRoute() {
             </span>
             <h2 className="mt-2 text-[32px] font-bold leading-tight text-fg">{name}</h2>
             <p className="mt-2 text-fg-muted">Welcome to the beginning of the {name} {term('mesh').toLowerCase()}.</p>
+            {mesh.encryptedAt && (
+              <p className="mt-2 flex items-center gap-1.5 text-sm text-online">
+                <Lock className="h-4 w-4" /> Transmissions and calls here are end-to-end encrypted.
+              </p>
+            )}
           </div>
         }
       />

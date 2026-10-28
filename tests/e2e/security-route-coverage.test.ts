@@ -28,14 +28,18 @@ const PUBLIC: Record<string, string> = {
   'POST /api/v1/oauth2/token/revoke': 'OAuth2 revocation; the client authenticates with its secret',
   'GET /api/v1/oauth2/@me': 'For apps: authenticated by an OAuth2 access token, not a session',
   'GET /api/v1/oauth2/@me/beacons': 'For apps: authenticated by an OAuth2 access token with the beacons scope',
+  'POST /api/v1/webhooks/:id/:token': 'Webhook execute: the secret token in the URL is the credential (hashed, per webhook rate limit)',
+  'POST /api/v1/interactions/:id/:token/callback': 'Bot answers an interaction: the 15-minute interaction token is the credential (hashed in Redis)',
+  'POST /api/v1/interactions/:id/:token/followup': 'Bot follow-up to an interaction it answered: the interaction token is the credential',
+  'PATCH /api/v1/interactions/:id/:token/original': 'Bot edits its reply to an interaction: the interaction token is the credential',
   'GET /api/v1/connections/:provider/callback': 'Connections sign-in popup landing; sealed state names the account and an HttpOnly cookie binds it to the browser',
   'GET /api/v1/vault/drives/:provider/callback': 'OAuth popup landing; sealed state names the account and an HttpOnly cookie binds it to the browser',
   'GET /api/v1/vault/files/:id': 'attachment links work in <img> tags; unguessable ids, as the upload disclaimer states',
   'GET /api/v1/beacons/:id/widget.json': 'the beacon widget embeds on other sites; only when its admins turn it on, online members only, no ids',
 };
 
-const UUID = '00000000-0000-4000-8000-00000000dead';
-const fill = (url: string) => url.replace(/:[A-Za-z]+/g, (p) => (p === ':code' ? 'nonexistent' : UUID)).replace(/\*$/, 'x');
+const ID = '978275694148509357';
+const fill = (url: string) => url.replace(/:[A-Za-z]+/g, (p) => (p === ':code' ? 'nonexistent' : ID)).replace(/\*$/, 'x');
 const key = (r: { method: string; url: string }) => `${r.method} ${r.url}`;
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
 /** Minimal HS256 signer, so tokens can be forged with the wrong secret or claims. */
@@ -70,10 +74,10 @@ describe('Security: every endpoint has an authentication decision', () => {
   });
 
   const forged = () => ({
-    none: `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ transmitterId: UUID, username: 'x', typ: 'access' })}.`,
-    wrongSecret: sign({ transmitterId: UUID, username: 'x', staffRank: 9, typ: 'access' }, 'not-the-real-secret'),
-    expired: sign({ transmitterId: UUID, username: 'x', staffRank: 0, typ: 'access', exp: Math.floor(Date.now() / 1000) - 60 }, SECRET),
-    refreshAsAccess: sign({ transmitterId: UUID, username: 'x', typ: 'refresh', exp: Math.floor(Date.now() / 1000) + 600 }, SECRET),
+    none: `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ transmitterId: ID, username: 'x', typ: 'access' })}.`,
+    wrongSecret: sign({ transmitterId: ID, username: 'x', staffRank: 9, typ: 'access' }, 'not-the-real-secret'),
+    expired: sign({ transmitterId: ID, username: 'x', staffRank: 0, typ: 'access', exp: Math.floor(Date.now() / 1000) - 60 }, SECRET),
+    refreshAsAccess: sign({ transmitterId: ID, username: 'x', typ: 'refresh', exp: Math.floor(Date.now() / 1000) + 600 }, SECRET),
   });
 
   it('found the routes to sweep', () => {

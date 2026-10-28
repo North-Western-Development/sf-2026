@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
-import { and, eq, transmitters, transmitterPasskeys } from '@subspace/database';
+import { and, eq, transmitters, transmitterPasskeys, newSnowflake } from '@subspace/database';
 import { PasskeyManager } from '@subspace/crypto';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { confirmPassword } from '../../lib/confirm-password.js';
@@ -136,7 +135,7 @@ export const passkeyRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
     '/:id',
     {
       schema: {
-        params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+        params: { type: 'object', properties: { id: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } },
         body: { type: 'object', required: ['name'], properties: { name: { type: 'string', minLength: 1, maxLength: 64 } } },
       },
     },
@@ -158,7 +157,7 @@ export const passkeyRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
     '/:id/delete',
     {
       schema: {
-        params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+        params: { type: 'object', properties: { id: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } },
         body: { type: 'object', properties: { password: { type: 'string', maxLength: 200 } } },
       },
     },
@@ -185,7 +184,7 @@ export const passkeyRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
     const rp = relyingParty(request);
     if (!rp) return reply.status(400).send(badOrigin);
     const options = await PasskeyManager.generateAuthenticationOptions({ rpID: rp.rpID, userVerification: 'required' });
-    const challengeId = randomUUID();
+    const challengeId = newSnowflake();
     await redis.set(`webauthn:auth:${challengeId}`, JSON.stringify({ challenge: options.challenge, ...rp }), 'EX', CHALLENGE_TTL_SECONDS);
     return reply.send({ options, challengeId });
   });
@@ -202,7 +201,7 @@ export const passkeyRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         body: {
           type: 'object',
           required: ['challengeId', 'response'],
-          properties: { challengeId: { type: 'string', format: 'uuid' }, response: { type: 'object' }, reactivate: { type: 'boolean' } },
+          properties: { challengeId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' }, response: { type: 'object' }, reactivate: { type: 'boolean' } },
         },
       },
     },

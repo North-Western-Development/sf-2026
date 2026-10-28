@@ -9,12 +9,12 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node scripts/migrate.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "@subspace/constants": "workspace:*",
-    "drizzle-orm": "^0.39.3",
+    "drizzle-orm": "^0.45.4",
     "pg": "^8.13.3"
   },
   "devDependencies": {

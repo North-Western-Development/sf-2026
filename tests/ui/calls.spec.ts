@@ -1,8 +1,9 @@
 import { test, expect, register, signIn, openAs } from './fixtures';
+import { MEDIA_ARGS } from '../support/fake-voice';
 
 // Real LiveKit, with Chromium's fake camera and microphone, as in voice.spec.ts.
 test.use({
-  launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
+  launchOptions: { args: MEDIA_ARGS },
   permissions: ['microphone', 'camera'],
 });
 

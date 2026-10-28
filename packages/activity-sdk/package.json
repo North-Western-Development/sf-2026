@@ -1,0 +1,40 @@
+{
+  "name": "@subspace/activity-sdk",
+  "version": "0.1.0",
+  "description": "Build Activities for Subspace Frequency: web apps people open together inside a comm-link. Browser ESM, no dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "subspace",
+    "activity",
+    "embedded-app",
+    "sdk",
+    "postmessage",
+    "oauth2"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepack": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

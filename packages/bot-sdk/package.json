@@ -1,0 +1,46 @@
+{
+  "name": "@subspace/bot-sdk",
+  "version": "0.1.0",
+  "description": "Build bots for Subspace Frequency: REST, the real-time gateway, slash commands and interactions. Node 18+, Deno and Bun.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "subspace",
+    "bot",
+    "sdk",
+    "gateway",
+    "slash-commands",
+    "deno"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test:deno": "deno test --allow-net --allow-read --allow-env deno/",
+    "prepack": "tsc"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "@types/ws": "^8.5.14",
+    "typescript": "^5.7.3"
+  }
+}

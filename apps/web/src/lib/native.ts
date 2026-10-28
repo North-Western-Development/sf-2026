@@ -9,6 +9,9 @@ interface NativeShell {
 
 export const nativeShell = (): NativeShell | null => (window as unknown as { subspaceNative?: NativeShell }).subspaceNative ?? null;
 
+/** Running inside the desktop or mobile app (they open the app itself, never the homepage). */
+export const inAppShell = () => !!nativeShell() || !!(window as unknown as { subspaceDesktop?: boolean }).subspaceDesktop;
+
 /** Signed in inside the mobile app: let the server push notifications to this install. */
 export function registerPushToken() {
   const shell = nativeShell();

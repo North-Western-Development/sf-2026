@@ -1,5 +1,6 @@
-# One-shot schema sync: brings the database up to packages/database/src/schema.ts, then exits.
-# No --force: a change that would drop data stops here for an operator instead of running.
+# One-shot schema step: applies the generated SQL migrations (packages/database/drizzle), then
+# exits. A database built by schema push before migrations existed is pushed one last time
+# (no --force: a change that would drop data stops here for an operator) and adopted.
 FROM node:22-alpine
 WORKDIR /app
 RUN npm install -g pnpm@10.30.2
@@ -10,4 +11,5 @@ COPY packages/database ./packages/database
 
 RUN pnpm install --frozen-lockfile=false --filter @subspace/database...
 
-CMD ["pnpm", "--filter", "@subspace/database", "exec", "drizzle-kit", "push"]
+WORKDIR /app/packages/database
+CMD ["sh", "-c", "if [ \"$(node scripts/migrate.mjs --status)\" = unadopted ]; then npx drizzle-kit push && node scripts/migrate.mjs --adopt; fi && node scripts/migrate.mjs"]

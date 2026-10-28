@@ -1,0 +1,6014 @@
+{
+  "id": "85399311-dedf-40e8-aa84-4d4fb0dfaae5",
+  "prevId": "7e8572f2-bf72-4596-8bbb-daf19a54300a",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.account_connections": {
+      "name": "account_connections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_account_id": {
+          "name": "provider_account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "visible": {
+          "name": "visible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "account_connections_unique": {
+          "name": "account_connections_unique",
+          "columns": [
+            {
+              "expression": "transmitter_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_account_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "account_connections_transmitter_id_transmitters_id_fk": {
+          "name": "account_connections_transmitter_id_transmitters_id_fk",
+          "tableFrom": "account_connections",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.affiliations": {
+      "name": "affiliations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "greeting_note": {
+          "name": "greeting_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "affiliations_transmitter_id_transmitters_id_fk": {
+          "name": "affiliations_transmitter_id_transmitters_id_fk",
+          "tableFrom": "affiliations",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "affiliations_target_id_transmitters_id_fk": {
+          "name": "affiliations_target_id_transmitters_id_fk",
+          "tableFrom": "affiliations",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "target_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.archival_threads": {
+      "name": "archival_threads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "relay_id": {
+          "name": "relay_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tags": {
+          "name": "tags",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "is_pinned": {
+          "name": "is_pinned",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_locked": {
+          "name": "is_locked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_private": {
+          "name": "is_private",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "root_transmission_id": {
+          "name": "root_transmission_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "starter_transmission_id": {
+          "name": "starter_transmission_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transmission_count": {
+          "name": "transmission_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_transmission_id": {
+          "name": "last_transmission_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_transmission_at": {
+          "name": "last_transmission_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "archival_threads_relay_id_relays_id_fk": {
+          "name": "archival_threads_relay_id_relays_id_fk",
+          "tableFrom": "archival_threads",
+          "tableTo": "relays",
+          "columnsFrom": [
+            "relay_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "archival_threads_transmitter_id_transmitters_id_fk": {
+          "name": "archival_threads_transmitter_id_transmitters_id_fk",
+          "tableFrom": "archival_threads",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beacon_clusters": {
+      "name": "beacon_clusters",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#3B8EF2'"
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "beacon_ids": {
+          "name": "beacon_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "beacon_clusters_transmitter_id_transmitters_id_fk": {
+          "name": "beacon_clusters_transmitter_id_transmitters_id_fk",
+          "tableFrom": "beacon_clusters",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beacon_emojis": {
+      "name": "beacon_emojis",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uploader_id": {
+          "name": "uploader_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "beacon_emojis_beacon_id_beacons_id_fk": {
+          "name": "beacon_emojis_beacon_id_beacons_id_fk",
+          "tableFrom": "beacon_emojis",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "beacon_emojis_uploader_id_transmitters_id_fk": {
+          "name": "beacon_emojis_uploader_id_transmitters_id_fk",
+          "tableFrom": "beacon_emojis",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "uploader_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beacon_members": {
+      "name": "beacon_members",
+      "schema": "",
+      "columns": {
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nickname": {
+          "name": "nickname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_completed_onboarding": {
+          "name": "has_completed_onboarding",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "clearance_ids": {
+          "name": "clearance_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "avatar_url": {
+          "name": "avatar_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "banner_url": {
+          "name": "banner_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bio": {
+          "name": "bio",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pronouns": {
+          "name": "pronouns",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "theme_primary": {
+          "name": "theme_primary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "theme_accent": {
+          "name": "theme_accent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_name_style": {
+          "name": "display_name_style",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "join_method": {
+          "name": "join_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "join_invite_code": {
+          "name": "join_invite_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invited_by": {
+          "name": "invited_by",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timeout_until": {
+          "name": "timeout_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "allow_dms": {
+          "name": "allow_dms",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "message_requests": {
+          "name": "message_requests",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "share_activity": {
+          "name": "share_activity",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "activity_joining": {
+          "name": "activity_joining",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "server_muted": {
+          "name": "server_muted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "server_deafened": {
+          "name": "server_deafened",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "beacon_members_beacon_id_beacons_id_fk": {
+          "name": "beacon_members_beacon_id_beacons_id_fk",
+          "tableFrom": "beacon_members",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "beacon_members_transmitter_id_transmitters_id_fk": {
+          "name": "beacon_members_transmitter_id_transmitters_id_fk",
+          "tableFrom": "beacon_members",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "beacon_members_beacon_id_transmitter_id_pk": {
+          "name": "beacon_members_beacon_id_transmitter_id_pk",
+          "columns": [
+            "beacon_id",
+            "transmitter_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beacons": {
+      "name": "beacons",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "icon_url": {
+          "name": "icon_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "banner_url": {
+          "name": "banner_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_discoverable": {
+          "name": "is_discoverable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "suppress_custom_fonts": {
+          "name": "suppress_custom_fonts",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "rules_text": {
+          "name": "rules_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "system_channel_id": {
+          "name": "system_channel_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "welcome_messages": {
+          "name": "welcome_messages",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "welcome_wave": {
+          "name": "welcome_wave",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "setup_tips": {
+          "name": "setup_tips",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "default_notifications": {
+          "name": "default_notifications",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "afk_channel_id": {
+          "name": "afk_channel_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "afk_timeout": {
+          "name": "afk_timeout",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 300
+        },
+        "verification_level": {
+          "name": "verification_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "explicit_filter": {
+          "name": "explicit_filter",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'off'"
+        },
+        "invites_paused_until": {
+          "name": "invites_paused_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dms_paused_until": {
+          "name": "dms_paused_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tag": {
+          "name": "tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tag_badge": {
+          "name": "tag_badge",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "widget_enabled": {
+          "name": "widget_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "widget_channel_id": {
+          "name": "widget_channel_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "beacons_owner_id_transmitters_id_fk": {
+          "name": "beacons_owner_id_transmitters_id_fk",
+          "tableFrom": "beacons",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.clearances": {
+      "name": "clearances",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#99AAB5'"
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "permissions": {
+          "name": "permissions",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "allow_delegation": {
+          "name": "allow_delegation",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "hoist": {
+          "name": "hoist",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "managed_by": {
+          "name": "managed_by",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mentionable": {
+          "name": "mentionable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "clearances_beacon_id_beacons_id_fk": {
+          "name": "clearances_beacon_id_beacons_id_fk",
+          "tableFrom": "clearances",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.commendations": {
+      "name": "commendations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icon_url": {
+          "name": "icon_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "criteria_type": {
+          "name": "criteria_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "threshold": {
+          "name": "threshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_custom": {
+          "name": "is_custom",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "commendations_created_by_transmitters_id_fk": {
+          "name": "commendations_created_by_transmitters_id_fk",
+          "tableFrom": "commendations",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "commendations_code_unique": {
+          "name": "commendations_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.data_migrations": {
+      "name": "data_migrations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "applied_at": {
+          "name": "applied_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.drive_connections": {
+      "name": "drive_connections",
+      "schema": "",
+      "columns": {
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "account_label": {
+          "name": "account_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token": {
+          "name": "access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "drive_connections_transmitter_id_transmitters_id_fk": {
+          "name": "drive_connections_transmitter_id_transmitters_id_fk",
+          "tableFrom": "drive_connections",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "drive_connections_transmitter_id_provider_pk": {
+          "name": "drive_connections_transmitter_id_provider_pk",
+          "columns": [
+            "transmitter_id",
+            "provider"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.e2ee_devices": {
+      "name": "e2ee_devices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Device'"
+        },
+        "identity_key": {
+          "name": "identity_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signing_key": {
+          "name": "signing_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signed_pre_key": {
+          "name": "signed_pre_key",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "e2ee_devices_transmitter_id_transmitters_id_fk": {
+          "name": "e2ee_devices_transmitter_id_transmitters_id_fk",
+          "tableFrom": "e2ee_devices",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.e2ee_one_time_pre_keys": {
+      "name": "e2ee_one_time_pre_keys",
+      "schema": "",
+      "columns": {
+        "device_id": {
+          "name": "device_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_id": {
+          "name": "key_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_key": {
+          "name": "public_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "e2ee_one_time_pre_keys_device_id_e2ee_devices_id_fk": {
+          "name": "e2ee_one_time_pre_keys_device_id_e2ee_devices_id_fk",
+          "tableFrom": "e2ee_one_time_pre_keys",
+          "tableTo": "e2ee_devices",
+          "columnsFrom": [
+            "device_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "e2ee_one_time_pre_keys_device_id_key_id_pk": {
+          "name": "e2ee_one_time_pre_keys_device_id_key_id_pk",
+          "columns": [
+            "device_id",
+            "key_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.incident_reports": {
+      "name": "incident_reports",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "reporter_id": {
+          "name": "reporter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "telemetry_snapshot": {
+          "name": "telemetry_snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "resolution_notes": {
+          "name": "resolution_notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by_staff_id": {
+          "name": "resolved_by_staff_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "incident_reports_reporter_id_transmitters_id_fk": {
+          "name": "incident_reports_reporter_id_transmitters_id_fk",
+          "tableFrom": "incident_reports",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "reporter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "incident_reports_resolved_by_staff_id_transmitters_id_fk": {
+          "name": "incident_reports_resolved_by_staff_id_transmitters_id_fk",
+          "tableFrom": "incident_reports",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "resolved_by_staff_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.instance_settings": {
+      "name": "instance_settings",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.point_to_point_links": {
+      "name": "point_to_point_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter1_id": {
+          "name": "transmitter1_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter2_id": {
+          "name": "transmitter2_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_transmission_id": {
+          "name": "last_transmission_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_transmission_at": {
+          "name": "last_transmission_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encrypted_at": {
+          "name": "encrypted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "point_to_point_links_transmitter1_id_transmitters_id_fk": {
+          "name": "point_to_point_links_transmitter1_id_transmitters_id_fk",
+          "tableFrom": "point_to_point_links",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter1_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "point_to_point_links_transmitter2_id_transmitters_id_fk": {
+          "name": "point_to_point_links_transmitter2_id_transmitters_id_fk",
+          "tableFrom": "point_to_point_links",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter2_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.poll_votes": {
+      "name": "poll_votes",
+      "schema": "",
+      "columns": {
+        "transmission_id": {
+          "name": "transmission_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "answer_id": {
+          "name": "answer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "voted_at": {
+          "name": "voted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "poll_votes_transmission_id_transmissions_id_fk": {
+          "name": "poll_votes_transmission_id_transmissions_id_fk",
+          "tableFrom": "poll_votes",
+          "tableTo": "transmissions",
+          "columnsFrom": [
+            "transmission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "poll_votes_transmitter_id_transmitters_id_fk": {
+          "name": "poll_votes_transmitter_id_transmitters_id_fk",
+          "tableFrom": "poll_votes",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "poll_votes_transmission_id_answer_id_transmitter_id_pk": {
+          "name": "poll_votes_transmission_id_answer_id_transmitter_id_pk",
+          "columns": [
+            "transmission_id",
+            "answer_id",
+            "transmitter_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.push_tokens": {
+      "name": "push_tokens",
+      "schema": "",
+      "columns": {
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "platform": {
+          "name": "platform",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unknown'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "push_tokens_transmitter_id_transmitters_id_fk": {
+          "name": "push_tokens_transmitter_id_transmitters_id_fk",
+          "tableFrom": "push_tokens",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.relay_overwrites": {
+      "name": "relay_overwrites",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "relay_id": {
+          "name": "relay_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "allow_bits": {
+          "name": "allow_bits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "deny_bits": {
+          "name": "deny_bits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "relay_overwrites_relay_id_relays_id_fk": {
+          "name": "relay_overwrites_relay_id_relays_id_fk",
+          "tableFrom": "relay_overwrites",
+          "tableTo": "relays",
+          "columnsFrom": [
+            "relay_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.relays": {
+      "name": "relays",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'text'"
+        },
+        "topic": {
+          "name": "topic",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_unhideable": {
+          "name": "is_unhideable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "last_transmission_id": {
+          "name": "last_transmission_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_transmission_at": {
+          "name": "last_transmission_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "permissions_synced": {
+          "name": "permissions_synced",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "slowmode_seconds": {
+          "name": "slowmode_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_e2ee": {
+          "name": "is_e2ee",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "relays_beacon_id_beacons_id_fk": {
+          "name": "relays_beacon_id_beacons_id_fk",
+          "tableFrom": "relays",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.signal_blacklist": {
+      "name": "signal_blacklist",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "signal_blacklist_transmitter_id_transmitters_id_fk": {
+          "name": "signal_blacklist_transmitter_id_transmitters_id_fk",
+          "tableFrom": "signal_blacklist",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.staff_audit_log": {
+      "name": "staff_audit_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "details": {
+          "name": "details",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "staff_audit_log_created_idx": {
+          "name": "staff_audit_log_created_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "staff_audit_log_actor_id_transmitters_id_fk": {
+          "name": "staff_audit_log_actor_id_transmitters_id_fk",
+          "tableFrom": "staff_audit_log",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.staff_roles": {
+      "name": "staff_roles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#3B8EF2'"
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "permissions": {
+          "name": "permissions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_root": {
+          "name": "is_root",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "legacy_rank": {
+          "name": "legacy_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "badge_id": {
+          "name": "badge_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "staff_roles_badge_id_commendations_id_fk": {
+          "name": "staff_roles_badge_id_commendations_id_fk",
+          "tableFrom": "staff_roles",
+          "tableTo": "commendations",
+          "columnsFrom": [
+            "badge_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "staff_roles_legacy_rank_unique": {
+          "name": "staff_roles_legacy_rank_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "legacy_rank"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.storage_groups": {
+      "name": "storage_groups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quota_bytes": {
+          "name": "quota_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_upload_bytes": {
+          "name": "max_upload_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "storage_groups_name_unique": {
+          "name": "storage_groups_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.subspace_mesh_members": {
+      "name": "subspace_mesh_members",
+      "schema": "",
+      "columns": {
+        "mesh_id": {
+          "name": "mesh_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "subspace_mesh_members_mesh_id_subspace_meshes_id_fk": {
+          "name": "subspace_mesh_members_mesh_id_subspace_meshes_id_fk",
+          "tableFrom": "subspace_mesh_members",
+          "tableTo": "subspace_meshes",
+          "columnsFrom": [
+            "mesh_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "subspace_mesh_members_transmitter_id_transmitters_id_fk": {
+          "name": "subspace_mesh_members_transmitter_id_transmitters_id_fk",
+          "tableFrom": "subspace_mesh_members",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "subspace_mesh_members_mesh_id_transmitter_id_pk": {
+          "name": "subspace_mesh_members_mesh_id_transmitter_id_pk",
+          "columns": [
+            "mesh_id",
+            "transmitter_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.subspace_meshes": {
+      "name": "subspace_meshes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icon_url": {
+          "name": "icon_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_transmission_id": {
+          "name": "last_transmission_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_transmission_at": {
+          "name": "last_transmission_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "encrypted_at": {
+          "name": "encrypted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "subspace_meshes_owner_id_transmitters_id_fk": {
+          "name": "subspace_meshes_owner_id_transmitters_id_fk",
+          "tableFrom": "subspace_meshes",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.thread_members": {
+      "name": "thread_members",
+      "schema": "",
+      "columns": {
+        "thread_id": {
+          "name": "thread_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "added_at": {
+          "name": "added_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "thread_members_thread_id_archival_threads_id_fk": {
+          "name": "thread_members_thread_id_archival_threads_id_fk",
+          "tableFrom": "thread_members",
+          "tableTo": "archival_threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "thread_members_transmitter_id_transmitters_id_fk": {
+          "name": "thread_members_transmitter_id_transmitters_id_fk",
+          "tableFrom": "thread_members",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "thread_members_thread_id_transmitter_id_pk": {
+          "name": "thread_members_thread_id_transmitter_id_pk",
+          "columns": [
+            "thread_id",
+            "transmitter_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transmission_requests": {
+      "name": "transmission_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "sender_id": {
+          "name": "sender_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient_id": {
+          "name": "recipient_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mutual_beacon_id": {
+          "name": "mutual_beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "initial_transmission": {
+          "name": "initial_transmission",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "is_spam": {
+          "name": "is_spam",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transmission_requests_sender_id_transmitters_id_fk": {
+          "name": "transmission_requests_sender_id_transmitters_id_fk",
+          "tableFrom": "transmission_requests",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "sender_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmission_requests_recipient_id_transmitters_id_fk": {
+          "name": "transmission_requests_recipient_id_transmitters_id_fk",
+          "tableFrom": "transmission_requests",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "recipient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmission_requests_mutual_beacon_id_beacons_id_fk": {
+          "name": "transmission_requests_mutual_beacon_id_beacons_id_fk",
+          "tableFrom": "transmission_requests",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "mutual_beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transmissions": {
+      "name": "transmissions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "relay_id": {
+          "name": "relay_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "p2p_link_id": {
+          "name": "p2p_link_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mesh_id": {
+          "name": "mesh_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attachments": {
+          "name": "attachments",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "forwarded": {
+          "name": "forwarded",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stickers": {
+          "name": "stickers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "poll": {
+          "name": "poll",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_voice_message": {
+          "name": "is_voice_message",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "webhook_id": {
+          "name": "webhook_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "author_override": {
+          "name": "author_override",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "interaction": {
+          "name": "interaction",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_edited": {
+          "name": "is_edited",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "encrypted_payload": {
+          "name": "encrypted_payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reply_to_id": {
+          "name": "reply_to_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reply_ping": {
+          "name": "reply_ping",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "pinned_at": {
+          "name": "pinned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pinned_by": {
+          "name": "pinned_by",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mentions": {
+          "name": "mentions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "mention_roles": {
+          "name": "mention_roles",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "mention_everyone": {
+          "name": "mention_everyone",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "embeds": {
+          "name": "embeds",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "suppress_embeds": {
+          "name": "suppress_embeds",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'default'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "transmissions_transmitter_idx": {
+          "name": "transmissions_transmitter_idx",
+          "columns": [
+            {
+              "expression": "transmitter_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transmissions_relay_id_relays_id_fk": {
+          "name": "transmissions_relay_id_relays_id_fk",
+          "tableFrom": "transmissions",
+          "tableTo": "relays",
+          "columnsFrom": [
+            "relay_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmissions_thread_id_archival_threads_id_fk": {
+          "name": "transmissions_thread_id_archival_threads_id_fk",
+          "tableFrom": "transmissions",
+          "tableTo": "archival_threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmissions_p2p_link_id_point_to_point_links_id_fk": {
+          "name": "transmissions_p2p_link_id_point_to_point_links_id_fk",
+          "tableFrom": "transmissions",
+          "tableTo": "point_to_point_links",
+          "columnsFrom": [
+            "p2p_link_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmissions_mesh_id_subspace_meshes_id_fk": {
+          "name": "transmissions_mesh_id_subspace_meshes_id_fk",
+          "tableFrom": "transmissions",
+          "tableTo": "subspace_meshes",
+          "columnsFrom": [
+            "mesh_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmissions_transmitter_id_transmitters_id_fk": {
+          "name": "transmissions_transmitter_id_transmitters_id_fk",
+          "tableFrom": "transmissions",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transmitter_commendations": {
+      "name": "transmitter_commendations",
+      "schema": "",
+      "columns": {
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commendation_id": {
+          "name": "commendation_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_visible": {
+          "name": "is_visible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "awarded_at": {
+          "name": "awarded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transmitter_commendations_transmitter_id_transmitters_id_fk": {
+          "name": "transmitter_commendations_transmitter_id_transmitters_id_fk",
+          "tableFrom": "transmitter_commendations",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmitter_commendations_commendation_id_commendations_id_fk": {
+          "name": "transmitter_commendations_commendation_id_commendations_id_fk",
+          "tableFrom": "transmitter_commendations",
+          "tableTo": "commendations",
+          "columnsFrom": [
+            "commendation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transmitter_commendations_transmitter_id_commendation_id_pk": {
+          "name": "transmitter_commendations_transmitter_id_commendation_id_pk",
+          "columns": [
+            "transmitter_id",
+            "commendation_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transmitter_passkeys": {
+      "name": "transmitter_passkeys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credential_id": {
+          "name": "credential_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_key": {
+          "name": "public_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "counter": {
+          "name": "counter",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "device_type": {
+          "name": "device_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "backed_up": {
+          "name": "backed_up",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "transports": {
+          "name": "transports",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Passkey'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transmitter_passkeys_transmitter_id_transmitters_id_fk": {
+          "name": "transmitter_passkeys_transmitter_id_transmitters_id_fk",
+          "tableFrom": "transmitter_passkeys",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "transmitter_passkeys_credential_id_unique": {
+          "name": "transmitter_passkeys_credential_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "credential_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transmitter_relay_preferences": {
+      "name": "transmitter_relay_preferences",
+      "schema": "",
+      "columns": {
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relay_id": {
+          "name": "relay_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_hidden": {
+          "name": "is_hidden",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transmitter_relay_preferences_transmitter_id_transmitters_id_fk": {
+          "name": "transmitter_relay_preferences_transmitter_id_transmitters_id_fk",
+          "tableFrom": "transmitter_relay_preferences",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmitter_relay_preferences_relay_id_relays_id_fk": {
+          "name": "transmitter_relay_preferences_relay_id_relays_id_fk",
+          "tableFrom": "transmitter_relay_preferences",
+          "tableTo": "relays",
+          "columnsFrom": [
+            "relay_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transmitter_relay_preferences_transmitter_id_relay_id_pk": {
+          "name": "transmitter_relay_preferences_transmitter_id_relay_id_pk",
+          "columns": [
+            "transmitter_id",
+            "relay_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transmitters": {
+      "name": "transmitters",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "discriminator": {
+          "name": "discriminator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0001'"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_font": {
+          "name": "display_font",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'default'"
+        },
+        "display_color": {
+          "name": "display_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#EEF1FA'"
+        },
+        "banner_color": {
+          "name": "banner_color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'#3353D6'"
+        },
+        "banner_url": {
+          "name": "banner_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avatar_url": {
+          "name": "avatar_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bio": {
+          "name": "bio",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "presence": {
+          "name": "presence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'offline'"
+        },
+        "custom_status": {
+          "name": "custom_status",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "staff_rank": {
+          "name": "staff_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "staff_role_id": {
+          "name": "staff_role_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_banned": {
+          "name": "is_banned",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "ban_reason": {
+          "name": "ban_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_email_verified": {
+          "name": "is_email_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "email_verification_code": {
+          "name": "email_verification_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "totp_secret": {
+          "name": "totp_secret",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_2fa_enabled": {
+          "name": "is_2fa_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "backup_codes": {
+          "name": "backup_codes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "has_accepted_upload_disclaimer": {
+          "name": "has_accepted_upload_disclaimer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "last_agreed_rules_version": {
+          "name": "last_agreed_rules_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "token_version": {
+          "name": "token_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pronouns": {
+          "name": "pronouns",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "theme_primary": {
+          "name": "theme_primary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "theme_accent": {
+          "name": "theme_accent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_name_style": {
+          "name": "display_name_style",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profile_visibility": {
+          "name": "profile_visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'everyone'"
+        },
+        "activity_visibility": {
+          "name": "activity_visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'off'"
+        },
+        "changelog_seen": {
+          "name": "changelog_seen",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "disabled_at": {
+          "name": "disabled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quarantined_at": {
+          "name": "quarantined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quarantine_reason": {
+          "name": "quarantine_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tag_beacon_id": {
+          "name": "tag_beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avatar_decoration": {
+          "name": "avatar_decoration",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profile_effect": {
+          "name": "profile_effect",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_verified_at": {
+          "name": "phone_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hand_verified_at": {
+          "name": "hand_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_pending": {
+          "name": "phone_pending",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_code_hash": {
+          "name": "phone_code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone_code_expires_at": {
+          "name": "phone_code_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "default_allow_dms": {
+          "name": "default_allow_dms",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "bot_kind": {
+          "name": "bot_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage_group_id": {
+          "name": "storage_group_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "transmitters_username_discriminator_idx": {
+          "name": "transmitters_username_discriminator_idx",
+          "columns": [
+            {
+              "expression": "username",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "discriminator",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transmitters_phone_idx": {
+          "name": "transmitters_phone_idx",
+          "columns": [
+            {
+              "expression": "phone",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transmitters_staff_role_id_staff_roles_id_fk": {
+          "name": "transmitters_staff_role_id_staff_roles_id_fk",
+          "tableFrom": "transmitters",
+          "tableTo": "staff_roles",
+          "columnsFrom": [
+            "staff_role_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "transmitters_storage_group_id_storage_groups_id_fk": {
+          "name": "transmitters_storage_group_id_storage_groups_id_fk",
+          "tableFrom": "transmitters",
+          "tableTo": "storage_groups",
+          "columnsFrom": [
+            "storage_group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "transmitters_email_unique": {
+          "name": "transmitters_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.vault_files": {
+      "name": "vault_files",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_quarantined": {
+          "name": "is_quarantined",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "vault_files_transmitter_id_transmitters_id_fk": {
+          "name": "vault_files_transmitter_id_transmitters_id_fk",
+          "tableFrom": "vault_files",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.notification_settings": {
+      "name": "notification_settings",
+      "schema": "",
+      "columns": {
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_type": {
+          "name": "scope_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_id": {
+          "name": "scope_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level": {
+          "name": "level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'inherit'"
+        },
+        "muted_until": {
+          "name": "muted_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "suppress_everyone": {
+          "name": "suppress_everyone",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "suppress_roles": {
+          "name": "suppress_roles",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "suppress_highlights": {
+          "name": "suppress_highlights",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "mobile_push": {
+          "name": "mobile_push",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "notification_settings_transmitter_id_transmitters_id_fk": {
+          "name": "notification_settings_transmitter_id_transmitters_id_fk",
+          "tableFrom": "notification_settings",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "notification_settings_transmitter_id_scope_type_scope_id_pk": {
+          "name": "notification_settings_transmitter_id_scope_type_scope_id_pk",
+          "columns": [
+            "transmitter_id",
+            "scope_type",
+            "scope_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.point_to_point_link_hidden": {
+      "name": "point_to_point_link_hidden",
+      "schema": "",
+      "columns": {
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "link_id": {
+          "name": "link_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hidden_at": {
+          "name": "hidden_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "point_to_point_link_hidden_transmitter_id_transmitters_id_fk": {
+          "name": "point_to_point_link_hidden_transmitter_id_transmitters_id_fk",
+          "tableFrom": "point_to_point_link_hidden",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "point_to_point_link_hidden_transmitter_id_link_id_pk": {
+          "name": "point_to_point_link_hidden_transmitter_id_link_id_pk",
+          "columns": [
+            "transmitter_id",
+            "link_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.read_states": {
+      "name": "read_states",
+      "schema": "",
+      "columns": {
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel_type": {
+          "name": "channel_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_read_id": {
+          "name": "last_read_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_read_at": {
+          "name": "last_read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mention_count": {
+          "name": "mention_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "read_states_transmitter_id_transmitters_id_fk": {
+          "name": "read_states_transmitter_id_transmitters_id_fk",
+          "tableFrom": "read_states",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "read_states_transmitter_id_channel_type_channel_id_pk": {
+          "name": "read_states_transmitter_id_channel_type_channel_id_pk",
+          "columns": [
+            "transmitter_id",
+            "channel_type",
+            "channel_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transmission_reactions": {
+      "name": "transmission_reactions",
+      "schema": "",
+      "columns": {
+        "transmission_id": {
+          "name": "transmission_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "emoji_key": {
+          "name": "emoji_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transmission_reactions_transmitter_id_transmitters_id_fk": {
+          "name": "transmission_reactions_transmitter_id_transmitters_id_fk",
+          "tableFrom": "transmission_reactions",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transmission_reactions_transmission_id_transmitter_id_emoji_key_pk": {
+          "name": "transmission_reactions_transmission_id_transmitter_id_emoji_key_pk",
+          "columns": [
+            "transmission_id",
+            "transmitter_id",
+            "emoji_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beacon_bans": {
+      "name": "beacon_bans",
+      "schema": "",
+      "columns": {
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "banned_by": {
+          "name": "banned_by",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "beacon_bans_beacon_id_beacons_id_fk": {
+          "name": "beacon_bans_beacon_id_beacons_id_fk",
+          "tableFrom": "beacon_bans",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "beacon_bans_transmitter_id_transmitters_id_fk": {
+          "name": "beacon_bans_transmitter_id_transmitters_id_fk",
+          "tableFrom": "beacon_bans",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "beacon_bans_banned_by_transmitters_id_fk": {
+          "name": "beacon_bans_banned_by_transmitters_id_fk",
+          "tableFrom": "beacon_bans",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "banned_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "beacon_bans_beacon_id_transmitter_id_pk": {
+          "name": "beacon_bans_beacon_id_transmitter_id_pk",
+          "columns": [
+            "beacon_id",
+            "transmitter_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beacon_events": {
+      "name": "beacon_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_type": {
+          "name": "location_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relay_id": {
+          "name": "relay_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location": {
+          "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cover_url": {
+          "name": "cover_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_at": {
+          "name": "start_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_at": {
+          "name": "end_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'scheduled'"
+        },
+        "recurrence": {
+          "name": "recurrence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "beacon_events_beacon_id_beacons_id_fk": {
+          "name": "beacon_events_beacon_id_beacons_id_fk",
+          "tableFrom": "beacon_events",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "beacon_events_creator_id_transmitters_id_fk": {
+          "name": "beacon_events_creator_id_transmitters_id_fk",
+          "tableFrom": "beacon_events",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "creator_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "beacon_events_relay_id_relays_id_fk": {
+          "name": "beacon_events_relay_id_relays_id_fk",
+          "tableFrom": "beacon_events",
+          "tableTo": "relays",
+          "columnsFrom": [
+            "relay_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.event_interests": {
+      "name": "event_interests",
+      "schema": "",
+      "columns": {
+        "event_id": {
+          "name": "event_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "event_interests_event_id_beacon_events_id_fk": {
+          "name": "event_interests_event_id_beacon_events_id_fk",
+          "tableFrom": "event_interests",
+          "tableTo": "beacon_events",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "event_interests_transmitter_id_transmitters_id_fk": {
+          "name": "event_interests_transmitter_id_transmitters_id_fk",
+          "tableFrom": "event_interests",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "event_interests_event_id_transmitter_id_pk": {
+          "name": "event_interests_event_id_transmitter_id_pk",
+          "columns": [
+            "event_id",
+            "transmitter_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.invites": {
+      "name": "invites",
+      "schema": "",
+      "columns": {
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relay_id": {
+          "name": "relay_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inviter_id": {
+          "name": "inviter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_uses": {
+          "name": "max_uses",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "uses": {
+          "name": "uses",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "max_age_seconds": {
+          "name": "max_age_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 604800
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "temporary": {
+          "name": "temporary",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invites_beacon_id_beacons_id_fk": {
+          "name": "invites_beacon_id_beacons_id_fk",
+          "tableFrom": "invites",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invites_relay_id_relays_id_fk": {
+          "name": "invites_relay_id_relays_id_fk",
+          "tableFrom": "invites",
+          "tableTo": "relays",
+          "columnsFrom": [
+            "relay_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "invites_inviter_id_transmitters_id_fk": {
+          "name": "invites_inviter_id_transmitters_id_fk",
+          "tableFrom": "invites",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "inviter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.media_uploads": {
+      "name": "media_uploads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "declared_size_bytes": {
+          "name": "declared_size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_url": {
+          "name": "public_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verified": {
+          "name": "verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "media_uploads_owner_id_transmitters_id_fk": {
+          "name": "media_uploads_owner_id_transmitters_id_fk",
+          "tableFrom": "media_uploads",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.member_beacon_prefs": {
+      "name": "member_beacon_prefs",
+      "schema": "",
+      "columns": {
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "selected_option_ids": {
+          "name": "selected_option_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "hidden_relay_ids": {
+          "name": "hidden_relay_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "member_beacon_prefs_beacon_id_beacons_id_fk": {
+          "name": "member_beacon_prefs_beacon_id_beacons_id_fk",
+          "tableFrom": "member_beacon_prefs",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "member_beacon_prefs_transmitter_id_transmitters_id_fk": {
+          "name": "member_beacon_prefs_transmitter_id_transmitters_id_fk",
+          "tableFrom": "member_beacon_prefs",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "member_beacon_prefs_beacon_id_transmitter_id_pk": {
+          "name": "member_beacon_prefs_beacon_id_transmitter_id_pk",
+          "columns": [
+            "beacon_id",
+            "transmitter_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.onboarding_options": {
+      "name": "onboarding_options",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "question_id": {
+          "name": "question_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emoji": {
+          "name": "emoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "clearance_ids": {
+          "name": "clearance_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "relay_ids": {
+          "name": "relay_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "onboarding_options_question_id_onboarding_questions_id_fk": {
+          "name": "onboarding_options_question_id_onboarding_questions_id_fk",
+          "tableFrom": "onboarding_options",
+          "tableTo": "onboarding_questions",
+          "columnsFrom": [
+            "question_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "onboarding_options_beacon_id_beacons_id_fk": {
+          "name": "onboarding_options_beacon_id_beacons_id_fk",
+          "tableFrom": "onboarding_options",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.onboarding_questions": {
+      "name": "onboarding_questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "multiple": {
+          "name": "multiple",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "required": {
+          "name": "required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "onboarding_questions_beacon_id_beacons_id_fk": {
+          "name": "onboarding_questions_beacon_id_beacons_id_fk",
+          "tableFrom": "onboarding_questions",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transmitter_notes": {
+      "name": "transmitter_notes",
+      "schema": "",
+      "columns": {
+        "owner_id": {
+          "name": "owner_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transmitter_notes_owner_id_transmitters_id_fk": {
+          "name": "transmitter_notes_owner_id_transmitters_id_fk",
+          "tableFrom": "transmitter_notes",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transmitter_notes_target_id_transmitters_id_fk": {
+          "name": "transmitter_notes_target_id_transmitters_id_fk",
+          "tableFrom": "transmitter_notes",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "target_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transmitter_notes_owner_id_target_id_pk": {
+          "name": "transmitter_notes_owner_id_target_id_pk",
+          "columns": [
+            "owner_id",
+            "target_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.audit_log": {
+      "name": "audit_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_name": {
+          "name": "target_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "changes": {
+          "name": "changes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "audit_log_beacon_created_idx": {
+          "name": "audit_log_beacon_created_idx",
+          "columns": [
+            {
+              "expression": "beacon_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "audit_log_beacon_id_beacons_id_fk": {
+          "name": "audit_log_beacon_id_beacons_id_fk",
+          "tableFrom": "audit_log",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "audit_log_actor_id_transmitters_id_fk": {
+          "name": "audit_log_actor_id_transmitters_id_fk",
+          "tableFrom": "audit_log",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.automod_rules": {
+      "name": "automod_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "keywords": {
+          "name": "keywords",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "regexes": {
+          "name": "regexes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "allow_list": {
+          "name": "allow_list",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "presets": {
+          "name": "presets",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "mention_limit": {
+          "name": "mention_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "block_message": {
+          "name": "block_message",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "custom_message": {
+          "name": "custom_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "alert_channel_id": {
+          "name": "alert_channel_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timeout_seconds": {
+          "name": "timeout_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "exempt_clearance_ids": {
+          "name": "exempt_clearance_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "exempt_relay_ids": {
+          "name": "exempt_relay_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "automod_rules_beacon_id_beacons_id_fk": {
+          "name": "automod_rules_beacon_id_beacons_id_fk",
+          "tableFrom": "automod_rules",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "automod_rules_creator_id_transmitters_id_fk": {
+          "name": "automod_rules_creator_id_transmitters_id_fk",
+          "tableFrom": "automod_rules",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "creator_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beacon_stickers": {
+      "name": "beacon_stickers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emoji": {
+          "name": "emoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "beacon_stickers_beacon_id_beacons_id_fk": {
+          "name": "beacon_stickers_beacon_id_beacons_id_fk",
+          "tableFrom": "beacon_stickers",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "beacon_stickers_creator_id_transmitters_id_fk": {
+          "name": "beacon_stickers_creator_id_transmitters_id_fk",
+          "tableFrom": "beacon_stickers",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "creator_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.beacon_templates": {
+      "name": "beacon_templates",
+      "schema": "",
+      "columns": {
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_count": {
+          "name": "usage_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "beacon_templates_beacon_id_beacons_id_fk": {
+          "name": "beacon_templates_beacon_id_beacons_id_fk",
+          "tableFrom": "beacon_templates",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "beacon_templates_creator_id_transmitters_id_fk": {
+          "name": "beacon_templates_creator_id_transmitters_id_fk",
+          "tableFrom": "beacon_templates",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "creator_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gif_favorites": {
+      "name": "gif_favorites",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preview_url": {
+          "name": "preview_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "gif_favorites_owner_idx": {
+          "name": "gif_favorites_owner_idx",
+          "columns": [
+            {
+              "expression": "transmitter_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gif_favorites_transmitter_id_transmitters_id_fk": {
+          "name": "gif_favorites_transmitter_id_transmitters_id_fk",
+          "tableFrom": "gif_favorites",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.soundboard_sounds": {
+      "name": "soundboard_sounds",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "emoji": {
+          "name": "emoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "volume_pct": {
+          "name": "volume_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 100
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "soundboard_sounds_beacon_id_beacons_id_fk": {
+          "name": "soundboard_sounds_beacon_id_beacons_id_fk",
+          "tableFrom": "soundboard_sounds",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "soundboard_sounds_creator_id_transmitters_id_fk": {
+          "name": "soundboard_sounds_creator_id_transmitters_id_fk",
+          "tableFrom": "soundboard_sounds",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "creator_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.oauth_apps": {
+      "name": "oauth_apps",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "icon_url": {
+          "name": "icon_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "client_secret_hash": {
+          "name": "client_secret_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redirect_uris": {
+          "name": "redirect_uris",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "detected_game": {
+          "name": "detected_game",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "oauth_apps_owner": {
+          "name": "oauth_apps_owner",
+          "columns": [
+            {
+              "expression": "owner_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "oauth_apps_detected_game": {
+          "name": "oauth_apps_detected_game",
+          "columns": [
+            {
+              "expression": "detected_game",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "oauth_apps_owner_id_transmitters_id_fk": {
+          "name": "oauth_apps_owner_id_transmitters_id_fk",
+          "tableFrom": "oauth_apps",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.oauth_grants": {
+      "name": "oauth_grants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "app_id": {
+          "name": "app_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transmitter_id": {
+          "name": "transmitter_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "oauth_grants_unique": {
+          "name": "oauth_grants_unique",
+          "columns": [
+            {
+              "expression": "app_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "transmitter_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "oauth_grants_app_id_oauth_apps_id_fk": {
+          "name": "oauth_grants_app_id_oauth_apps_id_fk",
+          "tableFrom": "oauth_grants",
+          "tableTo": "oauth_apps",
+          "columnsFrom": [
+            "app_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "oauth_grants_transmitter_id_transmitters_id_fk": {
+          "name": "oauth_grants_transmitter_id_transmitters_id_fk",
+          "tableFrom": "oauth_grants",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "transmitter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.oauth_tokens": {
+      "name": "oauth_tokens",
+      "schema": "",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "oauth_tokens_grant": {
+          "name": "oauth_tokens_grant",
+          "columns": [
+            {
+              "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "oauth_tokens_grant_id_oauth_grants_id_fk": {
+          "name": "oauth_tokens_grant_id_oauth_grants_id_fk",
+          "tableFrom": "oauth_tokens",
+          "tableTo": "oauth_grants",
+          "columnsFrom": [
+            "grant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.app_bots": {
+      "name": "app_bots",
+      "schema": "",
+      "columns": {
+        "app_id": {
+          "name": "app_id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_public": {
+          "name": "is_public",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "message_content": {
+          "name": "message_content",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "activity_intent": {
+          "name": "activity_intent",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "interactions_url": {
+          "name": "interactions_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "public_key": {
+          "name": "public_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "private_key_enc": {
+          "name": "private_key_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "app_bots_app_id_oauth_apps_id_fk": {
+          "name": "app_bots_app_id_oauth_apps_id_fk",
+          "tableFrom": "app_bots",
+          "tableTo": "oauth_apps",
+          "columnsFrom": [
+            "app_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "app_bots_user_id_transmitters_id_fk": {
+          "name": "app_bots_user_id_transmitters_id_fk",
+          "tableFrom": "app_bots",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "app_bots_user_id_unique": {
+          "name": "app_bots_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id"
+          ]
+        },
+        "app_bots_token_hash_unique": {
+          "name": "app_bots_token_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.app_commands": {
+      "name": "app_commands",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "app_id": {
+          "name": "app_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "options": {
+          "name": "options",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "default_member_permissions": {
+          "name": "default_member_permissions",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "app_commands_unique": {
+          "name": "app_commands_unique",
+          "columns": [
+            {
+              "expression": "app_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "beacon_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "app_commands_app_id_oauth_apps_id_fk": {
+          "name": "app_commands_app_id_oauth_apps_id_fk",
+          "tableFrom": "app_commands",
+          "tableTo": "oauth_apps",
+          "columnsFrom": [
+            "app_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "app_commands_beacon_id_beacons_id_fk": {
+          "name": "app_commands_beacon_id_beacons_id_fk",
+          "tableFrom": "app_commands",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.webhooks": {
+      "name": "webhooks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "subspace_snowflake()"
+        },
+        "beacon_id": {
+          "name": "beacon_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relay_id": {
+          "name": "relay_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "avatar_url": {
+          "name": "avatar_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "webhooks_relay": {
+          "name": "webhooks_relay",
+          "columns": [
+            {
+              "expression": "relay_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "webhooks_beacon_id_beacons_id_fk": {
+          "name": "webhooks_beacon_id_beacons_id_fk",
+          "tableFrom": "webhooks",
+          "tableTo": "beacons",
+          "columnsFrom": [
+            "beacon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "webhooks_relay_id_relays_id_fk": {
+          "name": "webhooks_relay_id_relays_id_fk",
+          "tableFrom": "webhooks",
+          "tableTo": "relays",
+          "columnsFrom": [
+            "relay_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "webhooks_author_id_transmitters_id_fk": {
+          "name": "webhooks_author_id_transmitters_id_fk",
+          "tableFrom": "webhooks",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "author_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "webhooks_creator_id_transmitters_id_fk": {
+          "name": "webhooks_creator_id_transmitters_id_fk",
+          "tableFrom": "webhooks",
+          "tableTo": "transmitters",
+          "columnsFrom": [
+            "creator_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

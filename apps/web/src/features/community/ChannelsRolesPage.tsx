@@ -224,7 +224,7 @@ function Browse({ beaconId }: { beaconId: string }) {
           <Search className="h-4 w-4 text-fg-subtle" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search Channels" aria-label="Search channels" className="min-w-0 flex-1 bg-transparent text-sm text-fg outline-none placeholder:text-fg-subtle" />
         </label>
-        {can(perms, PERMISSIONS.MANAGE_RELAYS) && (
+        {(can(perms, PERMISSIONS.MANAGE_RELAYS) || can(perms, PERMISSIONS.CREATE_RELAYS)) && (
           <Button onClick={() => openModal({ kind: 'createRelay', beaconId })}>
             <Plus className="h-4 w-4" /> Create
           </Button>

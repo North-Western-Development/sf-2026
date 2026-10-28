@@ -35,14 +35,14 @@ export const beaconExtrasRoutes: FastifyPluginAsync = async (app: FastifyInstanc
   const db = (app as any).db;
   const redis = (app as any).redis;
 
-  async function manager(request: any, reply: any) {
+  async function manager(request: any, reply: any, needs: bigint = PERMISSIONS.MANAGE_BEACON) {
     const token = extractAuthToken(request);
     if (!token) return reply.status(401).send({ error: 'Authentication required' }), null;
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' }), null;
     const { id: beaconId } = request.params as { id: string };
     const actor = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
     if (!actor) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' }), null;
-    if (!hasPermission(actor.effectivePermissions, PERMISSIONS.MANAGE_BEACON)) return reply.status(403).send({ error: 'Transmitter lacks MANAGE_BEACON clearance' }), null;
+    if (!hasPermission(actor.effectivePermissions, needs)) return reply.status(403).send({ error: 'Transmitter lacks the clearance for this', code: 'MISSING_PERMISSIONS' }), null;
     return { beaconId, actorId: token.transmitterId };
   }
 
@@ -125,7 +125,7 @@ export const beaconExtrasRoutes: FastifyPluginAsync = async (app: FastifyInstanc
   // ------------------------------------------------------------------ Insights
 
   app.get('/beacons/:id/insights', async (request, reply) => {
-    const ctx = await manager(request, reply);
+    const ctx = await manager(request, reply, PERMISSIONS.VIEW_INSIGHTS);
     if (!ctx) return;
     const days = Math.min(90, Math.max(7, Number((request.query as any).days) || 30));
     const since = new Date(Date.now() - days * DAY);
@@ -187,7 +187,7 @@ export const beaconExtrasRoutes: FastifyPluginAsync = async (app: FastifyInstanc
   app.get('/beacons/:id/widget.json', { config: { public: true } }, async (request, reply) => {
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
     const { id } = request.params as { id: string };
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.status(404).send({ error: 'Widget disabled' });
+    if (!/^[1-9][0-9]{0,18}$/.test(id)) return reply.status(404).send({ error: 'Widget disabled' });
     const [beacon] = await db.select().from(beacons).where(eq(beacons.id, id)).limit(1);
     if (!beacon?.widgetEnabled) return reply.status(403).send({ error: 'Widget disabled', code: 'WIDGET_DISABLED' });
 
@@ -237,7 +237,7 @@ export const beaconExtrasRoutes: FastifyPluginAsync = async (app: FastifyInstanc
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
     const ids = String((request.query as any).ids ?? '')
       .split(',')
-      .filter((x) => /^[0-9a-f-]{36}$/i.test(x))
+      .filter((x) => /^[1-9][0-9]{0,18}$/.test(x))
       .slice(0, 100);
     if (!ids.length) return reply.send({ tags: [] });
     const rows = await db.select({ id: beacons.id, name: beacons.name, tag: beacons.tag, tagBadge: beacons.tagBadge }).from(beacons).where(inArray(beacons.id, ids));
@@ -245,7 +245,7 @@ export const beaconExtrasRoutes: FastifyPluginAsync = async (app: FastifyInstanc
   });
 
   /** Wear a beacon's tag beside your name (you must be a member and it must have one), or none. */
-  app.put('/users/@me/tag', { schema: { body: { type: 'object', additionalProperties: false, required: ['beaconId'], properties: { beaconId: { type: ['string', 'null'], format: 'uuid' } } } } }, async (request, reply) => {
+  app.put('/users/@me/tag', { schema: { body: { type: 'object', additionalProperties: false, required: ['beaconId'], properties: { beaconId: { type: ['string', 'null'], pattern: '^[1-9][0-9]{0,18}$' } } } } }, async (request, reply) => {
     const token = extractAuthToken(request);
     if (!token) return reply.status(401).send({ error: 'Authentication required' });
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });

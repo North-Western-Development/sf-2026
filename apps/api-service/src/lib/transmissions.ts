@@ -1,3 +1,4 @@
+import { formatPoll } from './polls.js';
 import {
   eq,
   and,
@@ -8,8 +9,12 @@ import {
   clearances,
   beaconEmojis,
   transmissionReactions,
+  sql,
 } from '@subspace/database';
 import { ChannelType } from './channels.js';
+
+/** Staff verified this bot (Command Console › Transmitters), against impersonation. Only bots carry it. */
+export const BOT_VERIFIED = sql<boolean>`(${transmitters.botKind} = 'bot' and ${transmitters.handVerifiedAt} is not null)`;
 
 export const AUTHOR_FIELDS = {
   id: transmitters.id,
@@ -23,6 +28,10 @@ export const AUTHOR_FIELDS = {
   /** The beacon whose tag they wear; clients look up the tag itself. */
   tagBeaconId: transmitters.tagBeaconId,
   avatarDecoration: transmitters.avatarDecoration,
+  /** 'bot' or 'webhook' for accounts that are not people (the BOT / APP tag). */
+  botKind: transmitters.botKind,
+  /** A bot staff verified (the check on its APP tag). Never set for people. */
+  botVerified: BOT_VERIFIED,
 };
 
 export function deriveChannel(row: {
@@ -114,7 +123,13 @@ export async function formatTransmission(
   ctx: { beaconId?: string } = {}
 ) {
   const channel = deriveChannel(row);
-  const author = await fetchAuthorProfile(db, row.transmitterId);
+  let author = await fetchAuthorProfile(db, row.transmitterId);
+  // A webhook may post under its own name and avatar for each message.
+  const override = (row as any).authorOverride as { name: string; avatarUrl: string | null } | null;
+  if (author && override) author = { ...author, displayName: override.name, avatarUrl: override.avatarUrl ?? author.avatarUrl };
+  // A bot's answer to a slash command shows who used which command.
+  const interaction = (row as any).interaction as { id: string; name: string; userId: string } | null;
+  const interactionUser = interaction ? await fetchAuthorProfile(db, interaction.userId) : null;
 
   let member: { nickname: string | null; clearanceIds: string[]; color: string } | undefined;
   if (ctx.beaconId) {
@@ -151,6 +166,12 @@ export async function formatTransmission(
     editedAt: row.isEdited ? row.updatedAt : null,
     attachments: row.attachments || [],
     stickers: (row as any).stickers || [],
+    poll: (row as any).poll ? await formatPoll(db, row as any, callerId) : null,
+    voiceMessage: !!(row as any).isVoiceMessage,
+    webhookId: (row as any).webhookId ?? null,
+    publishedAt: (row as any).publishedAt ?? null,
+    crosspost: (row as any).crosspost ?? null,
+    interaction: interaction ? { name: interaction.name, user: interactionUser } : null,
     forwarded: (row as any).forwarded ?? null,
     mentions: row.mentions || [],
     mentionRoles: row.mentionRoles || [],

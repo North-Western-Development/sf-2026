@@ -3,9 +3,9 @@ import { render, screen } from '@testing-library/react';
 import { parseInline, parseMarkdown, Markdown, isJumboEmoji, toPlainText } from '../features/chat/markdown';
 import { inCodeBlock } from '../features/common/RichInput';
 
-const U = '11111111-1111-1111-1111-111111111111';
-const R = '22222222-2222-2222-2222-222222222222';
-const C = '33333333-3333-3333-3333-333333333333';
+const U = '491640495451214097';
+const R = '883280990902428194';
+const C = '374921486353642291';
 
 describe('inline markdown', () => {
   it('parses bold, italic, underline, strike, spoiler and code', () => {

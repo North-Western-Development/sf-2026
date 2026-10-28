@@ -4,7 +4,7 @@ import { Modal } from '@subspace/ui';
 import { closeModal, confirmAction } from '../../app/ui';
 import { useVoice } from './session';
 import { ControlButton } from './ControlButton';
-import { CLIP_LENGTHS, deleteClip, listClips, saveClip, setClipPrefs, useClipPrefs, useClipsVersion, type Clip } from './clips';
+import { CLIP_LENGTHS, deleteClip, listClips, saveClip, setClipPrefs, useClipPrefs, useClipsVersion, useClipMix, type Clip } from './clips';
 import { RadioList, Switch } from '../settings/SettingsLayout';
 
 /** In the comm-link controls while Holo-Casting with clips on. */
@@ -12,19 +12,22 @@ export function ClipButton() {
   const enabled = useClipPrefs((s) => s.enabled);
   const streaming = useVoice((s) => s.screenOn);
   const [busy, setBusy] = useState(false);
+  const voices = useClipMix((s) => s.voices);
   if (!enabled || !streaming) return null;
   return (
-    <ControlButton
-      label="Clip (Ctrl + Shift + C)"
-      active={busy}
-      onClick={async () => {
-        setBusy(true);
-        await saveClip();
-        setBusy(false);
-      }}
-    >
-      <Clapperboard className="h-5 w-5" />
-    </ControlButton>
+    <span data-testid="clip-control" data-voices={voices} className="contents">
+      <ControlButton
+        label="Clip (Ctrl + Shift + C)"
+        active={busy}
+        onClick={async () => {
+          setBusy(true);
+          await saveClip();
+          setBusy(false);
+        }}
+      >
+        <Clapperboard className="h-5 w-5" />
+      </ControlButton>
+    </span>
   );
 }
 

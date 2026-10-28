@@ -10,9 +10,9 @@ describe('Beacons, Beacon Clusters & Clearances E2E Suite', () => {
   let app: FastifyInstance;
 
   // Test Transmitters
-  const ownerId = '11111111-1111-1111-1111-111111111111';
-  const officerId = '22222222-2222-2222-2222-222222222222';
-  const cadetId = '33333333-3333-3333-3333-333333333333';
+  const ownerId = '491640495451214097';
+  const officerId = '883280990902428194';
+  const cadetId = '374921486353642291';
 
   let ownerToken: string;
   let officerToken: string;

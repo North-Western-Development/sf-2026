@@ -34,6 +34,10 @@ export interface FullProfile {
   connections?: Array<{ provider: 'github' | 'google' | 'microsoft' | 'dropbox' | 'steam'; name: string; url: string | null }>;
   relationship: 'self' | 'friend' | 'incoming' | 'outgoing' | 'blocked' | 'none';
   note: string | null;
+  /** The instance's longest note (NOTE_MAX_LENGTH). */
+  noteMaxLength?: number;
+  /** A bot's application: its slash commands, and whether I may add it to a beacon. */
+  application?: { id: string; name: string; description: string | null; isPublic: boolean; canAdd: boolean; commands: Array<{ name: string; description: string }> } | null;
 }
 
 /** Recently loaded profiles, so popouts open with badges already in place. */

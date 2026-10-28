@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ScheduledFeed } from '../schedule/ScheduleUI';
+import { release, useInbox } from '../inbox/inboxData';
 import { clsx } from 'clsx';
 import { useStore } from '../../data/store';
 import { ackChannel, loadMessages, loadUntil } from '../../data/actions';
@@ -109,13 +111,23 @@ export function MessageList({
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     atBottom.current = distance < 40;
     setShowJump(distance > el.clientHeight * 1.5);
-    if (atBottom.current && document.hasFocus()) void ackChannel(key);
+    if (atBottom.current && document.hasFocus()) void ackChannel(key, { auto: true });
   };
 
   // Mark read when opened at the bottom.
   useEffect(() => {
-    if (channel?.loaded && atBottom.current) void ackChannel(key);
+    if (channel?.loaded && atBottom.current) void ackChannel(key, { auto: true });
   }, [channel?.loaded, key]);
+
+  // Marked unread by hand: show where the unread part starts now.
+  const heldAt = useInbox((s) => s.held[key]);
+  useEffect(() => {
+    if (!heldAt) return;
+    const rs = useStore.getState().readStates[key];
+    setUnreadMarker({ lastReadAt: rs?.lastReadAt ?? null, mentions: rs?.mentionCount ?? 0 });
+  }, [heldAt, key]);
+  // Leaving a channel ends its hold.
+  useEffect(() => () => release(key), [key]);
 
   const jumpTo = (id: string) => {
     const el = document.getElementById(`msg-${id}`);
@@ -206,6 +218,8 @@ export function MessageList({
             </div>
           );
         })}
+        {/* What this device will send here later, or could not send: greyed out, at the end. */}
+        {channel?.loaded && <ScheduledFeed channelKey={key} />}
       </div>
 
       {showJump && (

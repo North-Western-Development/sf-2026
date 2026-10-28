@@ -1,7 +1,8 @@
 import { test, expect, register, signIn, openAs } from './fixtures';
+import { MEDIA_ARGS } from '../support/fake-voice';
 
 test.use({
-  launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
+  launchOptions: { args: MEDIA_ARGS },
   permissions: ['microphone'],
 });
 
@@ -51,6 +52,20 @@ test.describe('Activities and per-beacon privacy', () => {
     // Clear wipes it for both.
     await page.getByRole('region', { name: 'Whiteboard' }).getByRole('button', { name: 'Clear' }).click();
     await expect(theirBoard).toHaveAttribute('data-strokes', '0');
+
+    // A second whiteboard runs beside the first: they switch to it, and I can join it too.
+    await theirs.getByRole('main').getByRole('button', { name: 'Start an Activity' }).click();
+    await theirs.getByRole('dialog', { name: 'Activities' }).getByRole('button', { name: /Whiteboard/ }).click();
+    await expect(theirs.getByRole('region', { name: 'Whiteboard' }).getByLabel('Whiteboard canvas')).toHaveAttribute('data-strokes', '0');
+    const banner = page.getByRole('status').filter({ hasText: 'Whiteboard' });
+    await expect(banner).toContainText('started by Artist');
+    await page.getByRole('main').getByRole('button', { name: 'Start an Activity' }).click();
+    await expect(page.getByRole('dialog', { name: 'Activities' }).getByRole('list', { name: 'Running activities' }).getByRole('listitem')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await banner.getByRole('button', { name: 'Join Activity' }).click();
+    // I left my old board for theirs, so mine ended and theirs has us both.
+    await expect(page.getByRole('region', { name: 'Whiteboard' })).toContainText('2 in it');
+    await expect(banner).toHaveCount(0);
   });
 
   test('turning on Message Requests sends a first DM to Requests', async ({ page, me }) => {

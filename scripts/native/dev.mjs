@@ -8,21 +8,7 @@ import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { flushTestRedis, loadNativeEnv, ROOT } from './env.mjs';
 import { ensureInfra } from './infra.mjs';
-
-
-// drizzle-kit exits 0 even when a statement fails, so inspect its output.
-const pushSchema = (env, cwd) =>
-  new Promise((resolve) => {
-    const child = spawn('pnpm', ['--filter', '@subspace/database', 'exec', 'drizzle-kit', 'push', '--force'], {
-      cwd,
-      env,
-      shell: process.platform === 'win32',
-    });
-    let out = '';
-    child.stdout.on('data', (d) => ((out += d), process.stdout.write(d)));
-    child.stderr.on('data', (d) => ((out += d), process.stderr.write(d)));
-    child.on('exit', (code) => resolve(code === 0 && !/^error:/m.test(out) ? 0 : 1));
-  });
+import { syncSchema } from './schema.mjs';
 
 const testStack = process.argv.includes('--test-stack');
 const env = loadNativeEnv({ test: testStack });
@@ -77,9 +63,9 @@ if (!infra.livekit) console.warn('[native] LiveKit unavailable: Comm-Link voice/
 console.log('[native] Building shared packages...');
 await run('pnpm', ['--filter', '@subspace/constants', '--filter', '@subspace/crypto', '--filter', '@subspace/database', 'build']);
 
-console.log('[native] Syncing database schema...');
-if ((await pushSchema(env, ROOT)) !== 0) {
-  console.error('[native] Schema push failed.');
+console.log('[native] Migrating the database...');
+if ((await syncSchema(env)) !== 0) {
+  console.error('[native] Migrating the database failed.');
   process.exit(1);
 }
 

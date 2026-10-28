@@ -6,6 +6,7 @@ import {
   resolveRelayAudience,
   resolveMeshAudience,
   resolveBeaconAudience,
+  resolveThreadAudience,
 } from '@subspace/database';
 
 export const GATEWAY_DISPATCH_CHANNEL = 'gateway:transmission:events';
@@ -13,6 +14,7 @@ export const GATEWAY_SESSION_CHANNEL = 'gateway:session:events';
 
 export type Audience =
   | { relayId: string }
+  | { threadId: string }
   | { meshId: string }
   | { beaconId: string; requiredPermission?: bigint }
   | { transmitterIds: string[] };
@@ -35,6 +37,7 @@ export async function publishGatewayEvent(
   let ids: string[] = [];
   try {
     if ('relayId' in audience) ids = db ? await resolveRelayAudience(db, audience.relayId) : [];
+    else if ('threadId' in audience) ids = db ? await resolveThreadAudience(db, audience.threadId) : [];
     else if ('meshId' in audience) ids = db ? await resolveMeshAudience(db, audience.meshId) : [];
     else if ('beaconId' in audience)
       ids = db ? await resolveBeaconAudience(db, audience.beaconId, audience.requiredPermission) : [];
@@ -45,8 +48,11 @@ export async function publishGatewayEvent(
   }
   if (ids.length === 0) return;
 
+  // `type` names the event; a payload's own `type` (an interaction's 2) travels as payloadType and
+  // the gateway puts it back.
+  const own = (payload as { type?: unknown } | null)?.type;
   await redis
-    .publish(GATEWAY_DISPATCH_CHANNEL, JSON.stringify({ ...payload, type, audience: ids }))
+    .publish(GATEWAY_DISPATCH_CHANNEL, JSON.stringify({ ...payload, type, ...(own !== undefined ? { payloadType: own } : {}), audience: ids }))
     .catch(() => {});
 }
 
@@ -63,7 +69,8 @@ export async function audienceForTransmission(
   }
   if (t.threadId && db) {
     const [thread] = await db.select().from(archivalThreads).where(eq(archivalThreads.id, t.threadId)).limit(1);
-    if (thread) return { relayId: thread.relayId };
+    // A private thread's transmissions reach only its members (and Manage Threads).
+    if (thread) return thread.isPrivate ? { threadId: thread.id } : { relayId: thread.relayId };
   }
   return { transmitterIds: [] };
 }

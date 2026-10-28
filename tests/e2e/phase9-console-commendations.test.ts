@@ -18,10 +18,10 @@ describe('Phase 9: Command Console, Moderation & Commendations E2E Suite', () =>
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const rootId = '90909090-9090-9090-9090-909090909090'; // Staff Rank: 3 (ROOT)
-  const adminId = '80808080-8080-8080-8080-808080808080'; // Staff Rank: 2 (ADMIN)
-  const modId = '70707070-7070-7070-7070-707070707070'; // Staff Rank: 1 (MODERATOR)
-  const regularId = '60606060-6060-6060-6060-606060606060'; // Staff Rank: 0 (NONE)
+  const rootId = '982131255586754704'; // Staff Rank: 3 (ROOT)
+  const adminId = '984116671632670848'; // Staff Rank: 2 (ADMIN)
+  const modId = '986102087678586992'; // Staff Rank: 1 (MODERATOR)
+  const regularId = '988087503724503136'; // Staff Rank: 0 (NONE)
 
   let rootToken: string;
   let adminToken: string;
@@ -209,6 +209,33 @@ describe('Phase 9: Command Console, Moderation & Commendations E2E Suite', () =>
   });
 
   describe('2. Command Console Staff Hierarchy & User Moderation', () => {
+    it('finds transmitters by part of a username or display name, never deleted accounts', async () => {
+      const db = (app as any).db;
+      const deletedId = '989000000000000001';
+      await db.insert(transmitters).values({ id: deletedId, username: 'deleted_user', email: 'deleted+x@deleted.invalid', passwordHash: 'x', displayName: 'Deleted User', deletedAt: new Date() });
+      const find = async (search?: string) => {
+        const res = await app.inject({
+          method: 'GET',
+          url: `/api/v1/console/transmitters${search === undefined ? '' : `?search=${encodeURIComponent(search)}`}`,
+          headers: { authorization: `Bearer ${modToken}` },
+        });
+        expect(res.statusCode).toBe(200);
+        return res.json().transmitters.map((t: any) => t.id);
+      };
+      try {
+        expect(await find('kirk')).toEqual([rootId]); // part of the username
+        expect(await find('ADMIRAL K')).toEqual([rootId]); // part of the display name, any case
+        expect(await find('%')).toEqual([]); // wildcards are literal
+        expect(await find()).not.toContain(deletedId);
+        expect(await find('deleted')).toEqual([]);
+        const [listed] = (await app.inject({ method: 'GET', url: '/api/v1/console/transmitters?search=kirk', headers: { authorization: `Bearer ${modToken}` } })).json().transmitters;
+        expect(listed).toHaveProperty('discriminator');
+        expect(listed).toHaveProperty('avatarUrl');
+      } finally {
+        await db.delete(transmitters).where(eq(transmitters.id, deletedId));
+      }
+    });
+
     it('blocks Moderator from banning users (Admin required)', async () => {
       const res = await app.inject({
         method: 'POST',

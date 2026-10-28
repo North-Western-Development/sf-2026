@@ -31,8 +31,9 @@ export const usersRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
                   required: ['text'],
                   properties: {
                     text: { type: 'string', maxLength: MAX_STATUS_TEXT_LENGTH },
-                    emoji: { type: 'string' },
-                    expiresAt: { type: 'string' },
+                    emoji: { type: 'string', maxLength: 64 },
+                    // null: "Don't clear".
+                    expiresAt: { anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }] },
                   },
                 },
               ],
@@ -48,7 +49,8 @@ export const usersRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
       const { customStatus } = request.body as { customStatus: { text: string; emoji?: string; expiresAt?: string } | null };
 
-      if (customStatus && customStatus.text.length > MAX_STATUS_TEXT_LENGTH) {
+      // Characters, not UTF-16 units: an emoji counts once.
+      if (customStatus && [...customStatus.text].length > MAX_STATUS_TEXT_LENGTH) {
         return reply.status(400).send({ error: `Custom status exceeds ${MAX_STATUS_TEXT_LENGTH} characters` });
       }
 

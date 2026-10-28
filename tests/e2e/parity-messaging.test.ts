@@ -9,9 +9,9 @@ describe('Parity: unified channel messaging (replies, mentions, reactions, pins,
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const ownerId = 'c1000000-0000-0000-0000-000000000001';
-  const memberId = 'c1000000-0000-0000-0000-000000000002';
-  const outsiderId = 'c1000000-0000-0000-0000-000000000003';
+  const ownerId = '334762634106503169';
+  const memberId = '334762634106503170';
+  const outsiderId = '334762634106503171';
   let ownerToken: string, memberToken: string, outsiderToken: string;
 
   let beaconId: string;

@@ -4,6 +4,13 @@
 //! the app's config directory and opened in the main window from then on. The instance's own
 //! pages never get access to native commands (no remote capability is granted). Links to other
 //! sites open in the system browser. Closing the window keeps the app in the tray.
+//!
+//! It also reports what the user is playing to that page (see activity.rs): a known game running
+//! on the PC, or Rich Presence from games over a local RPC server, and keeps itself up to date
+//! (updates.rs).
+
+mod activity;
+mod updates;
 
 use std::{fs, path::PathBuf, sync::Mutex};
 
@@ -11,10 +18,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    webview::PageLoadEvent,
     AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 
-const MAIN: &str = "main";
+pub(crate) const MAIN: &str = "main";
 
 /// The instance the main window is allowed to stay on.
 struct Server(Mutex<Option<Url>>);
@@ -103,6 +111,7 @@ pub fn run() {
         // A second launch focuses the running app instead of opening another copy.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show(app)))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![current_server, set_server])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -114,11 +123,20 @@ pub fn run() {
                 None => WebviewUrl::App("index.html".into()),
             };
             let nav_handle = handle.clone();
+            let hub = activity::ActivityHub::start(&handle);
             WebviewWindowBuilder::new(app, MAIN, start)
                 .title("Subspace Frequency")
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(940.0, 560.0)
                 .background_color(tauri::window::Color(3, 3, 5, 255))
+                // Lets the web app know it is the desktop app: it opens the app, not the homepage.
+                .initialization_script("window.subspaceDesktop = true;")
+                // Each page load starts empty: tell it what is being played right away.
+                .on_page_load(move |_window, payload| {
+                    if payload.event() == PageLoadEvent::Finished {
+                        hub.push();
+                    }
+                })
                 .on_navigation(move |url| {
                     // Stay on the connect page or the chosen instance; anything else goes to the browser.
                     if is_app_page(url) || url.scheme() == "about" {
@@ -157,6 +175,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show(app),
+                    updates::MENU_ID => updates::install_ready(app),
                     "change" => {
                         show(app);
                         if let Some(window) = main_window(app) {
@@ -172,6 +191,8 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+            app.manage(updates::Updates::new(menu));
+            updates::start(&handle);
             Ok(())
         })
         .run(tauri::generate_context!())

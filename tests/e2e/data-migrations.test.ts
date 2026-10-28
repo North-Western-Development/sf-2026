@@ -5,7 +5,7 @@ import { PERMISSIONS } from '@subspace/constants';
 import { transmitters, dataMigrations, eq } from '@subspace/database';
 
 describe('One-time data migrations', () => {
-  const owner = { id: 'd1000000-0000-4000-8000-000000000001', username: 'migration_owner' };
+  const owner = { id: '173951292740468737', username: 'migration_owner' };
   const token = () => signAccessToken({ transmitterId: owner.id, username: owner.username, staffRank: 0 }, getJwtSecret());
 
   it('records migrations and never re-applies them on restart', async () => {

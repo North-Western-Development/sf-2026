@@ -10,9 +10,9 @@ describe('Beacon community: members page, channels & roles, events', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const owner = { id: 'fa000000-0000-4000-8000-000000000001', username: 'comm_owner' };
-  const pilot = { id: 'fa000000-0000-4000-8000-000000000002', username: 'comm_pilot' };
-  const quiet = { id: 'fa000000-0000-4000-8000-000000000003', username: 'comm_quiet' };
+  const owner = { id: '830040764234596353', username: 'comm_owner' };
+  const pilot = { id: '830040764234596354', username: 'comm_pilot' };
+  const quiet = { id: '830040764234596355', username: 'comm_quiet' };
   const users = [owner, pilot, quiet];
   const auth = (u: { id: string; username: string }) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
   const call = (method: string, url: string, u: { id: string; username: string }, payload?: unknown) =>

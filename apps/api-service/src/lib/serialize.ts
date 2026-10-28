@@ -22,6 +22,8 @@ export function serializeTransmitter(user: any) {
     displayNameStyle: user.displayNameStyle ?? null,
     customStatus: user.customStatus ?? null,
     profileVisibility: user.profileVisibility || 'everyone',
+    activityVisibility: user.activityVisibility || 'off',
+    changelogSeen: user.changelogSeen ?? {},
     is2faEnabled: Boolean(user.is2faEnabled),
     isEmailVerified: Boolean(user.isEmailVerified),
     createdAt: user.createdAt,

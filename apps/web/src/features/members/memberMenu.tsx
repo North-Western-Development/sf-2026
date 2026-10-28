@@ -7,6 +7,7 @@ import { userTag } from '../../lib/normalize';
 import { confirmAction, openModal, promptText, toast } from '../../app/ui';
 import { channelKey } from '../../lib/types';
 import { joinCall } from '../voice/session';
+import { voiceModerationItems } from '../voice/moderation';
 import { copyText } from '../../lib/clipboard';
 
 /** Context menu for a transmitter (member list, author lines, DM rows). */
@@ -68,6 +69,8 @@ export function memberMenu(beaconId: string | undefined, userId: string, navigat
   if (beaconId) {
     const perms = beaconPermissions(s, beaconId);
     const mod: ContextMenuItem[] = [];
+    const voice = voiceModerationItems(beaconId, userId);
+    if (voice.length) items.push({ separator: true }, ...voice);
     if (self ? can(perms, PERMISSIONS.CHANGE_NICKNAME) : can(perms, PERMISSIONS.MANAGE_NICKNAMES)) {
       mod.push({
         label: self ? 'Edit Beacon Profile' : 'Change Nickname',

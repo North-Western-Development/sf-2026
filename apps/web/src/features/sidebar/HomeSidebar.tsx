@@ -17,6 +17,7 @@ import { Avatar, MentionBadge } from '../common/Avatar';
 import { http } from '../../lib/http';
 import { joinCall } from '../voice/session';
 import { copyText } from '../../lib/clipboard';
+import { ActivityLine, useActivityOf } from '../activity/ActivityViews';
 
 function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: number }) {
   return (
@@ -47,6 +48,7 @@ function ConversationRow({ conv }: { conv: Conversation }) {
   const key = channelKey(conv.kind, id);
   const ind = useStore(useShallow((s) => channelIndicator(s, key)));
   const customStatus = useStore((s) => (conv.kind === 'link' ? s.presence[conv.link.recipient.id]?.customStatus?.text : undefined));
+  const activity = useActivityOf(conv.kind === 'link' ? conv.link.recipient.id : undefined);
   const active = dmId === id;
 
   const name =
@@ -174,6 +176,8 @@ function ConversationRow({ conv }: { conv: Conversation }) {
           <span className="block truncate text-xs text-fg-subtle">{conv.mesh.members.length} Members</span>
         ) : customStatus ? (
           <span className="block truncate text-xs text-fg-subtle">{customStatus}</span>
+        ) : activity ? (
+          <ActivityLine activity={activity} />
         ) : null}
       </span>
       <MentionBadge count={ind.mentions} />

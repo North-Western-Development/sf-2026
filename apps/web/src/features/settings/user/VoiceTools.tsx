@@ -92,3 +92,74 @@ export function MicTest() {
     </div>
   );
 }
+
+/** "Backquote" → "`", "KeyV" → "V", "F13" → "F13": how a key code reads. */
+const keyLabel = (code: string | null) =>
+  !code ? 'Not set' : code === 'Backquote' ? '`' : code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ').replace(/(Left|Right)$/, ' $1');
+
+/** Press a key to bind it; Escape cancels, Backspace clears. */
+function KeyRecorder({ label, value, onChange }: { label: string; value: string | null; onChange: (code: string | null) => void }) {
+  const [listening, setListening] = useState(false);
+  useEffect(() => {
+    if (!listening) return;
+    const down = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setListening(false);
+      if (e.code === 'Escape') return;
+      onChange(e.code === 'Backspace' ? null : e.code);
+    };
+    window.addEventListener('keydown', down, true);
+    return () => window.removeEventListener('keydown', down, true);
+  }, [listening, onChange]);
+  return (
+    <div className="flex items-center justify-between gap-4 py-2">
+      <span className="text-sm text-fg">{label}</span>
+      <button
+        type="button"
+        aria-label={`${label}: ${keyLabel(value)}`}
+        onClick={() => setListening(true)}
+        className={clsx('min-w-32 rounded-md px-3 py-1.5 text-sm font-semibold ring-1', listening ? 'bg-brand-soft text-brand-sky ring-brand' : 'bg-void text-fg ring-line-strong hover:ring-fg-subtle')}
+      >
+        {listening ? 'Press a key…' : keyLabel(value)}
+      </button>
+    </div>
+  );
+}
+
+/** Voice & Video › Input Mode: voice activity or push-to-talk, and the Priority Speaker key. */
+export function InputModeSettings() {
+  const prefs = useVoicePrefs();
+  return (
+    <div className="space-y-2">
+      <div role="radiogroup" aria-label="Input Mode" className="space-y-2">
+        {(
+          [
+            ['voice', 'Voice Activity', 'Talk whenever you speak.'],
+            ['ptt', 'Push to Talk', 'Hold your key to talk.'],
+          ] as const
+        ).map(([mode, title, hint]) => (
+          <button
+            key={mode}
+            type="button"
+            role="radio"
+            aria-checked={prefs.inputMode === mode}
+            onClick={() => setVoicePrefs({ inputMode: mode })}
+            className={clsx('flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left', prefs.inputMode === mode ? 'bg-active' : 'bg-raised hover:bg-hover')}
+          >
+            <span className={clsx('h-4 w-4 rounded-full border-2', prefs.inputMode === mode ? 'border-brand bg-brand' : 'border-fg-subtle')} />
+            <span>
+              <span className="block text-sm font-semibold text-fg">{title}</span>
+              <span className="block text-xs text-fg-muted">{hint}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      <KeyRecorder label="Push to Talk key" value={prefs.pttKey} onChange={(pttKey) => setVoicePrefs({ pttKey })} />
+      <KeyRecorder label="Priority Speaker key" value={prefs.priorityKey} onChange={(priorityKey) => setVoicePrefs({ priorityKey })} />
+      <p className="text-xs text-fg-muted">
+        Comm-links where you lack Use Voice Activity always use push-to-talk. The Priority Speaker key works where you have Priority Speaker: while you hold it and talk, others are quieter.
+      </p>
+    </div>
+  );
+}

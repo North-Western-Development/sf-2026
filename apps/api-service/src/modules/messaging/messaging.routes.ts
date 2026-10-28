@@ -1,4 +1,6 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import { redactForBot } from '../../lib/bot-redact.js';
+import { normalizeRichEmbeds, EmbedError, RICH_EMBEDS_SCHEMA, type RichEmbedInput } from '../../lib/rich-embeds.js';
 import {
   eq,
   and,
@@ -20,16 +22,18 @@ import {
   subspaceMeshMembers,
   resolveRelayAudience,
   resolveMeshAudience,
+  type TransmissionPoll,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { resolveVaultAttachments } from '../../lib/attachments.js';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { CHANNEL_TYPES, ChannelType, loadChannel, checkChannelAccess, audienceForChannel } from '../../lib/channels.js';
+import { beaconsOf, expressionAllowed, stripForbiddenGlyphs } from '../../lib/glyph-access.js';
 import { formatTransmission, deriveChannel } from '../../lib/transmissions.js';
 import { parseMentions } from '../../lib/mentions.js';
 import { touchChannelLastTransmission, incrementMentionCounts } from '../../lib/read-state.js';
-import { linkIsEncrypted } from '../e2ee/e2ee.routes.js';
+import { channelIsEncrypted } from '../e2ee/e2ee.routes.js';
 import { queuePush } from '../../lib/push.js';
 import { runAutomod } from '../../lib/automod.js';
 import { attachThreads } from '../threads/threads.routes.js';
@@ -45,9 +49,9 @@ const channelTypeSchema = { type: 'string', enum: CHANNEL_TYPES };
 /** Plain words for a push preview: mention tokens and markdown markers removed. */
 export function pushText(content: string): string {
   return content
-    .replace(/<@&?!?[0-9a-f-]{36}>/g, '@someone')
-    .replace(/<#[0-9a-f-]{36}>/g, '#relay')
-    .replace(/<a?:(\w+):[0-9a-f-]{36}>/g, ':$1:')
+    .replace(/<@&?!?[1-9][0-9]{0,18}>/g, '@someone')
+    .replace(/<#[1-9][0-9]{0,18}>/g, '#relay')
+    .replace(/<a?:(\w+):[1-9][0-9]{0,18}>/g, ':$1:')
     .replace(/\|\|[\s\S]*?\|\|/g, '[spoiler]')
     .replace(/[*_~`>]/g, '')
     .replace(/\s+/g, ' ')
@@ -67,7 +71,7 @@ export const ENCRYPTED_PAYLOAD = {
   required: ['v', 'senderDevice', 'envelopes'],
   properties: {
     v: { const: 1 },
-    senderDevice: { type: 'string', format: 'uuid' },
+    senderDevice: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
     envelopes: { type: 'object', maxProperties: 25, additionalProperties: { type: 'object' } },
     self: { type: 'string', maxLength: 65536 },
   },
@@ -118,15 +122,15 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           type: 'object',
           additionalProperties: false,
           required: ['channelType', 'channelId'],
-          properties: { channelType: channelTypeSchema, channelId: { type: 'string', format: 'uuid' } },
+          properties: { channelType: channelTypeSchema, channelId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
         },
         querystring: {
           type: 'object',
           additionalProperties: false,
           properties: {
-            before: { type: 'string', format: 'uuid' },
-            after: { type: 'string', format: 'uuid' },
-            around: { type: 'string', format: 'uuid' },
+            before: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
+            after: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
+            around: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
             limit: { type: 'string' },
           },
         },
@@ -208,8 +212,11 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
       const blocked = await blockedIdsFor(token.transmitterId);
       const visible = rows.filter((r) => !blocked.has(r.transmitterId));
-      const formatted = await Promise.all(
-        visible.map((r) => formatTransmission(db, r, token.transmitterId, { beaconId: channel.beaconId }))
+      const formatted = await redactForBot(
+        db,
+        token,
+        channel.channelType,
+        await Promise.all(visible.map((r) => formatTransmission(db, r, token.transmitterId, { beaconId: channel.beaconId })))
       );
 
       // Messages that started a thread carry it (the chip under them).
@@ -228,19 +235,43 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           type: 'object',
           additionalProperties: false,
           required: ['channelType', 'channelId'],
-          properties: { channelType: channelTypeSchema, channelId: { type: 'string', format: 'uuid' } },
+          properties: { channelType: channelTypeSchema, channelId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
         },
         body: {
           type: 'object',
           additionalProperties: false,
           properties: {
             content: { type: 'string', maxLength: MAX_TRANSMISSION_LENGTH },
-            attachmentIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 10 },
-            stickerIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 3 },
-            replyToId: { type: 'string', format: 'uuid' },
+            attachmentIds: { type: 'array', items: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' }, maxItems: 10 },
+            stickerIds: { type: 'array', items: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' }, maxItems: 3 },
+            replyToId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
             replyPing: { type: 'boolean' },
             nonce: { type: 'string', maxLength: 100 },
             encrypted: ENCRYPTED_PAYLOAD,
+            /** Rich embeds: bots only (people's links get previews instead). */
+            embeds: RICH_EMBEDS_SCHEMA,
+            poll: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['question', 'answers'],
+              properties: {
+                question: { type: 'string', minLength: 1, maxLength: 300 },
+                answers: {
+                  type: 'array',
+                  minItems: 1,
+                  maxItems: 10,
+                  items: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string', minLength: 1, maxLength: 55 }, emoji: { type: 'string', maxLength: 64 } } },
+                },
+                durationHours: { type: 'integer', enum: [1, 4, 8, 24, 72, 168, 336] },
+                allowMultiselect: { type: 'boolean' },
+              },
+            },
+            voiceMessage: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['durationMs'],
+              properties: { durationMs: { type: 'integer', minimum: 1, maximum: 20 * 60 * 1000 }, waveform: { type: 'string', maxLength: 400 } },
+            },
           },
         },
       },
@@ -265,12 +296,17 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         replyPing?: boolean;
         nonce?: string;
         encrypted?: Record<string, unknown>;
+        poll?: { question: string; answers: Array<{ text: string; emoji?: string }>; durationHours?: number; allowMultiselect?: boolean };
+        voiceMessage?: { durationMs: number; waveform?: string };
+        embeds?: RichEmbedInput[];
       };
-      const content = (body.content || '').trim();
+      let content = (body.content || '').trim();
       const attachmentIds = body.attachmentIds || [];
+      // Where glyphs and stickers are checked against: this beacon and the sender's permissions in it.
+      const where = { beaconId: channel.beaconId ?? null, perms: access.actorContext?.effectivePermissions ?? null };
 
       // Encrypted links take ciphertext only; nothing else may carry it.
-      const encryptedLink = channel.channelType === 'link' && (await linkIsEncrypted(db, channelId));
+      const encryptedLink = await channelIsEncrypted(db, channel.channelType, channelId);
       if (encryptedLink && (content || attachmentIds.length || !body.encrypted)) {
         return reply.status(400).send({ error: 'This conversation is end-to-end encrypted; send ciphertext only', code: 'ENCRYPTION_REQUIRED' });
       }
@@ -281,26 +317,83 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         return reply.status(413).send({ error: 'Encrypted transmission is too large', code: 'TRANSMISSION_TOO_LARGE' });
       }
 
-      // Stickers come from beacons the sender is in (Discord without Nitro would limit this to the same beacon).
+      // Slowmode: one transmission per window in this relay, unless they hold Bypass Slowmode.
+      if (channel.channelType === 'relay' && access.actorContext && !hasPermission(access.actorContext.effectivePermissions, PERMISSIONS.BYPASS_SLOWMODE)) {
+        const [relayRow] = await db.select({ slowmode: relays.slowmodeSeconds }).from(relays).where(eq(relays.id, channelId)).limit(1);
+        const redis = (app as any).redis;
+        if (relayRow?.slowmode && redis?.status === 'ready') {
+          const key = `slowmode:${channelId}:${token.transmitterId}`;
+          if ((await redis.set(key, '1', 'EX', relayRow.slowmode, 'NX')) !== 'OK') {
+            const left = Math.max(1, await redis.ttl(key));
+            return reply.status(429).send({ error: `Slowmode is on: you can send again in ${left}s`, code: 'SLOWMODE', retryAfter: left });
+          }
+        }
+      }
+
+      // Glyphs the sender may not use here become plain :name: text.
+      if (content) content = await stripForbiddenGlyphs(db, content, token.transmitterId, where);
+
+      // Stickers come from beacons the sender is in; another beacon's need Use External Stickers.
       let stickers: Array<{ id: string; name: string; url: string }> = [];
       if (body.stickerIds?.length) {
         if (body.encrypted) return reply.status(400).send({ error: 'Stickers cannot be sent in an encrypted conversation' });
         const rows = await db
-          .select({ id: beaconStickers.id, name: beaconStickers.name, url: beaconStickers.url })
+          .select({ id: beaconStickers.id, name: beaconStickers.name, url: beaconStickers.url, beaconId: beaconStickers.beaconId })
           .from(beaconStickers)
           .innerJoin(beaconMembers, and(eq(beaconMembers.beaconId, beaconStickers.beaconId), eq(beaconMembers.transmitterId, token.transmitterId)))
           .where(inArray(beaconStickers.id, body.stickerIds));
         if (rows.length !== new Set(body.stickerIds).size) return reply.status(400).send({ error: 'Unknown sticker', code: 'INVALID_STICKER' });
-        stickers = body.stickerIds.map((id) => rows.find((r: any) => r.id === id)!);
+        const memberOf = new Set<string>(rows.map((r: any) => r.beaconId));
+        if (!rows.every((r: any) => expressionAllowed(r, where, memberOf, 'sticker'))) {
+          return reply.status(403).send({ error: 'Stickers from other beacons need Use External Stickers here', code: 'EXTERNAL_STICKER' });
+        }
+        stickers = body.stickerIds.map((id) => {
+          const r = rows.find((x: any) => x.id === id)!;
+          return { id: r.id, name: r.name, url: r.url };
+        });
       }
 
-      if (!content && attachmentIds.length === 0 && !body.encrypted && !stickers.length) {
+      // Polls and voice messages: each its own permission in a beacon, never in an encrypted conversation.
+      const inBeacon = channel.channelType === 'relay' || channel.channelType === 'thread';
+      const may = (p: bigint) => !inBeacon || (!!access.actorContext && hasPermission(access.actorContext.effectivePermissions, p));
+      let poll: TransmissionPoll | null = null;
+      if (body.poll) {
+        if (body.encrypted) return reply.status(400).send({ error: 'Polls cannot be sent in an encrypted conversation' });
+        if (!may(PERMISSIONS.CREATE_POLLS)) return reply.status(403).send({ error: 'Transmitter lacks CREATE_POLLS clearance', code: 'MISSING_PERMISSIONS' });
+        poll = {
+          question: body.poll.question.trim(),
+          answers: body.poll.answers.map((a, i) => ({ id: i + 1, text: a.text.trim(), emoji: a.emoji || null })),
+          allowMultiselect: !!body.poll.allowMultiselect,
+          expiresAt: new Date(Date.now() + (body.poll.durationHours ?? 24) * 3_600_000).toISOString(),
+          endedAt: null,
+        };
+      }
+      if (body.voiceMessage) {
+        if (body.encrypted) return reply.status(400).send({ error: 'Voice messages cannot be sent in an encrypted conversation' });
+        if (!may(PERMISSIONS.SEND_VOICE_MESSAGES)) return reply.status(403).send({ error: 'Transmitter lacks SEND_VOICE_MESSAGES clearance', code: 'MISSING_PERMISSIONS' });
+        if (attachmentIds.length !== 1 || content || stickers.length) return reply.status(400).send({ error: 'A voice message is one audio attachment on its own', code: 'INVALID_VOICE_MESSAGE' });
+      }
+
+      let richEmbeds: Array<Record<string, unknown>> = [];
+      if (body.embeds?.length) {
+        if (!(token as { bot?: boolean }).bot) return reply.status(400).send({ error: 'Only bots and webhooks send embeds', code: 'EMBEDS_BOTS_ONLY' });
+        if (body.encrypted) return reply.status(400).send({ error: 'Embeds cannot be sent in an encrypted conversation' });
+        if (!may(PERMISSIONS.EMBED_LINKS)) return reply.status(403).send({ error: 'Transmitter lacks EMBED_LINKS clearance', code: 'MISSING_PERMISSIONS' });
+        try {
+          richEmbeds = normalizeRichEmbeds(body.embeds) as unknown as Array<Record<string, unknown>>;
+        } catch (err) {
+          if (err instanceof EmbedError) return reply.status(400).send({ error: err.message, code: 'EMBED_TOO_LARGE' });
+          throw err;
+        }
+      }
+
+      if (!content && attachmentIds.length === 0 && !body.encrypted && !stickers.length && !poll && !richEmbeds.length) {
         return reply.status(400).send({ error: 'content, attachmentIds or stickerIds is required' });
       }
 
       let attachments: Array<{ id: string; url: string; filename: string; size: number; mimeType: string }> = [];
       if (attachmentIds.length > 0) {
-        if (channel.channelType === 'relay' || channel.channelType === 'thread') {
+        if ((channel.channelType === 'relay' || channel.channelType === 'thread') && !body.voiceMessage) {
           const attachAccess = await checkChannelAccess(db, channel, token.transmitterId, 'attach');
           if (!attachAccess.allowed) return reply.status(attachAccess.status).send({ error: attachAccess.error });
         }
@@ -309,6 +402,10 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           return reply.status(400).send({ error: 'One or more attachmentIds are invalid or not owned by the sender', code: 'INVALID_ATTACHMENT' });
         }
         attachments = resolved;
+        if (body.voiceMessage) {
+          if (!/^audio\//.test(attachments[0].mimeType || '')) return reply.status(400).send({ error: 'A voice message must be audio', code: 'INVALID_VOICE_MESSAGE' });
+          attachments = [{ ...attachments[0], durationMs: body.voiceMessage.durationMs, waveform: body.voiceMessage.waveform ?? '' } as any];
+        }
       }
 
       let replyToId: string | null = null;
@@ -346,6 +443,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         beaconId: channel.beaconId || null,
         validUserIds,
         authorHasMentionEveryone: hasMentionEveryone,
+        authorHasMentionClearances: !!access.actorContext && hasPermission(access.actorContext.effectivePermissions, PERMISSIONS.MENTION_CLEARANCES),
       });
       if (replyPingTarget && !parsed.mentions.includes(replyPingTarget)) {
         parsed.mentions.push(replyPingTarget);
@@ -371,6 +469,8 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           content: content || '',
           attachments,
           stickers,
+          poll,
+          isVoiceMessage: !!body.voiceMessage,
           replyToId,
           replyPing,
           mentions: parsed.mentions,
@@ -378,6 +478,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           mentionEveryone: parsed.mentionEveryone,
           type: replyToId ? 'reply' : 'default',
           encryptedPayload: body.encrypted ? JSON.stringify(body.encrypted) : null,
+          embeds: richEmbeds,
         })
         .returning();
 
@@ -446,7 +547,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           type: 'object',
           additionalProperties: false,
           required: ['channelType', 'channelId'],
-          properties: { channelType: channelTypeSchema, channelId: { type: 'string', format: 'uuid' } },
+          properties: { channelType: channelTypeSchema, channelId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
         },
       },
     },
@@ -468,7 +569,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         .where(and(eq((transmissions as any)[containerColumn(channelType)], channelId), isNotNull(transmissions.pinnedAt)))
         .orderBy(desc(transmissions.pinnedAt));
 
-      const formatted = await Promise.all(rows.map((r: any) => formatTransmission(db, r, token.transmitterId, { beaconId: channel.beaconId })));
+      const formatted = await redactForBot(db, token, channel.channelType, await Promise.all(rows.map((r: any) => formatTransmission(db, r, token.transmitterId, { beaconId: channel.beaconId }))));
       return reply.send({ transmissions: formatted });
     }
   );
@@ -484,7 +585,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           type: 'object',
           additionalProperties: false,
           required: ['channelType', 'channelId'],
-          properties: { channelType: channelTypeSchema, channelId: { type: 'string', format: 'uuid' } },
+          properties: { channelType: channelTypeSchema, channelId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
         },
       },
     },
@@ -565,15 +666,9 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       const glyphId = emojiKey.slice('custom:'.length);
       const [glyph] = await db.select().from(beaconEmojis).where(eq(beaconEmojis.id, glyphId)).limit(1);
       if (!glyph) return reply.status(400).send({ error: 'Unknown glyph', code: 'INVALID_GLYPH' });
-      if (channel.channelType === 'relay' || channel.channelType === 'thread') {
-        if (glyph.beaconId !== channel.beaconId) {
-          return reply.status(403).send({ error: 'Glyph belongs to a different Beacon', code: 'FOREIGN_GLYPH' });
-        }
-      } else {
-        const memberBeacons = await db.select().from(beaconMembers).where(eq(beaconMembers.transmitterId, token.transmitterId));
-        if (!memberBeacons.some((m: any) => m.beaconId === glyph.beaconId)) {
-          return reply.status(403).send({ error: 'Glyph belongs to a Beacon you are not in', code: 'FOREIGN_GLYPH' });
-        }
+      const where = { beaconId: channel.beaconId ?? null, perms: access.actorContext?.effectivePermissions ?? null };
+      if (!expressionAllowed(glyph, where, await beaconsOf(db, token.transmitterId), 'glyph')) {
+        return reply.status(403).send({ error: glyph.beaconId === channel.beaconId ? 'You cannot use glyphs here' : 'Glyphs from other beacons need Use External Glyphs here', code: 'FOREIGN_GLYPH' });
       }
     }
 
@@ -735,7 +830,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
                 type: 'object',
                 additionalProperties: false,
                 required: ['channelType', 'channelId'],
-                properties: { channelType: channelTypeSchema, channelId: { type: 'string', format: 'uuid' } },
+                properties: { channelType: channelTypeSchema, channelId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
               },
             },
             comment: { type: 'string', maxLength: MAX_TRANSMISSION_LENGTH },
@@ -778,7 +873,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
         if (!channel) return reply.status(404).send({ error: 'Target not found' });
         const access = await checkChannelAccess(db, channel, token.transmitterId, 'send');
         if (!access.allowed) return reply.status(access.status).send({ error: access.error, code: access.code });
-        if (channel.channelType === 'link' && (await linkIsEncrypted(db, channel.channelId))) {
+        if (await channelIsEncrypted(db, channel.channelType, channel.channelId)) {
           return reply.status(400).send({ error: 'Encrypted conversations cannot receive forwards', code: 'ENCRYPTED' });
         }
         const [row] = await db

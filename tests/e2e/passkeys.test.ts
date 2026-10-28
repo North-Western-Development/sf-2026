@@ -12,7 +12,7 @@ describe('Passkeys: API guards', () => {
   let app: FastifyInstance;
   let db: any;
   const PASSWORD = 'CorrectHorseBattery1';
-  const user = { id: 'e5000000-0000-4000-8000-000000000001', username: 'pk_user', email: 'pk_user@subspace.net' };
+  const user = { id: '450092498347360257', username: 'pk_user', email: 'pk_user@subspace.net' };
   const ORIGIN = { origin: 'http://localhost:4173' };
   let access = '';
   const as = (extra: Record<string, string> = {}) => ({ authorization: `Bearer ${access}`, ...ORIGIN, ...extra });
@@ -94,7 +94,7 @@ describe('Passkeys: API guards', () => {
     if (!db) return;
     const [other] = await db.select().from(transmitters).where(eq(transmitters.username, 'pk_user')).limit(1);
     expect(other).toBeTruthy();
-    const missing = '00000000-0000-4000-8000-0000000000aa';
+    const missing = '978275694148452522';
     expect((await app.inject({ method: 'PATCH', url: `/api/v1/auth/passkeys/${missing}`, headers: as(), payload: { name: 'x' } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'POST', url: `/api/v1/auth/passkeys/${missing}/delete`, headers: as(), payload: { password: PASSWORD } })).statusCode).toBe(404);
   });

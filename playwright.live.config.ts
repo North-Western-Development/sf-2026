@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { MEDIA_ARGS } from './tests/support/fake-voice';
 
 // Smoke tests against a deployed instance (staging or production):
 //   LIVE_URL=https://subspace.click pnpm test:live
@@ -21,7 +22,8 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
     colorScheme: 'dark',
     trace: 'retain-on-failure',
-    launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
+    // A talking fake microphone: Chrome's default one only beeps, which LiveKit does not count as speech.
+    launchOptions: { args: MEDIA_ARGS },
     permissions: ['microphone', 'camera'],
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],

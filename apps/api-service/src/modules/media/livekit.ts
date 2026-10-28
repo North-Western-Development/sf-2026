@@ -23,6 +23,30 @@ export interface LiveKitTokenOptions {
   ttlSeconds?: number;
   /** A Stage's audience: listen only, until a moderator lets them speak. */
   audience?: boolean;
+  /** Server mute (no microphone) and server deafen (hears nothing, and no microphone). */
+  serverMuted?: boolean;
+  serverDeafened?: boolean;
+}
+
+export type PublishSource = 'microphone' | 'camera' | 'screen_share' | 'screen_share_audio';
+
+/**
+ * What a member may send in a voice room, from their permissions there: Speak for the microphone
+ * (not while server-muted or deafened, nor in a Stage's audience), Video for the camera, Holo-Cast
+ * for screen sharing. The one place tokens, Stages and moderation decide it.
+ */
+export function publishSources(
+  permissions: bigint,
+  isOwner: boolean,
+  opts: { audience?: boolean; serverMuted?: boolean; serverDeafened?: boolean } = {}
+): PublishSource[] {
+  if (opts.audience) return [];
+  const has = (p: bigint) => isOwner || hasPermission(permissions, p);
+  const out: PublishSource[] = [];
+  if (has(PERMISSIONS.SPEAK_AUDIO) && !opts.serverMuted && !opts.serverDeafened) out.push('microphone');
+  if (has(PERMISSIONS.BROADCAST_HOLO_CAST)) out.push('camera');
+  if (has(PERMISSIONS.SHARE_SCREEN)) out.push('screen_share', 'screen_share_audio');
+  return out;
 }
 
 /**
@@ -40,6 +64,8 @@ export function createLiveKitAccessToken(options: LiveKitTokenOptions): string {
     isOwner = false,
     ttlSeconds = 6 * 3600, // 6 hours
     audience = false,
+    serverMuted = false,
+    serverDeafened = false,
   } = options;
 
   const canConnect = isOwner || hasPermission(permissions, PERMISSIONS.CONNECT_AUDIO);
@@ -47,26 +73,16 @@ export function createLiveKitAccessToken(options: LiveKitTokenOptions): string {
     throw new Error('Transmitter lacks CONNECT_AUDIO clearance');
   }
 
-  const canSpeak = !audience && (isOwner || hasPermission(permissions, PERMISSIONS.SPEAK_AUDIO));
-  const canHoloCast = !audience && (isOwner || hasPermission(permissions, PERMISSIONS.BROADCAST_HOLO_CAST));
-
-  const canPublishSources: Array<'microphone' | 'camera' | 'screen_share' | 'screen_share_audio'> = [];
-
-  if (canSpeak) {
-    canPublishSources.push('microphone');
-  }
-
-  if (canHoloCast) {
-    canPublishSources.push('camera', 'screen_share', 'screen_share_audio');
-  }
+  const canPublishSources = publishSources(permissions, isOwner, { audience, serverMuted, serverDeafened });
 
   const videoGrant: LiveKitVideoGrants = {
     roomJoin: true,
     room: roomName,
-    canPublish: canSpeak || canHoloCast,
-    canSubscribe: true,
+    canPublish: canPublishSources.length > 0,
+    canSubscribe: !serverDeafened,
     canPublishSources,
-    canPublishData: true,
+    // The client sends nothing over data channels; nobody needs to.
+    canPublishData: false,
   };
 
   const payload = {
@@ -82,27 +98,21 @@ export function createLiveKitAccessToken(options: LiveKitTokenOptions): string {
   });
 }
 
-/**
- * LiveKit's RoomService (Twirp over HTTP), called with a room-admin token we sign ourselves:
- * used by Stages to let a member speak or move them back to the audience without reconnecting.
- * LIVEKIT_INTERNAL_URL is LiveKit's address from the API (default: the compose service, or
- * 127.0.0.1:7880 outside production).
- */
-export async function updateLiveKitParticipant(opts: { apiKey: string; apiSecret: string; room: string; identity: string; canSpeak: boolean; canHoloCast: boolean }): Promise<boolean> {
-  const base = (process.env.LIVEKIT_INTERNAL_URL || (process.env.NODE_ENV === 'production' ? 'http://livekit:7880' : 'http://127.0.0.1:7880')).replace(/^ws/, 'http').replace(/\/$/, '');
+/** LIVEKIT_FORCE_RELAY=true: clients send and receive media only through LiveKit's TURN server. */
+export const forceRelay = () => process.env.LIVEKIT_FORCE_RELAY === 'true';
+
+/** LiveKit's address from the API (LIVEKIT_INTERNAL_URL; default the compose service, or 127.0.0.1:7880 outside production). */
+const roomServiceBase = () =>
+  (process.env.LIVEKIT_INTERNAL_URL || (process.env.NODE_ENV === 'production' ? 'http://livekit:7880' : 'http://127.0.0.1:7880')).replace(/^ws/, 'http').replace(/\/$/, '');
+
+/** LiveKit's RoomService (Twirp over HTTP), called with a room-admin token we sign ourselves. */
+async function roomService(opts: { apiKey: string; apiSecret: string; room: string }, method: string, body: unknown): Promise<boolean> {
   const admin = signJwt({ iss: opts.apiKey, sub: 'subspace-api', video: { roomAdmin: true, room: opts.room } }, opts.apiSecret, { expiresIn: '60s', notBefore: 0 });
-  const sources: string[] = [];
-  if (opts.canSpeak) sources.push('MICROPHONE');
-  if (opts.canSpeak && opts.canHoloCast) sources.push('CAMERA', 'SCREEN_SHARE', 'SCREEN_SHARE_AUDIO');
   try {
-    const res = await fetch(`${base}/twirp/livekit.RoomService/UpdateParticipant`, {
+    const res = await fetch(`${roomServiceBase()}/twirp/livekit.RoomService/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${admin}` },
-      body: JSON.stringify({
-        room: opts.room,
-        identity: opts.identity,
-        permission: { can_subscribe: true, can_publish: sources.length > 0, can_publish_data: true, can_publish_sources: sources },
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     });
     return res.ok;
@@ -110,3 +120,28 @@ export async function updateLiveKitParticipant(opts: { apiKey: string; apiSecret
     return false;
   }
 }
+
+/**
+ * Change what a connected participant may do without reconnecting them: Stages promote and
+ * demote speakers this way, and server mute and deafen take effect at once.
+ */
+export async function updateLiveKitParticipant(opts: {
+  apiKey: string;
+  apiSecret: string;
+  room: string;
+  identity: string;
+  /** From publishSources(). */
+  sources: PublishSource[];
+  serverDeafened?: boolean;
+}): Promise<boolean> {
+  const sources = opts.sources.map((s) => s.toUpperCase());
+  return roomService(opts, 'UpdateParticipant', {
+    room: opts.room,
+    identity: opts.identity,
+    permission: { can_subscribe: !opts.serverDeafened, can_publish: sources.length > 0, can_publish_data: false, can_publish_sources: sources },
+  });
+}
+
+/** Drop a participant from a room (disconnect or move): their media stops at once. */
+export const removeLiveKitParticipant = (opts: { apiKey: string; apiSecret: string; room: string; identity: string }) =>
+  roomService(opts, 'RemoveParticipant', { room: opts.room, identity: opts.identity });

@@ -23,25 +23,26 @@
 
 ## End-to-end encryption
 
-### Direct links
+### Direct links and group DMs
 
-Either person can turn on encryption for a direct link (it cannot be turned off). From then on the server stores and accepts only ciphertext for that conversation.
+Anyone in a direct link or a group DM (mesh) can turn on encryption (it cannot be turned off). From then on the server stores and accepts only ciphertext for that conversation. In a group, everyone needs a device that supports encryption first, and so does anyone added later.
 
 - **Keys:** each browser or app install is a device with an identity key, a signing key, a signed prekey and one-time prekeys (P-256). Private keys are non-extractable and stay on the device.
 - **Starting a conversation:** X3DH, with the signed prekey's signature checked so the server cannot swap keys.
-- **Every message:** the Double Ratchet (HKDF-SHA-256, AES-256-GCM), encrypted separately for each of the recipient's devices and the sender's other devices.
+- **Every message:** the Double Ratchet (HKDF-SHA-256, AES-256-GCM), encrypted separately for each recipient device and the sender's other devices. In a group that means every member's devices, so someone who leaves cannot read anything sent after, and someone added reads only from when they join.
 - **Attachments:** encrypted on the device before upload; the storage only holds ciphertext.
-- **Safety numbers:** the lock in the conversation header shows them, to compare in person.
+- **Safety numbers:** the lock in the conversation header shows them, to compare in person. In a group, pick the member to compare with.
 
 What it does not do: a device added later cannot read earlier messages. Search and link previews do not work in encrypted conversations, because the server cannot read them.
 
 ### Calls and Comm-Links
 
-Calls in encrypted direct links, and Comm-Links with **End-to-end encrypt voice and video** turned on (Beacon Settings → the relay), encrypt every audio and video frame in the browser.
+Calls in encrypted direct links and group DMs, and Comm-Links with **End-to-end encrypt voice and video** turned on (Beacon Settings → the relay), encrypt every audio and video frame in the browser.
 
 - The first person in the room creates the frame key.
 - Everyone who joins later gets it from the people already there, as Double Ratchet messages relayed by a server that cannot read them.
 - The key is only given to someone the gateway shows as connected to that same room.
+- When someone leaves, the key changes. The person left with the smallest id makes a new key and sends it to everyone still there. Each person first accepts frames under the new key, then switches their own sending to it 1.5 seconds later, so audio doesn't drop. Whoever left cannot decrypt anything after that.
 
 ## Reporting a vulnerability
 

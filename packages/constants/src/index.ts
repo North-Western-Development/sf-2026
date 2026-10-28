@@ -39,21 +39,21 @@ export const PERMISSIONS = {
   USE_SIGNAL_GLYPHS: 1n << 4n,       // 0x10 - Use custom emojis
   CONNECT_AUDIO: 1n << 5n,           // 0x20 - Join Comm-Link audio rooms
   SPEAK_AUDIO: 1n << 6n,             // 0x40 - Speak in Comm-Link audio rooms
-  BROADCAST_HOLO_CAST: 1n << 7n,     // 0x80 - Screenshare/camera in Comm-Link
+  BROADCAST_HOLO_CAST: 1n << 7n,     // 0x80 - Video: camera in Comm-Links (screen sharing is SHARE_SCREEN)
   MANAGE_TRANSMISSIONS: 1n << 8n,    // 0x100 - Delete/pin other transmissions
-  MANAGE_RELAYS: 1n << 9n,           // 0x200 - Create, edit, delete relays
+  MANAGE_RELAYS: 1n << 9n,           // 0x200 - Create, edit, delete relays and bands
   MANAGE_CLEARANCES: 1n << 10n,      // 0x400 - Create, edit, assign clearances below own
   KICK_MEMBERS: 1n << 11n,           // 0x800 - Kick members below own rank
   BAN_MEMBERS: 1n << 12n,            // 0x1000 - Ban members below own rank
   ADD_REACTIONS: 1n << 13n,          // Add new reactions (existing ones need only VIEW_RELAY)
-  MENTION_EVERYONE: 1n << 14n,       // @everyone, @here, non-mentionable clearance pings
+  MENTION_EVERYONE: 1n << 14n,       // @everyone and @here (unmentionable clearances: MENTION_CLEARANCES)
   CREATE_INVITES: 1n << 15n,         // Create beacon invites
-  MANAGE_BEACON: 1n << 16n,          // Edit beacon settings, view/revoke all invites
+  MANAGE_BEACON: 1n << 16n,          // Edit beacon settings (all invites: MANAGE_INVITES)
   CHANGE_NICKNAME: 1n << 17n,        // Change own nickname
   MANAGE_NICKNAMES: 1n << 18n,       // Change others' nicknames (hierarchy applies)
   READ_HISTORY: 1n << 19n,           // Read transmissions sent before the member could see the relay
-  MANAGE_GLYPHS: 1n << 20n,          // Create/rename/delete Signal Glyphs
-  MUTE_MEMBERS: 1n << 21n,           // Server-mute members in Comm-Links
+  MANAGE_GLYPHS: 1n << 20n,          // Manage Expressions: edit or delete anyone's glyphs, stickers and sounds
+  MUTE_MEMBERS: 1n << 21n,           // Server-mute members in Comm-Links (deafen: DEAFEN_MEMBERS)
   MOVE_MEMBERS: 1n << 22n,           // Move/disconnect members in Comm-Links
   PIN_TRANSMISSIONS: 1n << 23n,      // Pin/unpin transmissions
   CREATE_EVENTS: 1n << 24n,          // Schedule events; edit or cancel your own
@@ -61,9 +61,29 @@ export const PERMISSIONS = {
   MODERATE_MEMBERS: 1n << 26n,       // Time out members below own rank
   VIEW_AUDIT_LOG: 1n << 27n,         // Read the beacon's audit log
   USE_SOUNDBOARD: 1n << 28n,         // Play soundboard sounds in Comm-Links
-  CREATE_THREADS: 1n << 30n,         // Start threads from transmissions
+  CREATE_THREADS: 1n << 30n,         // Start public threads
   USE_ACTIVITIES: 1n << 31n,         // Start and join activities (Watch Together, Whiteboard) in Comm-Links
   ADMINISTRATOR: 1n << 29n,          // 0x20000000 - Bypass all relay permission checks
+  SHARE_SCREEN: 1n << 32n,           // Holo-Cast: share a screen or window in Comm-Links
+  DEAFEN_MEMBERS: 1n << 33n,         // Server-deafen members in Comm-Links
+  CREATE_RELAYS: 1n << 34n,          // Create relays and bands (editing and deleting: MANAGE_RELAYS)
+  MANAGE_INVITES: 1n << 35n,         // See and revoke everyone's invites
+  CREATE_EXPRESSIONS: 1n << 36n,     // Add glyphs, stickers and sounds; edit or delete your own
+  CREATE_PRIVATE_THREADS: 1n << 37n, // Start invite-only threads
+  SEND_IN_THREADS: 1n << 38n,        // Post in threads
+  MANAGE_THREADS: 1n << 39n,         // Rename, lock, archive or delete anyone's threads; see every private thread
+  BYPASS_SLOWMODE: 1n << 40n,        // Not held back by a relay's slowmode
+  MENTION_CLEARANCES: 1n << 41n,     // Mention clearances that are not mentionable by everyone
+  USE_EXTERNAL_GLYPHS: 1n << 42n,    // Use glyphs from other beacons here
+  USE_EXTERNAL_STICKERS: 1n << 43n,  // Use stickers from other beacons here
+  SEND_VOICE_MESSAGES: 1n << 44n,    // Record and send voice messages
+  CREATE_POLLS: 1n << 45n,           // Post polls
+  USE_VOICE_ACTIVITY: 1n << 46n,     // Talk by voice activity; without it, push-to-talk only
+  PRIORITY_SPEAKER: 1n << 47n,       // Others are quieter while you talk (hold the Priority Speaker key)
+  REQUEST_TO_SPEAK: 1n << 48n,       // Raise a hand on Stages
+  VIEW_INSIGHTS: 1n << 49n,          // See the Engagement page (beacon insights)
+  MANAGE_WEBHOOKS: 1n << 50n,        // Create, edit and delete webhooks
+  USE_APPLICATION_COMMANDS: 1n << 51n, // Use bots' slash commands
 } as const;
 
 export type PermissionBit = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -94,7 +114,58 @@ export const DEFAULT_EVERYONE_PERMISSIONS =
   PERMISSIONS.READ_HISTORY |
   PERMISSIONS.USE_SOUNDBOARD |
   PERMISSIONS.CREATE_THREADS |
-  PERMISSIONS.USE_ACTIVITIES;
+  PERMISSIONS.USE_ACTIVITIES |
+  PERMISSIONS.CREATE_PRIVATE_THREADS |
+  PERMISSIONS.SEND_IN_THREADS |
+  PERMISSIONS.USE_EXTERNAL_GLYPHS |
+  PERMISSIONS.USE_EXTERNAL_STICKERS |
+  PERMISSIONS.SEND_VOICE_MESSAGES |
+  PERMISSIONS.CREATE_POLLS |
+  PERMISSIONS.USE_VOICE_ACTIVITY |
+  PERMISSIONS.REQUEST_TO_SPEAK |
+  PERMISSIONS.USE_APPLICATION_COMMANDS;
+
+/**
+ * Permissions split off from older, broader ones (2026-10-27). Existing clearances and relay
+ * overwrites that held (or denied) the old one get the new one too, so nothing changes for
+ * beacons that already exist: [old, new].
+ */
+export const PERMISSION_SPLITS: Array<[bigint, bigint]> = [
+  [PERMISSIONS.BROADCAST_HOLO_CAST, PERMISSIONS.SHARE_SCREEN],
+  [PERMISSIONS.MUTE_MEMBERS, PERMISSIONS.DEAFEN_MEMBERS],
+  [PERMISSIONS.MANAGE_RELAYS, PERMISSIONS.CREATE_RELAYS],
+  [PERMISSIONS.MANAGE_BEACON, PERMISSIONS.MANAGE_INVITES],
+  [PERMISSIONS.MANAGE_BEACON, PERMISSIONS.VIEW_INSIGHTS],
+  [PERMISSIONS.MANAGE_GLYPHS, PERMISSIONS.CREATE_EXPRESSIONS],
+  [PERMISSIONS.CREATE_THREADS, PERMISSIONS.CREATE_PRIVATE_THREADS],
+  [PERMISSIONS.SEND_TRANSMISSIONS, PERMISSIONS.SEND_IN_THREADS],
+  [PERMISSIONS.MANAGE_TRANSMISSIONS, PERMISSIONS.MANAGE_THREADS],
+  [PERMISSIONS.MANAGE_TRANSMISSIONS, PERMISSIONS.BYPASS_SLOWMODE],
+  [PERMISSIONS.MENTION_EVERYONE, PERMISSIONS.MENTION_CLEARANCES],
+  [PERMISSIONS.SEND_TRANSMISSIONS, PERMISSIONS.SEND_VOICE_MESSAGES],
+  [PERMISSIONS.SEND_TRANSMISSIONS, PERMISSIONS.CREATE_POLLS],
+  [PERMISSIONS.SPEAK_AUDIO, PERMISSIONS.USE_VOICE_ACTIVITY],
+  [PERMISSIONS.SPEAK_AUDIO, PERMISSIONS.REQUEST_TO_SPEAK],
+  [PERMISSIONS.USE_SIGNAL_GLYPHS, PERMISSIONS.USE_EXTERNAL_GLYPHS],
+  [PERMISSIONS.USE_SIGNAL_GLYPHS, PERMISSIONS.USE_EXTERNAL_STICKERS],
+  [PERMISSIONS.MANAGE_BEACON, PERMISSIONS.MANAGE_WEBHOOKS],
+  [PERMISSIONS.SEND_TRANSMISSIONS, PERMISSIONS.USE_APPLICATION_COMMANDS],
+];
+
+/** Slowmode choices for a relay, in seconds (Discord's): off, 5s ... 6h. */
+export const SLOWMODE_CHOICES = [0, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 21600] as const;
+
+/** Add glyphs, stickers and sounds: Create Expressions, or Manage Expressions (MANAGE_GLYPHS). */
+export const canCreateExpressions = (perms: bigint) => hasPermission(perms, PERMISSIONS.MANAGE_GLYPHS) || hasPermission(perms, PERMISSIONS.CREATE_EXPRESSIONS);
+/** Edit or delete one: anyone's with Manage Expressions, your own with Create Expressions. */
+export const canEditExpression = (perms: bigint, mine: boolean) => hasPermission(perms, PERMISSIONS.MANAGE_GLYPHS) || (mine && hasPermission(perms, PERMISSIONS.CREATE_EXPRESSIONS));
+
+/** The bits a split adds to a permission set (or to an overwrite's allow or deny). */
+export function withSplits(bits: bigint): bigint {
+  let out = bits;
+  for (const [from, to] of PERMISSION_SPLITS) if ((bits & from) === from) out |= to;
+  return out;
+}
 
 /**
  * Calculate the effective permission bitfield for a member given their clearances and owner status
@@ -163,18 +234,6 @@ export const PRESENCE_STATES = {
 export type PresenceState = typeof PRESENCE_STATES[keyof typeof PRESENCE_STATES];
 
 /**
- * Relay Channel Types
- */
-export const RELAY_TYPES = {
-  TEXT: 'text',
-  COMM_LINK: 'comm_link',
-  ARCHIVAL: 'archival',
-  VISUAL: 'visual',
-} as const;
-
-export type RelayType = typeof RELAY_TYPES[keyof typeof RELAY_TYPES];
-
-/**
  * Staff Clearance Levels for Command Console
  */
 export const STAFF_RANKS = {
@@ -187,6 +246,44 @@ export const STAFF_RANKS = {
 export type StaffRank = typeof STAFF_RANKS[keyof typeof STAFF_RANKS];
 
 /**
+ * What a staff rank (Command Console > Staff Ranks) lets its holders do. Root has all of them.
+ * Every staff member can open the console and look up transmitters.
+ */
+export const STAFF_PERMISSIONS = {
+  VIEW_REPORTS: 1 << 0,
+  QUARANTINE: 1 << 1,
+  SUSPEND: 1 << 2,
+  MANAGE_VAULT: 1 << 3,
+  MANAGE_STORAGE: 1 << 4,
+  MANAGE_DISCOVERY: 1 << 5,
+  MANAGE_BADGES: 1 << 6,
+  MANAGE_STAFF: 1 << 7,
+  VIEW_AUDIT_LOG: 1 << 8,
+  MANAGE_DEVELOPERS: 1 << 9,
+} as const;
+export type StaffPermission = keyof typeof STAFF_PERMISSIONS;
+export const ALL_STAFF_PERMISSIONS = Object.values(STAFF_PERMISSIONS).reduce((a, b) => a | b, 0);
+export const hasStaffPermission = (permissions: number, p: StaffPermission) => (permissions & STAFF_PERMISSIONS[p]) !== 0;
+
+/** Labels for the rank editor, in the order shown. */
+export const STAFF_PERMISSION_INFO: Array<{ key: StaffPermission; label: string; description: string }> = [
+  { key: 'VIEW_REPORTS', label: 'Review reports', description: 'See reports members file and resolve or dismiss them.' },
+  { key: 'QUARANTINE', label: 'Quarantine', description: 'Stop an account posting, DMing or joining beacons while it keeps reading.' },
+  { key: 'SUSPEND', label: 'Suspend', description: 'Sign an account out everywhere and keep it out.' },
+  { key: 'MANAGE_VAULT', label: 'Moderate the Vault', description: 'See uploaded files and quarantine them.' },
+  { key: 'MANAGE_STORAGE', label: 'Manage storage', description: 'Create storage groups and move accounts between them.' },
+  { key: 'MANAGE_DISCOVERY', label: 'Moderate discovery', description: 'Take beacons out of Discovery.' },
+  { key: 'MANAGE_BADGES', label: 'Manage badges', description: 'Create badges and award or take them away.' },
+  { key: 'MANAGE_STAFF', label: 'Manage staff', description: 'Give and take ranks below their own, and edit those ranks.' },
+  { key: 'VIEW_AUDIT_LOG', label: 'View the staff log', description: 'See every action staff take in the console.' },
+  { key: 'MANAGE_DEVELOPERS', label: 'Manage developers', description: 'Set who may create applications and use privileged intents, verify accounts by hand, and verify games.' },
+];
+
+/** How a custom badge is earned. */
+export const BADGE_CRITERIA = ['manual', 'staff_role', 'account_age', 'transmissions_sent', 'voice_minutes'] as const;
+export type BadgeCriteria = (typeof BADGE_CRITERIA)[number];
+
+/**
  * Gateway Opcodes for WebSocket payloads
  */
 export const GATEWAY_OPCODES = {
@@ -195,6 +292,8 @@ export const GATEWAY_OPCODES = {
   IDENTIFY: 2,
   PRESENCE_UPDATE: 3,
   VOICE_STATE_UPDATE: 4,
+  /** { activity: Activity | null }: what I am playing (see activity.ts). */
+  ACTIVITY_UPDATE: 5,
   RESUME: 6,
   RECONNECT: 7,
   INVALID_SESSION: 9,
@@ -206,7 +305,7 @@ export type GatewayOpcode = typeof GATEWAY_OPCODES[keyof typeof GATEWAY_OPCODES]
 
 /**
  * Media upload purposes and their limits (section 7 of the parity contract).
- * Object keys are `<purpose>/<uuid>.<ext>` in the public-read `subspace-media` bucket.
+ * Object keys are `<purpose>/<snowflake>.<ext>` in the public-read `subspace-media` bucket.
  */
 export const MEDIA_PURPOSES = {
   avatar: { maxBytes: 8 * 1024 * 1024 },
@@ -219,6 +318,10 @@ export const MEDIA_PURPOSES = {
   sticker: { maxBytes: 512 * 1024 },
   /** Soundboard clips (Discord: 512 KB, up to 5 seconds). */
   sound: { maxBytes: 512 * 1024, mimes: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm'] },
+  /** Custom badge icons (Command Console > Badges); shown at 18-32 px. */
+  badge: { maxBytes: 256 * 1024 },
+  /** A Developer Application's icon: Add App, Rich Presence, Authorized Apps, its bot's avatar. */
+  app_icon: { maxBytes: 4 * 1024 * 1024 },
 } as const;
 
 /** The types a purpose accepts: its own list, else the image types. */
@@ -296,12 +399,20 @@ export const RESTRICTED_MASK =
   PERMISSIONS.CONNECT_AUDIO |
   PERMISSIONS.SPEAK_AUDIO |
   PERMISSIONS.BROADCAST_HOLO_CAST |
+  PERMISSIONS.SHARE_SCREEN |
   PERMISSIONS.CREATE_INVITES |
   PERMISSIONS.CHANGE_NICKNAME |
   PERMISSIONS.CREATE_EVENTS |
   PERMISSIONS.USE_SOUNDBOARD |
   PERMISSIONS.CREATE_THREADS |
-  PERMISSIONS.USE_ACTIVITIES;
+  PERMISSIONS.USE_ACTIVITIES |
+  PERMISSIONS.CREATE_EXPRESSIONS |
+  PERMISSIONS.CREATE_PRIVATE_THREADS |
+  PERMISSIONS.SEND_IN_THREADS |
+  PERMISSIONS.SEND_VOICE_MESSAGES |
+  PERMISSIONS.CREATE_POLLS |
+  PERMISSIONS.PRIORITY_SPEAKER |
+  PERMISSIONS.REQUEST_TO_SPEAK;
 
 /** Applies a timeout or quarantine to a permission set. Administrators are never restricted (they cannot be timed out). */
 export function restrictPermissions(
@@ -340,3 +451,6 @@ export function meetsVerification(
 
 /** Timeout lengths offered, in seconds (Discord's set). */
 export const TIMEOUT_DURATIONS = [60, 300, 600, 3600, 86400, 604800] as const;
+export * from './gdpr.js';
+export * from './activity.js';
+export * from './developers.js';

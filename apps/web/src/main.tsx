@@ -5,14 +5,17 @@ import { AppShell } from './app/AppShell';
 import { AuthGate } from './features/auth/AuthGate';
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage';
 import { WidgetPage } from './features/invite/WidgetPage';
+import { CookieNotice } from './features/auth/CookieNotice';
 import { applyA11yPrefs } from './lib/a11yPrefs';
+import { applyTheme } from './lib/theme';
 import { toast } from './app/ui';
 import './index.css';
 
-// Accessibility preferences apply before the first paint.
+// Theme and accessibility preferences apply before the first paint.
+applyTheme();
 applyA11yPrefs();
 
-const widgetId = /^\/widget\/([0-9a-f-]{36})\/?$/i.exec(window.location.pathname)?.[1];
+const widgetId = /^\/widget\/([1-9][0-9]{0,18})\/?$/i.exec(window.location.pathname)?.[1];
 
 const pasteBlocked = () => toast('Your browser blocked reading the clipboard. Press Ctrl+V to paste.', 'error');
 
@@ -30,6 +33,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <AppShell />
         </AuthGate>
       )}
+      {!widgetId && <CookieNotice />}
     </ContextMenuProvider>
   </React.StrictMode>
 );

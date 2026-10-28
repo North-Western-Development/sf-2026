@@ -48,10 +48,10 @@ const RULES: Rule[] = [
   { re: /\\([^A-Za-z0-9\s])/y, parse: (m) => ({ t: 'text', v: m[1] }) },
   { re: /(`+)([\s\S]*?[^`])\1(?!`)/y, parse: (m) => ({ t: 'code', v: m[2].replace(/^ (.*) $/, '$1') }) },
   { re: /<(https?:\/\/[^\s>]+)>/y, parse: (m) => ({ t: 'link', href: m[1], c: [{ t: 'text', v: m[1] }], masked: false }) },
-  { re: /<@!?([0-9a-f-]{36})>/y, parse: (m) => ({ t: 'user', id: m[1] }) },
-  { re: /<@&([0-9a-f-]{36})>/y, parse: (m) => ({ t: 'role', id: m[1] }) },
-  { re: /<#([0-9a-f-]{36})>/y, parse: (m) => ({ t: 'channel', id: m[1] }) },
-  { re: /<(a?):([A-Za-z0-9_]{2,32}):([0-9a-f-]{36})>/y, parse: (m) => ({ t: 'glyph', animated: m[1] === 'a', name: m[2], id: m[3] }) },
+  { re: /<@!?([1-9][0-9]{0,18})>/y, parse: (m) => ({ t: 'user', id: m[1] }) },
+  { re: /<@&([1-9][0-9]{0,18})>/y, parse: (m) => ({ t: 'role', id: m[1] }) },
+  { re: /<#([1-9][0-9]{0,18})>/y, parse: (m) => ({ t: 'channel', id: m[1] }) },
+  { re: /<(a?):([A-Za-z0-9_]{2,32}):([1-9][0-9]{0,18})>/y, parse: (m) => ({ t: 'glyph', animated: m[1] === 'a', name: m[2], id: m[3] }) },
   { re: /<t:(-?\d{1,13})(?::([tTdDfFR]))?>/y, parse: (m) => ({ t: 'timestamp', unix: Number(m[1]), style: m[2] ?? 'f' }) },
   { re: /@(everyone|here)\b/y, parse: (m) => ({ t: m[1] as 'everyone' | 'here' }) },
   {
@@ -452,8 +452,8 @@ function renderBlocks(blocks: Block[], r: MarkdownResolvers, big: boolean, keyPr
 
 /** True when the message is only emoji (unicode or glyphs), shown enlarged like Discord (max 30). */
 export function isJumboEmoji(content: string): boolean {
-  const withoutGlyphs = content.replace(/<a?:[A-Za-z0-9_]{2,32}:[0-9a-f-]{36}>/g, '');
-  const glyphs = (content.match(/<a?:[A-Za-z0-9_]{2,32}:[0-9a-f-]{36}>/g) ?? []).length;
+  const withoutGlyphs = content.replace(/<a?:[A-Za-z0-9_]{2,32}:[1-9][0-9]{0,18}>/g, '');
+  const glyphs = (content.match(/<a?:[A-Za-z0-9_]{2,32}:[1-9][0-9]{0,18}>/g) ?? []).length;
   if (!withoutGlyphs.trim() && glyphs > 0) return glyphs <= 30;
   if (!withoutGlyphs.trim()) return false;
   return EMOJI_ONLY.test(withoutGlyphs) && [...withoutGlyphs.replace(/\s/g, '')].length <= 60;

@@ -57,6 +57,7 @@ test.describe('Threads, forwarding, inbox, help and apps', () => {
     // Inbox › Mentions.
     await page.getByRole('button', { name: 'Inbox' }).click();
     const inbox = page.getByRole('dialog', { name: 'Inbox' });
+    await inbox.getByRole('tab', { name: 'Mentions' }).click();
     await expect(inbox).toContainText('are you there?');
     await page.keyboard.press('Escape');
 

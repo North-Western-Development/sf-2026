@@ -155,7 +155,7 @@ export const connectionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const token = extractAuthToken(request)!;
       if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
       const { id } = request.params as { id: string };
-      if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.status(404).send({ error: 'Connection not found' });
+      if (!/^[1-9][0-9]{0,18}$/.test(id)) return reply.status(404).send({ error: 'Connection not found' });
       const [row] = await db
         .update(accountConnections)
         .set({ visible: (request.body as { visible: boolean }).visible })
@@ -170,7 +170,7 @@ export const connectionRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     const token = extractAuthToken(request)!;
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
     const { id } = request.params as { id: string };
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.status(404).send({ error: 'Connection not found' });
+    if (!/^[1-9][0-9]{0,18}$/.test(id)) return reply.status(404).send({ error: 'Connection not found' });
     await db.delete(accountConnections).where(and(eq(accountConnections.id, id), eq(accountConnections.transmitterId, token.transmitterId)));
     return reply.status(204).send();
   });

@@ -19,6 +19,8 @@ test.describe('Account extras', () => {
     const dialog = page.getByRole('dialog', { name: 'Enter a phone number' });
     await dialog.getByLabel('Phone Number').fill('+1 555 010 0142');
     await dialog.getByLabel('Current Password').fill(PASSWORD);
+    // Carrier-required consent, where the number is collected.
+    await expect(dialog.getByTestId('sms-consent')).toContainText('Reply STOP to opt out');
     await dialog.getByRole('button', { name: 'Send Code' }).click();
     const codeDialog = page.getByRole('dialog', { name: 'Enter the code' });
     await expect(codeDialog).toBeVisible();

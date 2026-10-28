@@ -93,6 +93,34 @@
   --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/*
+ * AMOLED: true black surfaces for OLED screens, with the deeper cobalt of the NWD lettering
+ * (instead of the brighter sky-blue) as the accent. Lines and fills are faint navy tints so
+ * panels still separate on pure black.
+ */
+html[data-theme='amoled'] {
+  --color-void: #000000;
+  --color-base: #000000;
+  --color-raised: #05060C;
+  --color-overlay: #0A0C17;
+  --color-hover: #0F1427;
+  --color-active: #16203F;
+  --color-line: #0F1428;
+  --color-line-strong: #1C2650;
+
+  --color-brand-sky: #3B8EF2;
+  --color-brand: #3353D6;
+  --color-brand-strong: #2840B0;
+  --color-brand-soft: rgb(51 83 214 / 0.2);
+
+  --color-halo: #3E4378;
+  --color-halo-soft: rgb(62 67 120 / 0.25);
+
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.8), 0 0 0 1px var(--color-line-strong);
+  --shadow-modal: 0 24px 64px rgb(0 0 0 / 0.9), 0 0 0 1px var(--color-line-strong);
+  --shadow-glow: 0 0 0 1px rgb(51 83 214 / 0.45), 0 0 24px rgb(51 83 214 / 0.2);
+}
+
 @layer base {
   html,
   body,

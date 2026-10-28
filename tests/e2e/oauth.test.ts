@@ -10,8 +10,8 @@ describe('OAuth2 apps and Authorized Apps', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const dev = { id: 'fe400000-0000-4000-8000-000000000001', username: 'oauth_dev' };
-  const user = { id: 'fe400000-0000-4000-8000-000000000002', username: 'oauth_user' };
+  const dev = { id: '371220770426060801', username: 'oauth_dev' };
+  const user = { id: '371220770426060802', username: 'oauth_user' };
   const auth = (u: typeof dev) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
   const call = (method: string, url: string, u?: typeof dev, payload?: unknown, headers: Record<string, string> = {}) =>
     app.inject({ method: method as any, url: `/api/v1${url}`, headers: { ...(u ? auth(u) : {}), ...headers }, payload: payload as any });

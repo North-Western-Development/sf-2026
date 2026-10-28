@@ -1,4 +1,6 @@
 // Routes gateway DISPATCH events into the store.
+import type { Activity } from '@subspace/constants';
+import { bookmarkChanged, hold, loadInboxData, reminderDue } from '../features/inbox/inboxData';
 import { gateway } from '../services/gateway';
 import {
   toBeacon,
@@ -28,13 +30,18 @@ import { openEncrypted } from './e2ee';
 import { openSignal } from '../lib/e2ee/client';
 import { onRoomKeySignal } from '../features/voice/roomKeys';
 import { loadSounds, onSoundboardPlay, useSounds } from '../features/voice/soundboard';
-import { onActivityEventMessage, onActivityUpdate } from '../features/voice/activities';
+import { onActivityEventMessage, onActivityMessageEvent, onActivityUpdate } from '../features/voice/activities';
+import { onVoiceModeration } from '../features/voice/moderation';
+import '../features/voice/pushToTalk';
 import { onStageUpdate } from '../features/voice/stage';
 import { invalidateStickers } from '../features/chat/ExpressionPanels';
-import { bumpThread, upsertThread, type ThreadSummary } from '../features/chat/threads';
+import { onPollUpdate } from '../features/chat/Polls';
+import { invalidateAppCommands, onInteractionDeferred, onInteractionEphemeral, onInteractionFailed, settleThinking } from '../features/chat/appCommands';
+import { bumpThread, dropThread, upsertThread, type ThreadSummary } from '../features/chat/threads';
 import { ackChannel, applyReaction, loadBeacon, loadCalls, loadMessages, refreshBeacons, syncReadStates, loadTransmissionRequests, refreshLinks, refreshRelationships, signOut } from './actions';
 import { maybeNotify, mentionsMe, playPing } from './notifications';
 import { removeEvent, upsertEvent } from './community';
+import { startActivitySharing } from '../features/activity/activity';
 import { toast } from '../app/ui';
 
 type Raw = Record<string, any>;
@@ -90,6 +97,8 @@ function toVoiceState(v: Raw): VoiceState | null {
     isMuted: !!v.is_muted,
     isDeafened: !!v.is_deafened,
     isSpeaking: !!v.is_speaking,
+    isClipping: !!v.is_clipping,
+    isPriority: !!v.is_priority,
   };
 }
 
@@ -107,6 +116,7 @@ function onTransmissionCreate(d: Raw) {
   const t = { ...toTransmission(d.transmission), nonce: d.nonce ?? d.transmission.nonce };
   if (d.channelType === 'thread') bumpThread(d.channelId, t.createdAt);
   rememberUsers([t.author]);
+  settleThinking(key, t);
   const s = getState();
   const me = s.me;
 
@@ -133,7 +143,7 @@ function onTransmissionCreate(d: Raw) {
 
   const viewing = s.activeChannel === key && document.visibilityState === 'visible';
   if (viewing) {
-    void ackChannel(key);
+    void ackChannel(key, { auto: true });
   } else if (mentionsMe(s, key, t)) {
     setState((st) => {
       const cur = st.readStates[key] ?? { lastReadId: null, lastReadAt: null, mentionCount: 0 };
@@ -173,6 +183,16 @@ const handlers: Record<string, (d: Raw) => void> = {
     // Snapshots carry status only; keep custom statuses already received (or set by me since boot).
     if (meId && d.presence) setPresence(meId, { status: d.presence });
     for (const p of d.presences ?? []) setPresence(p.transmitter_id, { status: p.presence, ...(p.custom_status !== undefined ? { customStatus: p.custom_status } : {}) });
+    // The snapshot is every activity I may see: anything missing from it has ended or is hidden now.
+    if (Array.isArray(d.activities)) {
+      const shared = new Map<string, Activity>(d.activities.map((a: Raw) => [a.transmitter_id, a.activity]));
+      setState((s) => {
+        const presence = { ...s.presence };
+        for (const [id, entry] of Object.entries(presence)) if (entry.activity && !shared.has(id)) presence[id] = { ...entry, activity: null };
+        for (const [id, activity] of shared) presence[id] = { ...(presence[id] ?? { status: 'offline' as Presence }), activity };
+        return { presence };
+      });
+    }
     handlers.VOICE_STATES_REPLACE(d);
   },
   VOICE_STATES_REPLACE(d) {
@@ -188,6 +208,10 @@ const handlers: Record<string, (d: Raw) => void> = {
       status: d.presence as Presence,
       ...(d.custom_status !== undefined ? { customStatus: d.custom_status } : {}),
     });
+  },
+  /** What someone is playing changed (or ended, or I may no longer see it). */
+  USER_ACTIVITY_UPDATE(d) {
+    setPresence(d.transmitter_id, { activity: d.activity ?? null });
   },
   PRESENCE_CONFIRMATION(d) {
     const me = getState().me;
@@ -255,12 +279,20 @@ const handlers: Record<string, (d: Raw) => void> = {
   READ_STATE_UPDATE(d) {
     const key = eventChannel(d);
     if (!key) return;
+    // Marked unread on another device: leave it unread here too.
+    if (d.manual) hold(key);
     setState((s) => ({
       readStates: {
         ...s.readStates,
         [key]: { lastReadId: d.lastReadId ?? null, lastReadAt: d.lastReadAt ?? null, mentionCount: d.mentionCount ?? 0 },
       },
     }));
+  },
+  BOOKMARK_UPDATE(d) {
+    if (d.transmissionId) bookmarkChanged(String(d.transmissionId), !!d.bookmarked);
+  },
+  REMINDER_DUE(d) {
+    if (d.reminder) reminderDue(d.reminder);
   },
   CHANNEL_PINS_UPDATE() {
     /* pins panel refetches on open */
@@ -277,6 +309,15 @@ const handlers: Record<string, (d: Raw) => void> = {
     }));
   },
   // Text-relay threads (forum posts carry no starterTransmissionId and are handled by the forum view).
+  POLL_UPDATE(d) {
+    onPollUpdate(d as any);
+  },
+  INTERACTION_EPHEMERAL: onInteractionEphemeral,
+  INTERACTION_DEFERRED: onInteractionDeferred,
+  INTERACTION_FAILED: onInteractionFailed,
+  THREAD_DELETE(d) {
+    dropThread(d.relayId, d.threadId);
+  },
   THREAD_CREATE(d) {
     onThread(d);
   },
@@ -293,11 +334,17 @@ const handlers: Record<string, (d: Raw) => void> = {
   STAGE_UPDATE(d) {
     onStageUpdate(d as any);
   },
+  VOICE_MODERATION(d) {
+    onVoiceModeration(d as any);
+  },
   ACTIVITY_UPDATE(d) {
     onActivityUpdate(d as any);
   },
   ACTIVITY_EVENT(d) {
     onActivityEventMessage(d as any);
+  },
+  ACTIVITY_MESSAGE(d) {
+    onActivityMessageEvent(d as any);
   },
   BEACON_UPDATE(d) {
     const b = toBeacon(d.beacon ?? d);
@@ -351,6 +398,8 @@ const handlers: Record<string, (d: Raw) => void> = {
     setState((s) => ({ clearances: { ...s.clearances, [beaconId]: (s.clearances[beaconId] ?? []).filter((x) => x.id !== id) } }));
   },
   MEMBER_ADD(d) {
+    // A bot joining brings its slash commands.
+    if (d.member?.user?.botKind) invalidateAppCommands();
     handlers.MEMBER_UPDATE(d);
   },
   MEMBER_UPDATE(d) {
@@ -371,6 +420,7 @@ const handlers: Record<string, (d: Raw) => void> = {
     setState((s) => ({ members: { ...s.members, [beaconId]: { ...s.members[beaconId], [m.transmitterId]: m } } }));
   },
   MEMBER_REMOVE(d) {
+    invalidateAppCommands();
     const beaconId = d.beaconId;
     const userId = d.userId ?? d.transmitterId;
     if (userId === getState().me?.id) {
@@ -388,6 +438,10 @@ const handlers: Record<string, (d: Raw) => void> = {
     rememberUsers([u]);
     const me = getState().me;
     if (me && u.id === me.id) setState({ me: { ...me, ...(d.user ?? d) } });
+  },
+  MESH_ENCRYPTION_ENABLED(d) {
+    const mesh = getState().meshes[d.meshId];
+    if (mesh) setState((s) => ({ meshes: { ...s.meshes, [d.meshId]: { ...mesh, encryptedAt: d.encryptedAt } } }));
   },
   LINK_ENCRYPTION_ENABLED(d) {
     const link = getState().links[d.linkId];
@@ -429,6 +483,15 @@ const handlers: Record<string, (d: Raw) => void> = {
     setState((s) => ({ meshes: { ...s.meshes, [m.id]: m } }));
   },
   MESH_UPDATE(d) {
+    const raw = d.mesh ?? d;
+    const prev = getState().meshes[raw.id];
+    // Without a member list, keep the one we have (encrypted groups seal for every member).
+    if (!Array.isArray(raw.members)) {
+      if (prev) setState((s) => ({ meshes: { ...s.meshes, [raw.id]: { ...toMesh({ ...raw, members: [] }), members: prev.members } } }));
+      return;
+    }
+    // We left or were removed.
+    if (!raw.members.some((m: Raw) => m.id === getState().me?.id)) return handlers.MESH_DELETE({ meshId: raw.id });
     handlers.MESH_CREATE(d);
   },
   MESH_DELETE(d) {
@@ -478,11 +541,15 @@ export function startBridge(): () => void {
   }
   if (saved) gateway.updatePresence(saved);
   gateway.connect();
+  // What I am playing, from the desktop app (Activity Privacy decides whether it is shared).
+  const offActivity = startActivitySharing();
+  // Bookmarks (for the context menu) and how many reminders are due (the Inbox badge).
+  void loadInboxData();
 
   // Re-ack the visible channel when the window regains focus.
   const onFocus = () => {
     const key = getState().activeChannel;
-    if (key) void ackChannel(key);
+    if (key) void ackChannel(key, { auto: true });
   };
   window.addEventListener('focus', onFocus);
 
@@ -492,6 +559,7 @@ export function startBridge(): () => void {
     offStatus();
     if (typingSweep) clearInterval(typingSweep);
     window.removeEventListener('focus', onFocus);
+    offActivity();
     gateway.disconnect();
   };
 }

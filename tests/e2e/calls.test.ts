@@ -10,9 +10,9 @@ describe('Calls in direct links', () => {
   let app: FastifyInstance;
   let db: any;
   let redis: any;
-  const caller = { id: 'c6000000-0000-4000-8000-000000000001', username: 'call_caller' };
-  const callee = { id: 'c6000000-0000-4000-8000-000000000002', username: 'call_callee' };
-  const stranger = { id: 'c6000000-0000-4000-8000-000000000003', username: 'call_stranger' };
+  const caller = { id: '832073629656678401', username: 'call_caller' };
+  const callee = { id: '832073629656678402', username: 'call_callee' };
+  const stranger = { id: '832073629656678403', username: 'call_stranger' };
   const tok = (u: typeof caller) => signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET);
   const inject = (method: string, url: string, u?: typeof caller) =>
     app.inject({ method: method as any, url, headers: u ? { authorization: `Bearer ${tok(u)}` } : {}, payload: method === 'POST' ? {} : undefined });

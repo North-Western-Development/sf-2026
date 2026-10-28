@@ -8,6 +8,8 @@ export interface ThreadSummary {
   creatorId: string;
   starterTransmissionId: string | null;
   isLocked: boolean;
+  /** Invite-only: its members and Manage Threads see it. */
+  isPrivate?: boolean;
   messageCount: number;
   lastTransmissionAt: string;
   createdAt: string;
@@ -30,10 +32,20 @@ export async function loadThreads(relayId: string) {
   return r.threads;
 }
 
-export async function createThread(relayId: string, name: string, starterTransmissionId?: string) {
-  const r = await http.post<{ thread: ThreadSummary }>(`/relays/${relayId}/threads`, { name, starterTransmissionId });
+export async function createThread(relayId: string, name: string, starterTransmissionId?: string, isPrivate = false) {
+  const r = await http.post<{ thread: ThreadSummary }>(`/relays/${relayId}/threads`, { name, starterTransmissionId, ...(isPrivate ? { private: true } : {}) });
   upsertThread(r.thread);
   return r.thread;
+}
+
+/** THREAD_DELETE: a thread went away for me (removed from a private one). */
+export function dropThread(relayId: string, threadId: string) {
+  useThreads.setState((s) => {
+    const byId = { ...s.byId };
+    delete byId[threadId];
+    const list = s.byRelay[relayId];
+    return { byId, byRelay: list ? { ...s.byRelay, [relayId]: list.filter((t) => t.id !== threadId) } : s.byRelay };
+  });
 }
 
 /** A new transmission in a thread: count it and move the thread to the top. */

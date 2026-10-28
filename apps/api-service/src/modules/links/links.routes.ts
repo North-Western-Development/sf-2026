@@ -118,7 +118,7 @@ export const linkRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           type: 'object',
           additionalProperties: false,
           required: ['targetId'],
-          properties: { targetId: { type: 'string', format: 'uuid' } },
+          properties: { targetId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
         },
       },
     },

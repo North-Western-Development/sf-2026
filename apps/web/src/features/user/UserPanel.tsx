@@ -5,17 +5,20 @@ import { useNavigate } from 'react-router';
 import { useShallow } from 'zustand/react/shallow';
 import { Tooltip } from '@subspace/ui';
 import { useStore } from '../../data/store';
+import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
 import { openModal } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
 import { useVoice, leaveVoice, toggleCamera, toggleScreenShare } from '../voice/session';
 import { useAudioPrefs, toggleMute, toggleDeafen } from '../voice/audioPrefs';
 import { SelfProfileCard } from './SelfProfileCard';
 import { prefetchProfile } from '../profile/useProfile';
+import { ActivityLine, useActivityOf } from '../activity/ActivityViews';
 
 
 export function UserPanel() {
   const me = useStore((s) => s.me);
   const customStatus = useStore((s) => (me ? s.presence[me.id]?.customStatus ?? me.customStatus : null));
+  const activity = useActivityOf(me?.id);
   const { muted, deafened } = useAudioPrefs();
   const anchor = useRef<HTMLButtonElement>(null);
   const [card, setCard] = useState<DOMRect | null>(null);
@@ -45,7 +48,7 @@ export function UserPanel() {
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold leading-tight text-fg">{me.displayName || me.username}</span>
               <span className="block truncate text-xs leading-tight text-fg-subtle">
-                {customStatus?.text || `#${me.discriminator}`}
+                {customStatus?.text || (activity ? <ActivityLine activity={activity} className="" /> : `#${me.discriminator}`)}
               </span>
             </span>
           </button>
@@ -77,6 +80,10 @@ function VoiceStrip() {
     const peer = s.links[id]?.recipient;
     return peer ? `@${peer.displayName || peer.username}` : s.meshes[id]?.name || 'Subspace Mesh';
   });
+  // In a comm-link, Video and Holo-Cast are separate permissions; calls allow both.
+  const perms = useStore((s) => (v.relayId ? relayPermissions(s, v.relayId) : null));
+  const canVideo = perms === null || can(perms, PERMISSIONS.BROADCAST_HOLO_CAST);
+  const canShare = perms === null || can(perms, PERMISSIONS.SHARE_SCREEN);
   if (!v.relayId && !v.callKey) return null;
   const connected = v.state === 'connected';
   const target = v.callKey ? `/channels/@me/${v.callKey.slice(v.callKey.indexOf(':') + 1)}` : `/channels/${v.beaconId}/${v.relayId}`;
@@ -100,14 +107,20 @@ function VoiceStrip() {
           <PhoneOff className="h-5 w-5" />
         </PanelButton>
       </div>
-      <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-        <StripButton label={v.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} active={v.cameraOn} onClick={() => void toggleCamera()}>
-          {v.cameraOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-        </StripButton>
-        <StripButton label={v.screenOn ? 'Stop Holo-Cast' : 'Holo-Cast Your Screen'} active={v.screenOn} onClick={() => void toggleScreenShare()}>
-          <MonitorUp className="h-4 w-4" />
-        </StripButton>
-      </div>
+      {(canVideo || canShare) && (
+        <div className={clsx('mt-1.5 grid gap-1.5', canVideo && canShare ? 'grid-cols-2' : 'grid-cols-1')}>
+          {canVideo && (
+            <StripButton label={v.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} active={v.cameraOn} onClick={() => void toggleCamera()}>
+              {v.cameraOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+            </StripButton>
+          )}
+          {canShare && (
+            <StripButton label={v.screenOn ? 'Stop Holo-Cast' : 'Holo-Cast Your Screen'} active={v.screenOn} onClick={() => void toggleScreenShare()}>
+              <MonitorUp className="h-4 w-4" />
+            </StripButton>
+          )}
+        </div>
+      )}
     </div>
   );
 }

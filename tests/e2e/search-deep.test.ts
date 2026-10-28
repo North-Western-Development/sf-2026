@@ -9,9 +9,9 @@ describe('Search: deep transmission search', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const alice = { id: 'b2000000-0000-4000-8000-000000000001', username: 'search_alice' };
-  const bob = { id: 'b2000000-0000-4000-8000-000000000002', username: 'search_bob' };
-  const eve = { id: 'b2000000-0000-4000-8000-000000000003', username: 'search_eve' };
+  const alice = { id: '555932424049786881', username: 'search_alice' };
+  const bob = { id: '555932424049786882', username: 'search_bob' };
+  const eve = { id: '555932424049786883', username: 'search_eve' };
   const tok = (u: { id: string; username: string }) => signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET);
   const inject = (method: string, url: string, token?: string, payload?: unknown) =>
     app.inject({ method: method as any, url, headers: token ? { authorization: `Bearer ${token}` } : {}, payload: payload as any });

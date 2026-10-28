@@ -119,6 +119,7 @@ export function bandMenu(bandId: string, collapsed: boolean, toggle: () => void)
   if (manage) {
     items.push(
       { separator: true },
+      { label: `Edit ${term('band')}`, onClick: () => openModal({ kind: 'beaconSettings', beaconId: band.beaconId, tab: `relay:${bandId}` }) },
       {
         label: `Rename ${term('band')}`,
         onClick: () =>

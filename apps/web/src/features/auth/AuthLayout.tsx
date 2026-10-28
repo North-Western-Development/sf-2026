@@ -13,10 +13,11 @@ const STARS = [
   { top: '6%', left: '46%', size: 12, delay: '0.9s' },
 ];
 
-export function AuthLayout({ children }: { children: ReactNode }) {
+/** `wide` gives the card room for two columns (sign-up) on larger screens. */
+export function AuthLayout({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return (
     <div
-      className="relative h-full w-full overflow-y-auto bg-void flex flex-col items-center justify-center px-4 py-10"
+      className="relative h-full w-full overflow-y-auto bg-void flex flex-col items-center px-4 py-10"
       onContextMenu={(e) => e.preventDefault()}
     >
       <div
@@ -35,11 +36,11 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         />
       ))}
 
-      <main className="relative w-full max-w-[480px] animate-[rise-in_220ms_var(--ease-out-soft)]">
+      <main className={`relative mt-auto w-full ${wide ? 'max-w-[480px] md:max-w-[880px]' : 'max-w-[480px]'} animate-[rise-in_220ms_var(--ease-out-soft)]`}>
         <div className="bg-overlay rounded-2xl shadow-modal p-8">{children}</div>
       </main>
 
-      <footer className="relative mt-8 flex items-center gap-2 text-xs text-fg-subtle">
+      <footer className="relative mb-auto mt-8 flex items-center gap-2 text-xs text-fg-subtle">
         <span>A transmission from</span>
         <img src="/brand/nwd-logo.png" alt="NWD" className="h-9 w-auto" draggable={false} />
       </footer>

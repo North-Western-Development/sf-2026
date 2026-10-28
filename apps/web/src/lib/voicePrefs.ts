@@ -6,10 +6,15 @@ export interface VoicePrefs {
   autoSensitivity: boolean;
   /** Manual threshold in dBFS (-100 silent … 0 loudest). */
   thresholdDb: number;
+  /** Voice Activity (the gate above) or Push to Talk (only while the key is held). */
+  inputMode: 'voice' | 'ptt';
+  /** KeyboardEvent.code for push-to-talk and for Priority Speaker (null: not set). */
+  pttKey: string | null;
+  priorityKey: string | null;
 }
 
 const KEY = 'subspace_voice_prefs';
-const defaults: VoicePrefs = { autoSensitivity: true, thresholdDb: -50 };
+const defaults: VoicePrefs = { autoSensitivity: true, thresholdDb: -50, inputMode: 'voice', pttKey: 'Backquote', priorityKey: null };
 const read = (): VoicePrefs => {
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') };
@@ -72,8 +77,45 @@ export function watchLevel(track: MediaStreamTrack, onLevel: (db: number, thresh
 }
 
 /**
- * The voice gate: below the threshold for a moment, the microphone sends silence. `isMuted`
- * is the user's own mute, which disables the same track and always wins.
+ * Push-to-talk state: whether the key is held, and whether this comm-link insists on it (no Use
+ * Voice Activity there). Priority Speaker's key transmits too.
+ */
+export const usePushToTalk = create<{ held: boolean; priorityHeld: boolean; forced: boolean }>()(() => ({ held: false, priorityHeld: false, forced: false }));
+
+/** Whether the microphone may send right now, under push-to-talk; null when voice activity decides. */
+export function pushToTalkOpen(): boolean | null {
+  const { held, priorityHeld, forced } = usePushToTalk.getState();
+  if (useVoicePrefs.getState().inputMode !== 'ptt' && !forced && !priorityHeld) return null;
+  return held || priorityHeld;
+}
+
+/** Keys typed into a text field are typing, not talking (unless they cannot type, like F-keys). */
+const typing = (e: KeyboardEvent) => {
+  const el = e.target as HTMLElement | null;
+  return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) && e.key.length === 1;
+};
+let releaseTimer = 0;
+window.addEventListener('keydown', (e) => {
+  if (e.repeat || typing(e)) return;
+  const { pttKey, priorityKey } = useVoicePrefs.getState();
+  if (e.code === pttKey) {
+    window.clearTimeout(releaseTimer);
+    usePushToTalk.setState({ held: true });
+  }
+  if (e.code === priorityKey) usePushToTalk.setState({ priorityHeld: true });
+});
+window.addEventListener('keyup', (e) => {
+  const { pttKey, priorityKey } = useVoicePrefs.getState();
+  // A short hold after release, so the last word is not cut off.
+  if (e.code === pttKey) releaseTimer = window.setTimeout(() => usePushToTalk.setState({ held: false }), 200);
+  if (e.code === priorityKey) usePushToTalk.setState({ priorityHeld: false });
+});
+window.addEventListener('blur', () => usePushToTalk.setState({ held: false, priorityHeld: false }));
+
+/**
+ * The voice gate: below the threshold for a moment, the microphone sends silence; under
+ * push-to-talk, it sends only while the key is held. `isMuted` is the user's own mute, which
+ * disables the same track and always wins.
  */
 export function gateMicrophone(track: MediaStreamTrack, isMuted: () => boolean): () => void {
   let quietSince = 0;
@@ -83,6 +125,11 @@ export function gateMicrophone(track: MediaStreamTrack, isMuted: () => boolean):
   const stop = watchLevel(probe, (db, threshold) => {
     const now = Date.now();
     if (isMuted()) return;
+    const ptt = pushToTalkOpen();
+    if (ptt !== null) {
+      track.enabled = ptt;
+      return;
+    }
     if (db >= threshold) {
       quietSince = 0;
       track.enabled = true;

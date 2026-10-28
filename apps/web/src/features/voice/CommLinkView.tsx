@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { X, Lock, MessageSquare, Mic, MicOff, MonitorUp, PhoneOff, Video, VideoOff, Headphones, HeadphoneOff, Volume2 } from 'lucide-react';
 import type { Track } from 'livekit-client';
-import { Tooltip } from '@subspace/ui';
+import { Tooltip, useContextMenu } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, setState } from '../../data/store';
 import { relayPermissions, can, PERMISSIONS } from '../../data/permissions';
@@ -21,6 +21,7 @@ import { SoundboardButton } from './SoundboardButton';
 import { ControlButton } from './ControlButton';
 import { ActivitiesButton, ActivityBanner, ActivityStage } from './ActivityParts';
 import { ClipButton } from './ClipsUI';
+import { memberMenu } from '../members/memberMenu';
 
 function VideoSurface({ track, mirrored }: { track: Track; mirrored?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -44,10 +45,12 @@ export function Tile({ userId, beaconId }: { userId: string; beaconId?: string }
   const meId = useStore((s) => s.me?.id);
   const name = user ? resolveName(user, member) : vs?.username ?? 'Transmitter';
   const video = tracks?.screen ?? tracks?.camera ?? null;
+  const { openContextMenu } = useContextMenu();
   return (
     <div
       role="group"
       aria-label={name}
+      onContextMenu={beaconId ? (e) => openContextMenu(e, memberMenu(beaconId, userId)) : undefined}
       data-speaking={speaking && !vs?.isMuted ? 'true' : undefined}
       className={clsx(
         'relative flex aspect-video items-center justify-center overflow-hidden rounded-xl bg-raised',
@@ -61,8 +64,12 @@ export function Tile({ userId, beaconId }: { userId: string; beaconId?: string }
       )}
       <span className="absolute bottom-2 left-2 flex max-w-[80%] items-center gap-1.5 rounded-md bg-void/75 px-2 py-0.5 text-sm font-medium text-fg">
         <span className="truncate">{name}</span>
-        {vs?.isMuted && <MicOff className="h-3.5 w-3.5 text-danger" aria-label="Muted" />}
-        {vs?.isDeafened && <HeadphoneOff className="h-3.5 w-3.5 text-danger" aria-label="Deafened" />}
+        {member?.serverMuted ? <MicOff className="h-3.5 w-3.5 text-danger" aria-label="Server muted" /> : vs?.isMuted && <MicOff className="h-3.5 w-3.5 text-danger" aria-label="Muted" />}
+        {member?.serverDeafened ? (
+          <HeadphoneOff className="h-3.5 w-3.5 text-danger" aria-label="Server deafened" />
+        ) : (
+          vs?.isDeafened && <HeadphoneOff className="h-3.5 w-3.5 text-danger" aria-label="Deafened" />
+        )}
       </span>
       {tracks?.screen && <span className="absolute right-2 top-2 rounded-xs bg-danger px-1.5 text-[10px] font-bold uppercase text-white">Live</span>}
     </div>
@@ -76,7 +83,8 @@ export function CommLinkView({ relay }: { relay: Relay }) {
   const { muted, deafened } = useAudioPrefs();
   const perms = useStore((s) => relayPermissions(s, relay.id));
   const canConnect = can(perms, PERMISSIONS.CONNECT_AUDIO);
-  const canBroadcast = can(perms, PERMISSIONS.BROADCAST_HOLO_CAST);
+  const canVideo = can(perms, PERMISSIONS.BROADCAST_HOLO_CAST);
+  const canShareScreen = can(perms, PERMISSIONS.SHARE_SCREEN);
   const [chatOpen, setChatOpen] = useState(false);
   const joined = session.relayId === relay.id && session.state !== 'idle';
   const key = channelKey('relay', relay.id);
@@ -146,15 +154,15 @@ export function CommLinkView({ relay }: { relay: Relay }) {
                 <ControlButton label={deafened ? 'Undeafen' : 'Deafen'} active={deafened} onClick={toggleDeafen}>
                   {deafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
                 </ControlButton>
-                {canBroadcast && (
-                  <>
-                    <ControlButton label={session.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} active={session.cameraOn} onClick={() => void toggleCamera()}>
-                      {session.cameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-                    </ControlButton>
-                    <ControlButton label={session.screenOn ? `Stop ${term('holoCast')}` : `Start ${term('holoCast')}`} active={session.screenOn} onClick={() => void toggleScreenShare()}>
-                      <MonitorUp className="h-5 w-5" />
-                    </ControlButton>
-                  </>
+                {canVideo && (
+                  <ControlButton label={session.cameraOn ? 'Turn Off Camera' : 'Turn On Camera'} active={session.cameraOn} onClick={() => void toggleCamera()}>
+                    {session.cameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+                  </ControlButton>
+                )}
+                {canShareScreen && (
+                  <ControlButton label={session.screenOn ? `Stop ${term('holoCast')}` : `Start ${term('holoCast')}`} active={session.screenOn} onClick={() => void toggleScreenShare()}>
+                    <MonitorUp className="h-5 w-5" />
+                  </ControlButton>
                 )}
                 <SoundboardButton relayId={relay.id} beaconId={relay.beaconId} />
                 <ActivitiesButton relayId={relay.id} />

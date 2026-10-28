@@ -12,7 +12,7 @@ export function Toasts() {
           role={t.tone === 'error' ? 'alert' : 'status'}
           className={clsx(
             'pointer-events-auto rounded-lg px-4 py-2.5 text-sm font-medium shadow-pop animate-[rise-in_160ms_var(--ease-out-soft)]',
-            t.tone === 'error' ? 'bg-danger text-white' : t.tone === 'success' ? 'bg-online text-void' : 'bg-overlay text-fg'
+            t.tone === 'error' ? 'bg-danger text-white' : t.tone === 'success' ? 'bg-online text-void' : t.tone === 'warning' ? 'bg-warning text-void' : 'bg-overlay text-fg'
           )}
         >
           {t.message}

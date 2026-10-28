@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { rtcManager } from '../../services/rtc';
 import { toast } from '../../app/ui';
 import { useVoice } from './session';
+import { gateway } from '../../services/gateway';
+import { getState, useStore } from '../../data/store';
+import { resolveName } from '../../lib/normalize';
 
 /**
  * Clips (Discord's): while you Holo-Cast with clips on, the last stretch of your stream and the
@@ -78,6 +81,9 @@ export const listClips = () => tx<Clip[]>('readonly', (s) => s.getAll()).then((a
 export const deleteClip = (id: string) => tx('readwrite', (s) => s.delete(id));
 const putClip = (c: Clip) => tx('readwrite', (s) => s.put(c));
 
+/** How many voices the clip mix holds right now. */
+export const useClipMix = create<{ voices: number }>()(() => ({ voices: 0 }));
+
 /** Bumps when clips are added, so an open gallery reloads. */
 export const useClipsVersion = create<{ v: number }>()(() => ({ v: 0 }));
 
@@ -91,25 +97,44 @@ interface Rolling {
 
 let slots: [Rolling | null, Rolling | null] = [null, null];
 let timers: number[] = [];
-let mixer: { ctx: AudioContext; stream: MediaStream } | null = null;
+let mixer: { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; sources: Map<string, MediaStreamAudioSourceNode> } | null = null;
 let sourceStream: MediaStream | null = null;
 
 const mimeType = () => ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
 
-/** The stream plus the room's audio, mixed: whoever is in the comm-link when the Holo-Cast starts. */
-function buildStream(): MediaStream | null {
-  const { video, audio } = rtcManager.getClipSources();
-  if (!video) return null;
-  const tracks: MediaStreamTrack[] = [video];
-  if (audio.length) {
-    // One mixed audio track: a recorder takes only one.
-    const ctx = new AudioContext();
-    const dest = ctx.createMediaStreamDestination();
-    audio.forEach((t) => ctx.createMediaStreamSource(new MediaStream([t])).connect(dest));
-    mixer = { ctx, stream: dest.stream };
-    tracks.push(...dest.stream.getAudioTracks());
+/**
+ * Bring the mix in line with the room: everyone who is in it now, including whoever joined after
+ * the Holo-Cast started, and nobody who has left. A recorder takes one audio track, so the mix is
+ * one track whose sources change underneath it.
+ */
+function syncMix() {
+  if (!mixer) return;
+  const live = new Map(rtcManager.getClipSources().audio.map((t) => [t.id, t]));
+  for (const [id, node] of mixer.sources) {
+    if (!live.has(id)) {
+      node.disconnect();
+      mixer.sources.delete(id);
+    }
   }
-  return new MediaStream(tracks);
+  for (const [id, t] of live) {
+    if (mixer.sources.has(id) || t.readyState === 'ended') continue;
+    const node = mixer.ctx.createMediaStreamSource(new MediaStream([t]));
+    node.connect(mixer.dest);
+    mixer.sources.set(id, node);
+  }
+  if (useClipMix.getState().voices !== mixer.sources.size) useClipMix.setState({ voices: mixer.sources.size });
+}
+
+/** The stream plus the room's audio, mixed. */
+function buildStream(): MediaStream | null {
+  const { video } = rtcManager.getClipSources();
+  if (!video) return null;
+  const ctx = new AudioContext();
+  const dest = ctx.createMediaStreamDestination();
+  mixer = { ctx, dest, sources: new Map() };
+  syncMix();
+  timers.push(window.setInterval(syncMix, 1000));
+  return new MediaStream([video, ...dest.stream.getAudioTracks()]);
 }
 
 function startSlot(i: 0 | 1) {
@@ -146,12 +171,16 @@ function stopRecording() {
   void mixer?.ctx.close().catch(() => {});
   mixer = null;
   sourceStream = null;
+  gateway.setClipping(false);
 }
 
 /** Record exactly while clips are on and I am Holo-Casting. */
 function syncRecording() {
   const want = useClipPrefs.getState().enabled && useVoice.getState().screenOn && typeof MediaRecorder !== 'undefined';
-  if (want && !sourceStream) startRecording();
+  if (want && !sourceStream) {
+    startRecording();
+    gateway.setClipping(!!sourceStream);
+  }
   else if (!want && sourceStream) stopRecording();
 }
 useVoice.subscribe((v, prev) => {
@@ -162,6 +191,28 @@ useVoice.subscribe((v, prev) => {
 });
 
 export const canClip = () => !!sourceStream;
+
+// ---- Warning the room ------------------------------------------------------
+
+/** People I was told about, per room, so the warning shows once each time they start. */
+const warned = new Set<string>();
+useStore.subscribe((s) => {
+  const v = useVoice.getState();
+  const me = v.relayId;
+  if (!me) return warned.clear();
+  const meId = s.me?.id;
+  const clipping = Object.values(s.voice).filter((x) => x.relayId === me && x.isClipping && x.transmitterId !== meId);
+  const now = new Set(clipping.map((x) => `${me}:${x.transmitterId}`));
+  for (const k of warned) if (!now.has(k)) warned.delete(k);
+  for (const x of clipping) {
+    const k = `${me}:${x.transmitterId}`;
+    if (warned.has(k)) continue;
+    warned.add(k);
+    const st = getState();
+    const name = resolveName(st.users[x.transmitterId] ?? { username: x.username }, x.beaconId ? st.members[x.beaconId]?.[x.transmitterId] : undefined);
+    toast(`${name} has Clips on. What you say here can be saved in their clips.`, 'warning');
+  }
+});
 
 /** Save the last clip-length of the stream. */
 export async function saveClip(): Promise<Clip | null> {

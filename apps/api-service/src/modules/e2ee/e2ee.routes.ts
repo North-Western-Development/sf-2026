@@ -7,6 +7,8 @@ import {
   e2eeDevices,
   e2eeOneTimePreKeys,
   pointToPointLinks,
+  subspaceMeshes,
+  subspaceMeshMembers,
   transmissions,
   resolvePresencePeers,
 } from '@subspace/database';
@@ -91,7 +93,7 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   });
 
   /** DELETE /api/v1/e2ee/devices/:id — forget a device (it can no longer receive messages). */
-  app.delete('/devices/:id', { schema: { params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } } } }, async (request, reply) => {
+  app.delete('/devices/:id', { schema: { params: { type: 'object', properties: { id: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } } } }, async (request, reply) => {
     const token = extractAuthToken(request)!;
     const { id } = request.params as { id: string };
     const removed = await db.delete(e2eeDevices).where(and(eq(e2eeDevices.id, id), eq(e2eeDevices.transmitterId, token.transmitterId))).returning();
@@ -100,7 +102,7 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   });
 
   /** GET /api/v1/e2ee/devices/:id/prekeys — how many one-time prekeys remain (the device tops up). */
-  app.get('/devices/:id/prekeys', { schema: { params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } } } }, async (request, reply) => {
+  app.get('/devices/:id/prekeys', { schema: { params: { type: 'object', properties: { id: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } } } }, async (request, reply) => {
     const token = extractAuthToken(request)!;
     const { id } = request.params as { id: string };
     if (!(await ownDevice(token.transmitterId, id))) return reply.status(404).send({ error: 'Device not found' });
@@ -114,7 +116,7 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     '/devices/:id/prekeys',
     {
       schema: {
-        params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } },
+        params: { type: 'object', properties: { id: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } },
         body: { type: 'object', additionalProperties: false, required: ['oneTimePreKeys'], properties: { oneTimePreKeys: PREKEYS } },
       },
     },
@@ -129,7 +131,7 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   );
 
   /** GET /api/v1/e2ee/users/:userId/devices — a user's devices (public keys only). */
-  app.get('/users/:userId/devices', { schema: { params: { type: 'object', properties: { userId: { type: 'string', format: 'uuid' } } } } }, async (request, reply) => {
+  app.get('/users/:userId/devices', { schema: { params: { type: 'object', properties: { userId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } } } }, async (request, reply) => {
     const token = extractAuthToken(request)!;
     const { userId } = request.params as { userId: string };
     if (!(await mayReach(token.transmitterId, userId))) return reply.status(404).send({ error: 'Transmitter not found' });
@@ -141,7 +143,7 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    * POST /api/v1/e2ee/devices/:id/bundle
    * A device's prekey bundle for starting a session, claiming (deleting) one one-time prekey.
    */
-  app.post('/devices/:id/bundle', { schema: { params: { type: 'object', properties: { id: { type: 'string', format: 'uuid' } } } } }, async (request, reply) => {
+  app.post('/devices/:id/bundle', { schema: { params: { type: 'object', properties: { id: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } } } }, async (request, reply) => {
     const token = extractAuthToken(request)!;
     const { id } = request.params as { id: string };
     const [device] = await db.select().from(e2eeDevices).where(eq(e2eeDevices.id, id)).limit(1);
@@ -166,7 +168,7 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
    * Turn on end-to-end encryption for a direct link. One-way: it cannot be turned off.
    * Both people need at least one encryption device.
    */
-  app.post('/links/:linkId/enable', { schema: { params: { type: 'object', properties: { linkId: { type: 'string', format: 'uuid' } } } } }, async (request, reply) => {
+  app.post('/links/:linkId/enable', { schema: { params: { type: 'object', properties: { linkId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } } } }, async (request, reply) => {
     const token = extractAuthToken(request)!;
     const { linkId } = request.params as { linkId: string };
     const [link] = await db.select().from(pointToPointLinks).where(eq(pointToPointLinks.id, linkId)).limit(1);
@@ -188,6 +190,32 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   });
 
   /**
+   * POST /api/v1/e2ee/meshes/:meshId/enable
+   * Turn on end-to-end encryption for a group DM. One-way. Every member needs an encryption
+   * device; each transmission is then sealed separately for every member's devices.
+   */
+  app.post('/meshes/:meshId/enable', { schema: { params: { type: 'object', properties: { meshId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } } } }, async (request, reply) => {
+    const token = extractAuthToken(request)!;
+    const { meshId } = request.params as { meshId: string };
+    const [mesh] = await db.select().from(subspaceMeshes).where(eq(subspaceMeshes.id, meshId)).limit(1);
+    const memberIds: string[] = mesh ? (await db.select({ id: subspaceMeshMembers.transmitterId }).from(subspaceMeshMembers).where(eq(subspaceMeshMembers.meshId, meshId))).map((m: any) => m.id) : [];
+    if (!mesh || !memberIds.includes(token.transmitterId)) return reply.status(404).send({ error: 'Subspace Mesh not found' });
+    if (mesh.encryptedAt) return reply.send({ encryptedAt: mesh.encryptedAt });
+    const owners = await db.select({ transmitterId: e2eeDevices.transmitterId }).from(e2eeDevices).where(inArray(e2eeDevices.transmitterId, memberIds));
+    const ready = new Set(owners.map((o: any) => o.transmitterId));
+    if (!ready.has(token.transmitterId)) return reply.status(409).send({ error: 'This device is not set up for encryption yet', code: 'NO_DEVICE' });
+    const missing = memberIds.filter((id) => !ready.has(id));
+    if (missing.length) return reply.status(409).send({ error: 'Everyone in the group needs to open Subspace on a device that supports encryption first', code: 'RECIPIENT_NO_DEVICE', missing });
+    const [updated] = await db.update(subspaceMeshes).set({ encryptedAt: new Date() }).where(eq(subspaceMeshes.id, meshId)).returning();
+    const [marker] = await db.insert(transmissions).values({ meshId, transmitterId: token.transmitterId, content: '', type: 'system_encryption' }).returning();
+    const formatted = await formatTransmission(db, marker, token.transmitterId);
+    const audience = { transmitterIds: memberIds };
+    await publishGatewayEvent(app, 'MESH_ENCRYPTION_ENABLED', { meshId, encryptedAt: updated.encryptedAt }, audience);
+    await publishGatewayEvent(app, 'TRANSMISSION_CREATE', { channelType: 'mesh', channelId: meshId, transmission: formatted }, audience);
+    return reply.send({ encryptedAt: updated.encryptedAt });
+  });
+
+  /**
    * POST /api/v1/e2ee/signal  { to, envelope, call? }
    * Relay an encrypted envelope to someone's devices (call frame keys). The server cannot read
    * it and only forwards between people who could already message each other.
@@ -202,9 +230,9 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
           additionalProperties: false,
           required: ['to', 'fromDevice', 'toDevice', 'envelope'],
           properties: {
-            to: { type: 'string', format: 'uuid' },
-            fromDevice: { type: 'string', format: 'uuid' },
-            toDevice: { type: 'string', format: 'uuid' },
+            to: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
+            fromDevice: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
+            toDevice: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
             envelope: { type: 'object' },
             topic: { type: 'string', maxLength: 120 },
           },
@@ -232,5 +260,18 @@ export const e2eeRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 export async function linkIsEncrypted(db: any, linkId: string): Promise<boolean> {
   const [link] = await db.select({ encryptedAt: pointToPointLinks.encryptedAt }).from(pointToPointLinks).where(eq(pointToPointLinks.id, linkId)).limit(1);
   return !!link?.encryptedAt;
+}
+
+/** Whether a group DM only accepts ciphertext. */
+export async function meshIsEncrypted(db: any, meshId: string): Promise<boolean> {
+  const [mesh] = await db.select({ encryptedAt: subspaceMeshes.encryptedAt }).from(subspaceMeshes).where(eq(subspaceMeshes.id, meshId)).limit(1);
+  return !!mesh?.encryptedAt;
+}
+
+/** Whether a conversation (direct link or group DM) only accepts ciphertext. */
+export function channelIsEncrypted(db: any, channelType: string, id: string): Promise<boolean> {
+  if (channelType === 'link') return linkIsEncrypted(db, id);
+  if (channelType === 'mesh') return meshIsEncrypted(db, id);
+  return Promise.resolve(false);
 }
 

@@ -9,7 +9,7 @@ describe('LiveKit SFU Signaling & Comm-Link Contract E2E Suite', () => {
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const commanderId = '88888888-8888-8888-8888-888888888888';
+  const commanderId = '533123963609712776';
   let commanderToken: string;
   let beaconId: string;
   let commLinkRelayId: string;
@@ -82,7 +82,7 @@ describe('LiveKit SFU Signaling & Comm-Link Contract E2E Suite', () => {
     expect(typeof body.token).toBe('string');
     expect(body.roomName).toBe(commLinkRelayId);
     expect(body.canSpeak).toBe(true);
-    expect(body.canHoloCast).toBe(true);
+    expect(body.canShareScreen).toBe(true);
     expect(body.livekitUrl).toBeDefined();
   });
 

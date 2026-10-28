@@ -66,3 +66,4 @@ test-results/
 playwright-report/
 blob-report/
 screenshots/
+registry-out/

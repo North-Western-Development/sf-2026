@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <RootNamespace>Subspace.Bot</RootNamespace>
+    <AssemblyName>Subspace.Bot</AssemblyName>
+    <PackageId>Subspace.Bot</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Subspace Frequency</Authors>
+    <Description>Bot SDK for Subspace Frequency: the REST API, the gateway, slash commands and interactions (including verifying signed HTTP interactions).</Description>
+    <PackageTags>subspace;bot;chat;gateway;slash-commands</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts</PackageOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="Subspace.Bot.Tests" />
+  </ItemGroup>
+
+</Project>

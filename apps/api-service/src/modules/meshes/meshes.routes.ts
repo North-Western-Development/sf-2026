@@ -11,6 +11,7 @@ import {
   transmitters,
   affiliations,
   signalBlacklist,
+  e2eeDevices,
 } from '@subspace/database';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
@@ -18,9 +19,18 @@ import { loadChannel } from '../../lib/channels.js';
 import { touchChannelLastTransmission } from '../../lib/read-state.js';
 import { AUTHOR_FIELDS, formatTransmission } from '../../lib/transmissions.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
+import { meshIsEncrypted } from '../e2ee/e2ee.routes.js';
 
 const MAX_MESH_MEMBERS = 10;
 const MAX_TRANSMISSION_LENGTH = 2000;
+
+/** A mesh as clients keep it: the row and its members. MESH_UPDATE always carries both. */
+async function meshView(db: any, meshId: string) {
+  const [mesh] = await db.select().from(subspaceMeshes).where(eq(subspaceMeshes.id, meshId)).limit(1);
+  const rows = await db.select({ transmitterId: subspaceMeshMembers.transmitterId }).from(subspaceMeshMembers).where(eq(subspaceMeshMembers.meshId, meshId));
+  const members = rows.length ? await db.select(AUTHOR_FIELDS).from(transmitters).where(or(...rows.map((m: any) => eq(transmitters.id, m.transmitterId)))) : [];
+  return { ...mesh, members };
+}
 
 async function isAffiliatedAndNotBlocking(db: any, callerId: string, targetId: string): Promise<{ ok: boolean; reason?: string }> {
   const [blocked] = await db
@@ -127,6 +137,7 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         ownerId: subspaceMeshes.ownerId,
         lastTransmissionId: subspaceMeshes.lastTransmissionId,
         lastTransmissionAt: subspaceMeshes.lastTransmissionAt,
+        encryptedAt: subspaceMeshes.encryptedAt,
         createdAt: subspaceMeshes.createdAt,
       })
       .from(subspaceMeshMembers)
@@ -169,7 +180,7 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const [updated] = await db.update(subspaceMeshes).set(updates).where(eq(subspaceMeshes.id, meshId)).returning();
 
     const memberRows = await db.select({ transmitterId: subspaceMeshMembers.transmitterId }).from(subspaceMeshMembers).where(eq(subspaceMeshMembers.meshId, meshId));
-    await publishGatewayEvent(app, 'MESH_UPDATE', { mesh: updated }, { transmitterIds: memberRows.map((m: any) => m.transmitterId) });
+    await publishGatewayEvent(app, 'MESH_UPDATE', { mesh: await meshView(db, meshId) }, { transmitterIds: memberRows.map((m: any) => m.transmitterId) });
 
     return reply.send({ message: 'Subspace Mesh updated', mesh: updated });
   });
@@ -215,12 +226,18 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(403).send({ error: 'Target must be affiliated with the caller', code: check.reason });
     }
 
+    // An encrypted group only takes people who can hold keys. They read from when they join.
+    if (await meshIsEncrypted(db, meshId)) {
+      const [device] = await db.select({ id: e2eeDevices.id }).from(e2eeDevices).where(eq(e2eeDevices.transmitterId, targetId)).limit(1);
+      if (!device) return reply.status(409).send({ error: 'They need to open Subspace on a device that supports encryption first', code: 'RECIPIENT_NO_DEVICE' });
+    }
+
     await db.insert(subspaceMeshMembers).values({ meshId, transmitterId: targetId });
 
     const allMembers = [...existingMembers.map((m: any) => m.transmitterId), targetId];
     await publishSessionRefresh(app, allMembers);
     const [mesh] = await db.select().from(subspaceMeshes).where(eq(subspaceMeshes.id, meshId)).limit(1);
-    await publishGatewayEvent(app, 'MESH_UPDATE', { mesh }, { transmitterIds: allMembers });
+    await publishGatewayEvent(app, 'MESH_UPDATE', { mesh: await meshView(db, meshId) }, { transmitterIds: allMembers });
 
     return reply.status(201).send({
       message: 'Transmitter affiliated with Subspace Mesh',
@@ -266,7 +283,7 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     const memberIds = remaining.map((m: any) => m.transmitterId);
     await publishSessionRefresh(app, [...memberIds, token.transmitterId]);
-    await publishGatewayEvent(app, 'MESH_UPDATE', { mesh: updatedMesh }, { transmitterIds: [...memberIds, token.transmitterId] });
+    await publishGatewayEvent(app, 'MESH_UPDATE', { mesh: await meshView(db, meshId) }, { transmitterIds: [...memberIds, token.transmitterId] });
 
     return reply.send({ message: 'Departed from Subspace Mesh', mesh: updatedMesh });
   });
@@ -288,7 +305,7 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     await db.delete(subspaceMeshMembers).where(and(eq(subspaceMeshMembers.meshId, meshId), eq(subspaceMeshMembers.transmitterId, userId)));
 
     await publishSessionRefresh(app, membersBefore.map((m: any) => m.transmitterId));
-    await publishGatewayEvent(app, 'MESH_UPDATE', { mesh }, { transmitterIds: membersBefore.map((m: any) => m.transmitterId) });
+    await publishGatewayEvent(app, 'MESH_UPDATE', { mesh: await meshView(db, meshId) }, { transmitterIds: membersBefore.map((m: any) => m.transmitterId) });
 
     return reply.send({ message: 'Removed from Subspace Mesh' });
   });
@@ -316,6 +333,9 @@ export const meshRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       .limit(1);
 
     if (!isMember) return reply.status(403).send({ error: 'Not a member of this Subspace Mesh' });
+    if (await meshIsEncrypted(db, meshId)) {
+      return reply.status(400).send({ error: 'This conversation is end-to-end encrypted; send ciphertext only', code: 'ENCRYPTION_REQUIRED' });
+    }
 
     const body = request.body as any;
     const { content } = body || {};

@@ -8,10 +8,10 @@ describe('Parity Section 6: Invites, Bans, Members, Glyphs E2E Suite', () => {
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const ownerId = 'b0000000-0000-0000-0000-000000000001';
-  const joinerId = 'b0000000-0000-0000-0000-000000000002';
-  const bannedId = 'b0000000-0000-0000-0000-000000000003';
-  const outsiderId = 'b0000000-0000-0000-0000-000000000004';
+  const ownerId = '370042609340645377';
+  const joinerId = '370042609340645378';
+  const bannedId = '370042609340645379';
+  const outsiderId = '370042609340645380';
 
   let ownerToken: string, joinerToken: string, bannedToken: string, outsiderToken: string;
   let beaconId: string;

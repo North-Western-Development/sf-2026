@@ -117,7 +117,7 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     const actorContext = await resolveBeaconActorContext(db, token.transmitterId, beaconId);
     if (!actorContext) return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
 
-    const canManage = hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_BEACON);
+    const canManage = hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_INVITES);
     const scope = canManage
       ? eq(invites.beaconId, beaconId)
       : and(eq(invites.beaconId, beaconId), eq(invites.inviterId, token.transmitterId));
@@ -158,10 +158,10 @@ export const inviteRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (!invite) return reply.status(404).send({ error: 'Invite not found' });
 
     const actorContext = await resolveBeaconActorContext(db, token.transmitterId, invite.beaconId);
-    const canManage = actorContext && hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_BEACON);
+    const canManage = actorContext && hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_INVITES);
 
     if (invite.inviterId !== token.transmitterId && !canManage) {
-      return reply.status(403).send({ error: 'Only the inviter or MANAGE_BEACON can revoke this invite' });
+      return reply.status(403).send({ error: 'Only the inviter or MANAGE_INVITES can revoke this invite' });
     }
 
     await db.delete(invites).where(eq(invites.code, code));

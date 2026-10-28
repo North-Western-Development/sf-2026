@@ -48,10 +48,10 @@ docker compose ps
 What happens on start:
 
 1. PostgreSQL, Redis, MinIO and LiveKit start.
-2. The one-shot `migrate` service brings the database schema up to date, then exits.
+2. The one-shot `migrate` service applies any new SQL migrations (`packages/database/drizzle`), then exits.
 3. The services start only after it succeeded.
 
-`migrate` deliberately has no `--force`. If an upgrade would drop data, it stops and the services do not start. In that case run it interactively, read what it wants to do, and decide:
+A migration that fails stops here, and the services do not start. A database created before migrations existed (by schema push) is pushed one last time and then adopted. That push deliberately has no `--force`, so if it would drop data it stops. In that case run it interactively, read what it wants to do, and decide:
 
 ```bash
 docker compose run --rm -it migrate

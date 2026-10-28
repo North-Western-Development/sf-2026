@@ -29,7 +29,7 @@ Status key:
 | Password, email and username changes (password-gated) | Done | A password change signs other devices out |
 | Logged-in devices: list, sign one out, sign all others out | Done | Revocation is immediate in the API, file service and gateway |
 | Disable account (restore by signing in), delete account | Done | Delete refuses while the user owns beacons, then anonymises to "Deleted User" |
-| Phone number, account standing | Placeholder | |
+| Phone number, account standing | Done | Twilio texts; off without Twilio. Limits per account, number and address; no VPNs or proxies |
 
 ### Profiles and presence
 
@@ -39,23 +39,36 @@ Status key:
 | Profile visibility (everyone, beacons, friends) | Done | |
 | Online, Idle, Do Not Disturb, Invisible | Done | Ghost Mode masking is server-side |
 | Custom status, commendations (badges), staff insignia | Done | |
-| Avatar decorations, profile effects | Placeholder | |
+| Avatar decorations, profile effects | Done | Built-in sets |
 
 ### Beacons (servers) and relays (channels)
 
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
 | Create, rename, icon, banner, delete, leave; folders (Clusters) | Done | |
-| Clearances (roles), 64-bit permissions, hierarchy, relay overwrites | Done | |
+| Clearances (roles), 52 fine-grained permissions, hierarchy, relay overwrites | Done | Video and Holo-Cast, mute and deafen, create and manage relays, invites, expressions, threads, mentions, insights are separate |
+| Frequency Band (category) permissions, sync and Sync Now | Done | Editing a synced relay copies the band's permissions and un-syncs it, as Discord does |
+| Slowmode, polls, voice messages, private threads | Done | Each behind its own permission (Bypass Slowmode, Create Polls, Send Voice Messages, Create Private Threads) |
+| Push-to-talk, Priority Speaker | Done | No Use Voice Activity forces push-to-talk; Priority Speaker plays others quieter while held |
 | Invites, invite page, bans, kicks, onboarding, Discovery | Done | |
 | Frequency Bands (categories), hide relays, custom emoji | Done | |
 | Text relays: markdown, mentions, replies, reactions, edits, deletes, pins, typing, unread | Done | |
 | Link previews (embeds), with a Chat setting to turn them off | Done | SSRF-guarded fetcher, Redis cache, signed same-origin image proxy |
 | Archival relays (forums), visual relays (galleries) | Done | |
 | Comm-Links: voice, video, screen share, chat beside the call | Done | LiveKit SFU, real WebRTC in the browser suite |
-| End-to-end encrypted Comm-Links (relay setting) | Done | Insertable streams; frame key shared by Double Ratchet signals |
-| Boosts, stickers, GIFs, soundboard, threads in text relays, activities | Placeholder | |
-| Audit log, AutoMod, insights, templates, widget | Placeholder | Beacon Settings pages |
+| End-to-end encrypted Comm-Links (relay setting) | Done | Insertable streams; frame key shared by Double Ratchet signals, changed when someone leaves |
+| Stickers, GIFs, soundboard, threads in text relays | Done | |
+| Activity status: game detection and Rich Presence, with Activity Privacy | Done | Desktop app finds known games and runs a local RPC server; SDKs for JavaScript (`packages/rich-presence`), C++, C#, Unity and Unreal (`sdk/`; the Unreal plugin is not yet compiled against the engine); Steam covers, replaced by a verified application's icon (Command Console › Verified Games); bots see activity only with the Activity Status intent; off by default, never stored; guide in `apps/docs/guide/rich-presence.md` |
+| Developer policy: who can create applications and use privileged intents | Done | Command Console › Developers: verified means email, phone and/or hand-verified by staff; apps for anyone or verified accounts, plus required email/phone; each intent (Message Content, Activity Status) for any or verified developers |
+| Verified bots, APP/HOOK/BEACON tags, Add App on public bots, development teams | Done | Staff verify bots in Command Console › Transmitters; teams with owner/admin/developer/read-only roles; application icons |
+| Announcement relays that other beacons follow | Done | Publish from the context menu; copies carry the BEACON tag and never ping |
+| Bot SDKs (JavaScript, Deno, Python, Java, C#, C++) and the package registry | Done | Served from `/packages/` (npm, PyPI, Maven, NuGet, archives), built by `deploy/server/publish-packages.sh` |
+| Custom Activities from developers | Done | Staff-approved, sandboxed iframes on the developer's origin, `@subspace/activity-sdk`; see `apps/docs/developers/activities.md` |
+| Inbox (Unreads, Mentions, Bookmarks, Reminders), Mark Unread, scheduled transmissions, notes, status answers | Done | Scheduled transmissions stay on the device that scheduled them; NOTE_MAX_LENGTH |
+| Activities (Watch Together, Whiteboard), Clips, Stages | Done | Several activities per comm-link; clips mix in everyone in the room and warn them |
+| Voice moderation: server mute, server deafen, move, disconnect | Done | Mute Members / Move Members; enforced by LiveKit |
+| Webhooks, bots, slash commands and interactions; bot SDK | Done | Manage Webhooks / Use Application Commands; ephemeral and deferred replies; Ed25519-signed HTTP interactions; `packages/bot-sdk`; guide in `apps/docs/guide/bots.md` |
+| Audit log, AutoMod, insights, templates, widget | Done | Beacon Settings pages |
 
 ### Direct messages and social
 
@@ -65,8 +78,8 @@ Status key:
 | Friend requests with a note, message requests, blocking | Done | |
 | Voice and video calls in DMs and meshes | Done | Ringing prompt, ringtone, "started a call" and missed-call messages, ring again |
 | End-to-end encrypted DMs (text and attachments) | Done | X3DH + Double Ratchet (packages/e2ee); server stores ciphertext only |
-| End-to-end encrypted DM calls | Done | Automatic in encrypted links |
-| End-to-end encrypted meshes | Not started | Needs group key management |
+| End-to-end encrypted DM calls | Done | Automatic in encrypted links and meshes |
+| End-to-end encrypted meshes | Done | Each message sealed per member device (pairwise, as Signal does for small groups); members need a device to be added |
 
 ### Search, files and notifications
 
@@ -86,7 +99,10 @@ Status key:
 | :--- | :--- | :--- |
 | Report a transmission, user or beacon | Done | Snapshot of the reported content |
 | Command Console: reports, suspend and restore, quarantine files | Done | Suspending ends every session at once |
-| Staff ranks (moderator, admin, root) | Done | First rank set in the database by design; the console has no rank editor yet (API only) |
+| Staff ranks | Done | Custom ranks with their own permissions, color and badge, ordered; staff act only below their own rank. Built-in Root, Admin and Moderator. First Root set in the database |
+| Custom badges and the staff log | Done | Badges given by staff, worn by a rank, or earned by a rule; every console action is logged |
+| Storage groups | Done | Admins give accounts their own Vault quota and upload limit; DEFAULT_STORAGE_QUOTA_MB / DEFAULT_MAX_UPLOAD_MB for everyone else |
+| Themes: Deep Space, AMOLED | Done | Per device; more themes to come |
 
 ### Clients
 
@@ -103,9 +119,12 @@ Status key:
 | :--- | :--- | :--- |
 | Production compose with a schema migrate step | Ready, not deployed | The previous compose never created the schema |
 | Staging overlay, LiveKit public config, host nginx | Ready, not deployed | `docker-compose.staging.yml`, `deploy/nginx/subspace.conf` |
-| Live smoke suite (`pnpm test:live`) | Done | Passes against the local stack; run it against the server once deployed |
+| Live smoke suite (`pnpm test:live`) | Done | Passes against `subspace.click`, with media through TURN |
 | Documentation site (`apps/docs`) | Done | Builds with zero broken links |
-| Live staging on `subspace.click`, clean-slate rebuild report | Not started | Needs server access |
+| Native deployment (systemd, one user per service) | Done | `deploy/server`: hardening, platform, services, certificates, releases |
+| Snowflake IDs | Done | 64-bit, time-ordered, sent as strings; a worker number per service, and `subspace_snowflake()` in Postgres for SQL inserts |
+| Generated SQL migrations | Done | `packages/database/drizzle`; databases built by schema push are adopted once; tests fail on a schema change without a migration |
+| Live on `subspace.click` | Done | Hardened server, Let's Encrypt certificates, LiveKit with TURN |
 
 ## 2. Security model
 
@@ -120,9 +139,9 @@ Status key:
 
 | Suite | Command | Count |
 | :--- | :--- | :--- |
-| Backend unit and end-to-end (Vitest) | `pnpm test:native` | 36 files, 278 tests |
-| Web unit (Vitest + Testing Library) | `pnpm --filter @subspace/web test` | 39 tests |
-| Browser (Playwright) | `pnpm test:ui` | 63 tests on an isolated stack (real Postgres, Redis, MinIO, LiveKit; mock drives and an SMTP sink) |
+| Backend unit and end-to-end (Vitest) | `pnpm test:native` | 57 files, 369 tests |
+| Web unit (Vitest + Testing Library) | `pnpm --filter @subspace/web test` | 50 tests |
+| Browser (Playwright) | `pnpm test:ui` | 117 tests on an isolated stack (real Postgres, Redis, MinIO, LiveKit; mock drives and an SMTP sink) |
 | Live smoke (Playwright) | `LIVE_URL=… pnpm test:live` | 5 tests |
 | Desktop (Rust) | `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml` | 2 tests |
 | Mobile | `pnpm --filter @subspace/mobile test` / `typecheck` | 4 tests |
@@ -130,9 +149,6 @@ Status key:
 
 ## 4. What is left
 
-1. **Deploy staging** on `subspace.click` once server access is available (guide: `apps/docs/operate/deployment.md`), run `pnpm test:live` against it, then the clean-slate rebuild from the docs.
+1. **Production follow-ups** on `subspace.click`: SMTP and Twilio credentials, and the first instance-staff account.
 2. **Store releases:** desktop code signing, EAS builds and store listings for mobile.
-3. **Encrypted meshes** (group key management) and **frame-key rotation** when someone leaves an encrypted call.
-4. **Staff rank editor** in the Command Console (the API exists).
-5. **Generated SQL migrations** instead of schema push, once the schema settles.
-6. The Discord-only features listed as placeholders, as and when the instance needs them.
+

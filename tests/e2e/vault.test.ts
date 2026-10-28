@@ -10,7 +10,7 @@ describe('Subspace Vault (Storage) & Cloud Integrations E2E Suite', () => {
   let fileApp: FastifyInstance;
   let apiApp: FastifyInstance;
 
-  const testUserId = '77777777-7777-7777-7777-777777777777';
+  const testUserId = '141483468158498679';
   let userToken: string;
   let issuedStorageKey: string;
   let issuedUploadUrl: string;
@@ -123,7 +123,7 @@ describe('Subspace Vault (Storage) & Cloud Integrations E2E Suite', () => {
         headers: { authorization: `Bearer ${userToken}` },
         payload: { storageKey, filename: 'x.png', mimeType: 'image/png', sizeBytes: 10 },
       });
-    const foreign = await record('vaults/00000000-0000-4000-8000-000000000001/abc_secret.pdf');
+    const foreign = await record('vaults/978275694148452353/abc_secret.pdf');
     expect(foreign.statusCode).toBe(403);
     expect(foreign.json().code).toBe('FOREIGN_STORAGE_KEY');
     expect((await record(`vaults/${testUserId}/../other/x`)).statusCode).toBe(403);

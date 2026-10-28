@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { awardEligibleCommendations, countTransmissionsSent, statsKey } from '@subspace/database';
+import { awardEligibleCommendations, countTransmissionsSent, staffRoleOf, statsKey } from '@subspace/database';
 
 /** Voice minutes come from the gateway's Redis totals; 0 when Redis is down. */
 async function voiceMinutes(app: FastifyInstance, transmitterId: string) {
@@ -17,10 +17,12 @@ export async function commendationStats(app: FastifyInstance, db: any, target: {
  * Awards any badges the transmitter has earned since they were last checked. Runs when a
  * profile is viewed; a failure here never blocks the profile itself.
  */
-export async function refreshCommendations(app: FastifyInstance, db: any, target: { id: string; staffRank: number; createdAt: Date | string }) {
+export async function refreshCommendations(app: FastifyInstance, db: any, target: { id: string; staffRank: number; staffRoleId?: string | null; createdAt: Date | string }) {
   try {
+    const role = await staffRoleOf(db, target);
     return await awardEligibleCommendations(db, target.id, {
-      staffRank: target.staffRank ?? 0,
+      staffRank: role ? Math.max(1, target.staffRank ?? 0) : 0,
+      staffBadgeId: role?.badgeId ?? null,
       createdAt: new Date(target.createdAt),
       voiceMinutes: await voiceMinutes(app, target.id),
       transmissionsSent: () => countTransmissionsSent(db, target.id),

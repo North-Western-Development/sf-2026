@@ -2,11 +2,13 @@ import type { FastifyInstance } from 'fastify';
 
 /**
  * Text messages (phone verification). With TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and
- * TWILIO_FROM set, they go through Twilio. Without them, development keeps them in a Redis
- * outbox (dev:sms) like the mail outbox, and production refuses: there is no way to send one.
+ * TWILIO_FROM set, they go through Twilio. Without them phone verification is switched off,
+ * except that development and tests can set SMS_DEV_OUTBOX=true to keep texts in a Redis
+ * outbox (dev:sms) like the mail outbox.
  */
 export const smsConfigured = () => !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM);
-export const smsAvailable = () => smsConfigured() || process.env.NODE_ENV !== 'production';
+const devOutbox = () => process.env.NODE_ENV !== 'production' && process.env.SMS_DEV_OUTBOX === 'true';
+export const smsAvailable = () => smsConfigured() || devOutbox();
 
 export async function sendSms(app: FastifyInstance, to: string, body: string): Promise<void> {
   if (smsConfigured()) {
@@ -23,7 +25,7 @@ export async function sendSms(app: FastifyInstance, to: string, body: string): P
     if (!res.ok) throw new Error(`SMS provider refused the message (${res.status})`);
     return;
   }
-  if (process.env.NODE_ENV === 'production') throw new Error('Text messages are not set up on this server');
+  if (!devOutbox()) throw new Error('Text messages are not set up on this server');
   app.log.info({ to, body }, '[SMS] development outbox');
   const redis = (app as any).redis;
   if (redis?.status === 'ready') {

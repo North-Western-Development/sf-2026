@@ -57,7 +57,7 @@ export function CallPanel({ channelKey: key }: { channelKey: ChannelKey }) {
     useShallow((s) => (s.calls[key]?.ringing ?? []).filter((id) => !inCall(s, key).includes(id)).map((id) => s.users[id]).filter(Boolean) as UserRef[])
   );
   const session = useVoice(useShallow((s) => ({ mine: s.callKey === key, state: s.state, cameraOn: s.cameraOn, screenOn: s.screenOn, encrypted: s.encrypted })));
-  const encryptedLink = useStore((s) => key.startsWith('link:') && !!s.links[key.slice(5)]?.encryptedAt);
+  const encryptedLink = useStore((s) => (key.startsWith('link:') && !!s.links[key.slice(5)]?.encryptedAt) || (key.startsWith('mesh:') && !!s.meshes[key.slice(5)]?.encryptedAt));
   const { muted, deafened } = useAudioPrefs();
   const joined = session.mine && session.state !== 'idle';
   if (!participants.length && !call && !joined) return null;

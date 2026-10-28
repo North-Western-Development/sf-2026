@@ -1,9 +1,10 @@
 import { test, expect, register, signIn, openAs } from './fixtures';
+import { MEDIA_ARGS } from '../support/fake-voice';
 
-// Chromium's fake camera (a test pattern) and microphone (a beep), granted without a prompt,
+// Chromium's fake camera (a test pattern) and a talking fake microphone, granted without a prompt,
 // so two pilots can talk through the real LiveKit server.
 test.use({
-  launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
+  launchOptions: { args: MEDIA_ARGS },
   permissions: ['microphone', 'camera'],
 });
 

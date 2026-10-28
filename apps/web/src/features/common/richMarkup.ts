@@ -21,9 +21,9 @@ export interface Fence extends Range {
   bodyB: number;
 }
 
-const GLYPH_SRC = '<a?:[A-Za-z0-9_]{2,32}:[0-9a-f-]{36}>';
+const GLYPH_SRC = '<a?:[A-Za-z0-9_]{2,32}:[1-9][0-9]{0,18}>';
 const TOKEN_RE = new RegExp(`${GLYPH_SRC}|${EMOJI_RE.source}`, 'gu');
-const GLYPH_RE = /^<a?:([A-Za-z0-9_]{2,32}):([0-9a-f-]{36})>$/;
+const GLYPH_RE = /^<a?:([A-Za-z0-9_]{2,32}):([1-9][0-9]{0,18})>$/;
 
 const FENCE_RE = /```(?:([a-z0-9_+\-.#]+)\n)?([\s\S]*?)```/gi;
 const CODE_RE = /`([^`\n]+)`/g;

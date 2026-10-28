@@ -145,6 +145,8 @@ class SubspaceGatewayClient {
       this.dispatchListeners.forEach((fn) => fn(payload.t, payload.d));
       if (payload.t === 'READY') {
         this.reconnectAttempts = 0;
+        // A new connection starts without an activity: report it again.
+        if (this.activity) this.sendActivity();
         this.emitStatus('ready');
         const voiceStates = payload.d?.voice_states || [];
         voiceStates.forEach((vs: any) => {
@@ -202,7 +204,27 @@ class SubspaceGatewayClient {
   }
 
   /** Where this client is connected: a Comm-Link relay id, a direct-link or mesh call, or nothing. */
+  private lastVoice: Parameters<SubspaceGatewayClient['updateVoiceState']> = [null];
+  private clipping = false;
+
+  private priority = false;
+
+  /** Priority Speaker: held down while talking (the gateway checks the permission). */
+  public setPriority(on: boolean) {
+    if (this.priority === on) return;
+    this.priority = on;
+    if (this.lastVoice[0]) this.updateVoiceState(...this.lastVoice);
+  }
+
+  /** Tell the room that clips are being kept of it (Clips are on while I Holo-Cast). */
+  public setClipping(on: boolean) {
+    if (this.clipping === on) return;
+    this.clipping = on;
+    if (this.lastVoice[0]) this.updateVoiceState(...this.lastVoice);
+  }
+
   public updateVoiceState(room: string | { callType: 'link' | 'mesh'; callId: string } | null, isMuted = false, isDeafened = false, isSpeaking = false) {
+    this.lastVoice = [room, isMuted, isDeafened, isSpeaking];
     if (this.ws?.readyState === WebSocket.OPEN) {
       const target = typeof room === 'string' ? { relay_id: room } : room ? { call_type: room.callType, call_id: room.callId } : { relay_id: null };
       this.ws.send(
@@ -213,6 +235,8 @@ class SubspaceGatewayClient {
             is_muted: isMuted,
             is_deafened: isDeafened,
             is_speaking: isSpeaking,
+            is_clipping: !!room && this.clipping,
+            is_priority: typeof room === 'string' && this.priority,
           },
         })
       );
@@ -236,6 +260,20 @@ class SubspaceGatewayClient {
 
   private emitStatus(status: 'connecting' | 'ready' | 'reconnecting' | 'offline') {
     this.statusListeners.forEach((fn) => fn(status));
+  }
+
+  private activity: unknown = null;
+
+  /** What I am playing (null to clear). Kept and sent again after every reconnect. */
+  public updateActivity(activity: unknown) {
+    this.activity = activity;
+    this.sendActivity();
+  }
+
+  private sendActivity() {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ op: 5 /* ACTIVITY_UPDATE */, d: { activity: this.activity } }));
+    }
   }
 
   /** Set own presence; also used on reconnect IDENTIFY. */

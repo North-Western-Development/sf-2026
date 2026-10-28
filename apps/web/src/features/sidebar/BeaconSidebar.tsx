@@ -18,6 +18,7 @@ import {
   MicOff,
   HeadphoneOff,
   Lock,
+  Megaphone,
 } from 'lucide-react';
 import { Tooltip, useContextMenu } from '@subspace/ui';
 import { useShallow } from 'zustand/react/shallow';
@@ -31,10 +32,11 @@ import { openModal, useUi, rememberRelay } from '../../app/ui';
 import { MentionBadge, Avatar } from '../common/Avatar';
 import { beaconMenu } from '../rail/beaconMenu';
 import { relayMenu, bandMenu } from './relayMenu';
+import { memberMenu } from '../members/memberMenu';
 import { relayKindLabel } from '../../lib/strings';
 
-export function RelayIcon({ type, className = 'h-5 w-5', locked }: { type: Relay['type']; className?: string; locked?: boolean }) {
-  const Icon = { text: Hash, comm_link: Volume2, stage: Podcast, archival: MessagesSquare, visual: ImageIcon, category: Hash }[type] ?? Hash;
+export function RelayIcon({ type, className = 'h-5 w-5', locked, announcement }: { type: Relay['type']; className?: string; locked?: boolean; announcement?: boolean }) {
+  const Icon = announcement && type === 'text' ? Megaphone : ({ text: Hash, comm_link: Volume2, stage: Podcast, archival: MessagesSquare, visual: ImageIcon, category: Hash }[type] ?? Hash);
   return (
     <span className="relative inline-flex shrink-0">
       <Icon className={className} aria-hidden="true" />
@@ -47,6 +49,7 @@ function VoiceParticipants({ relayId, beaconId }: { relayId: string; beaconId: s
   const participants = useStore(useShallow((s) => Object.values(s.voice).filter((v) => v.relayId === relayId)));
   const users = useStore((s) => s.users);
   const members = useStore((s) => s.members[beaconId]);
+  const { openContextMenu } = useContextMenu();
   if (!participants.length) return null;
   return (
     <ul className="ml-8 mb-1 space-y-0.5">
@@ -54,11 +57,24 @@ function VoiceParticipants({ relayId, beaconId }: { relayId: string; beaconId: s
         const user = users[p.transmitterId] ?? { id: p.transmitterId, username: p.username, displayName: null, avatarUrl: null, discriminator: '0000' };
         const name = members?.[p.transmitterId]?.nickname || user.displayName || user.username;
         return (
-          <li key={p.transmitterId} className="flex h-7 items-center gap-2 rounded-md px-1.5 text-sm text-fg-muted hover:bg-hover">
+          <li
+            key={p.transmitterId}
+            aria-label={name}
+            onContextMenu={(e) => openContextMenu(e, memberMenu(beaconId, p.transmitterId))}
+            className="flex h-7 items-center gap-2 rounded-md px-1.5 text-sm text-fg-muted hover:bg-hover"
+          >
             <Avatar user={user} size={22} speaking={p.isSpeaking} />
             <span className="min-w-0 flex-1 truncate">{name}</span>
-            {p.isMuted && <MicOff className="h-3.5 w-3.5 text-fg-subtle" aria-label="Muted" />}
-            {p.isDeafened && <HeadphoneOff className="h-3.5 w-3.5 text-fg-subtle" aria-label="Deafened" />}
+            {members?.[p.transmitterId]?.serverMuted ? (
+              <MicOff className="h-3.5 w-3.5 text-danger" aria-label="Server muted" />
+            ) : (
+              p.isMuted && <MicOff className="h-3.5 w-3.5 text-fg-subtle" aria-label="Muted" />
+            )}
+            {members?.[p.transmitterId]?.serverDeafened ? (
+              <HeadphoneOff className="h-3.5 w-3.5 text-danger" aria-label="Server deafened" />
+            ) : (
+              p.isDeafened && <HeadphoneOff className="h-3.5 w-3.5 text-fg-subtle" aria-label="Deafened" />
+            )}
           </li>
         );
       })}
@@ -95,7 +111,7 @@ function RelayRow({ relay }: { relay: Relay }) {
         )}
       >
         {ind.unread && !active && <span aria-hidden="true" className="absolute -left-2 top-1/2 h-2 w-1 -translate-y-1/2 rounded-r-full bg-fg" />}
-        <RelayIcon type={relay.type} className="h-5 w-5 opacity-70" />
+        <RelayIcon type={relay.type} announcement={relay.isAnnouncement} className="h-5 w-5 opacity-70" />
         <span className={clsx('min-w-0 flex-1 truncate text-[15px]', highlighted && 'font-semibold')}>{relay.name}</span>
         <span className="flex items-center gap-1">
           {showInvite && (
@@ -140,7 +156,7 @@ function Band({ band, relays }: { band: Relay; relays: Relay[] }) {
   const { relayId } = useParams();
   const collapsed = useUi((s) => !!s.collapsedBands[band.id]);
   const { openContextMenu } = useContextMenu();
-  const canManage = useStore((s) => can(relayPermissions(s, band.id), PERMISSIONS.MANAGE_RELAYS));
+  const canManage = useStore((s) => can(relayPermissions(s, band.id), PERMISSIONS.MANAGE_RELAYS) || can(relayPermissions(s, band.id), PERMISSIONS.CREATE_RELAYS));
   const toggle = () => useUi.setState((s) => ({ collapsedBands: { ...s.collapsedBands, [band.id]: !collapsed } }));
   // Primitive flags (unread or mentioned) keep the selector referentially stable.
   const attention = useStore(

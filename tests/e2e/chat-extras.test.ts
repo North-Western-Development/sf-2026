@@ -9,9 +9,9 @@ describe('Chat extras', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const owner = { id: 'fe000000-0000-4000-8000-000000000001', username: 'chx_owner' };
-  const pilot = { id: 'fe000000-0000-4000-8000-000000000002', username: 'chx_pilot' };
-  const stranger = { id: 'fe000000-0000-4000-8000-000000000003', username: 'chx_stranger' };
+  const owner = { id: '345269005355974657', username: 'chx_owner' };
+  const pilot = { id: '345269005355974658', username: 'chx_pilot' };
+  const stranger = { id: '345269005355974659', username: 'chx_stranger' };
   const users = [owner, pilot, stranger];
   const auth = (u: { id: string; username: string }) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
   const call = (method: string, url: string, u: { id: string; username: string }, payload?: unknown) =>

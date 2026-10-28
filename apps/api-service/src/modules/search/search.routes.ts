@@ -14,6 +14,7 @@ import {
   transmissions,
   signalBlacklist,
   archivalThreads,
+  canSeeThread,
   pointToPointLinks,
   subspaceMeshes,
   subspaceMeshMembers,
@@ -153,11 +154,11 @@ export const searchRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
           properties: {
             q: { type: 'string', maxLength: 200 },
             scope: { type: 'string', enum: ['beacons', 'dms'] },
-            beaconId: { type: 'string', format: 'uuid' },
-            relayId: { type: 'string', format: 'uuid' },
-            from: { type: 'string', format: 'uuid' },
-            transmitterId: { type: 'string', format: 'uuid' },
-            mentions: { type: 'string', format: 'uuid' },
+            beaconId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
+            relayId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
+            from: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
+            transmitterId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
+            mentions: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
             has: { type: 'string', enum: ['link', 'file', 'image', 'video'] },
             hasAttachment: { type: 'string', enum: ['true', 'false'] },
             pinned: { type: 'string', enum: ['true', 'false'] },
@@ -246,9 +247,13 @@ export const searchRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         if (allowed.length) {
           containerConds.push(inArray(transmissions.relayId, allowed));
           const threads = await db
-            .select({ id: archivalThreads.id, relayId: archivalThreads.relayId, title: archivalThreads.title })
+            .select({ id: archivalThreads.id, relayId: archivalThreads.relayId, title: archivalThreads.title, isPrivate: archivalThreads.isPrivate })
             .from(archivalThreads)
             .where(inArray(archivalThreads.relayId, allowed));
+          // Private threads only for their members and Manage Threads.
+          for (let i = threads.length - 1; i >= 0; i--) {
+            if (threads[i].isPrivate && !(await canSeeThread(db, token.transmitterId, threads[i]))) threads.splice(i, 1);
+          }
           for (const t of threads) {
             const parent = channelInfo.get(t.relayId)!;
             channelInfo.set(t.id, { channelType: 'thread', channelId: t.id, name: t.title, beaconId: parent.beaconId, beaconName: parent.beaconName, relayId: t.relayId });

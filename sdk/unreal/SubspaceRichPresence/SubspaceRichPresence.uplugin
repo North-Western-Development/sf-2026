@@ -1,0 +1,26 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0.0",
+	"FriendlyName": "Subspace Rich Presence",
+	"Description": "Show what players are doing in your game on their Subspace Frequency profile, through the Subspace desktop app.",
+	"Category": "Online",
+	"CreatedBy": "Subspace Frequency",
+	"CreatedByURL": "https://subspace.click",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"SupportedTargetPlatforms": [ "Win64", "Mac", "Linux" ],
+	"Modules": [
+		{
+			"Name": "SubspaceRichPresence",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [ "Win64", "Mac", "Linux" ]
+		}
+	]
+}

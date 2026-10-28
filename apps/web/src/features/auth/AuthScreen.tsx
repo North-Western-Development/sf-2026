@@ -24,8 +24,8 @@ function describeError(err: unknown): string {
   return e?.message || 'Something went wrong. Try again.';
 }
 
-export function AuthScreen({ onAuthenticated }: { onAuthenticated: (result: LoginResult & { kind: 'session' }) => void }) {
-  const [mode, setMode] = useState<Mode>('login');
+export function AuthScreen({ onAuthenticated, initialMode = 'login' }: { onAuthenticated: (result: LoginResult & { kind: 'session' }) => void; initialMode?: 'login' | 'register' }) {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
 
   const handleResult = (result: LoginResult) => {
@@ -38,7 +38,7 @@ export function AuthScreen({ onAuthenticated }: { onAuthenticated: (result: Logi
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout wide={mode === 'register'}>
       {mode === 'login' && <LoginForm onResult={handleResult} onRegister={() => setMode('register')} />}
       {mode === 'register' && <RegisterForm onResult={handleResult} onLogin={() => setMode('login')} />}
       {mode === 'two-factor' && challengeToken && (
@@ -190,63 +190,79 @@ function RegisterForm({ onResult, onLogin }: { onResult: (r: LoginResult) => voi
     <form onSubmit={submit} noValidate>
       <AuthHeading title="Create an account" />
       <FormError message={error} />
-      <div className="space-y-4">
-        <Input
-          label="Email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          autoFocus
-        />
-        <Input
-          label="Display name"
-          autoComplete="nickname"
-          hint="How others see you. You can change it any time."
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          maxLength={32}
-        />
-        <Input
-          label="Username"
-          autoComplete="username"
-          hint={
-            normalizedUsername && !usernameError
-              ? `You'll get a unique tag like ${normalizedUsername}#0427.`
-              : "You'll get a unique 4-digit tag, like name#0427."
-          }
-          error={usernameError}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          maxLength={32}
-        />
-        <Input
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          error={passwordError}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="space-y-4">
+          <Input
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoFocus
+          />
+          <Input
+            label="Display name"
+            autoComplete="nickname"
+            hint="How others see you. You can change it any time."
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            maxLength={32}
+          />
+          <Input
+            label="Username"
+            autoComplete="username"
+            hint={
+              normalizedUsername && !usernameError
+                ? `You'll get a unique tag like ${normalizedUsername}#0427.`
+                : "You'll get a unique 4-digit tag, like name#0427."
+            }
+            error={usernameError}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            maxLength={32}
+          />
+          <Input
+            label="Password"
+            type="password"
+            autoComplete="new-password"
+            error={passwordError}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
 
-        <section className="rounded-lg border border-line bg-raised p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted mb-3">Subspace Directives</p>
-          <div className="max-h-40 overflow-y-auto pr-1">
-            <DirectivesList />
+        <div className="space-y-4">
+          <div role="note" aria-label="Not available in the EU" className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-fg">
+            <p className="font-semibold">Not available in the European Union</p>
+            <p className="mt-1 text-fg-muted">
+              Subspace Frequency is not authorized for use in the EU or EEA, because it does not comply with the GDPR. Do not create an account if you
+              are located there.
+            </p>
           </div>
-          <label className="mt-4 flex items-start gap-2.5 cursor-pointer text-sm text-fg">
-            <input
-              type="checkbox"
-              checked={accepted}
-              onChange={(e) => setAccepted(e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-[var(--color-brand)]"
-            />
-            <span>I have read and accept the Subspace Directives.</span>
-          </label>
-        </section>
+
+          <section className="rounded-lg border border-line bg-raised p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted mb-3">Subspace Directives</p>
+            <div className="max-h-40 overflow-y-auto pr-1 md:max-h-52">
+              <DirectivesList />
+            </div>
+            <label className="mt-4 flex items-start gap-2.5 cursor-pointer text-sm text-fg">
+              <input
+                type="checkbox"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[var(--color-brand)]"
+              />
+              <span>
+                I have read and accept the Subspace Directives, the{' '}
+                <a href="/terms" target="_blank" rel="noreferrer" className="text-brand-sky hover:underline">Terms of Service</a> and the{' '}
+                <a href="/privacy" target="_blank" rel="noreferrer" className="text-brand-sky hover:underline">Privacy Policy</a>.
+              </span>
+            </label>
+          </section>
+        </div>
       </div>
       <Button type="submit" size="lg" fullWidth className="mt-6" isLoading={busy} disabled={!canSubmit}>
         Continue

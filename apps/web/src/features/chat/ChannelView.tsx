@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useInbox } from '../inbox/inboxData';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { Bell, BellOff, Pin, Users, Inbox, CircleHelp, MessagesSquare } from 'lucide-react';
+import { Bell, BellOff, Pin, Users, Inbox, CircleHelp, MessagesSquare, Megaphone } from 'lucide-react';
 import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { setState, useStore } from '../../data/store';
 import { loadPins } from '../../data/actions';
@@ -163,6 +164,7 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
   const closeThreads = useCallback(() => setThreadsAnchor(null), []);
   const closeInbox = useCallback(() => setInboxAnchor(null), []);
   const resolvers = useMarkdownResolvers(beaconId);
+  const dueReminders = useInbox((s) => s.dueReminders);
   const threadsRelay = useStore((s) => {
     const { type, id } = parseChannelKey(key);
     return type === 'relay' && s.relays[id]?.type === 'text' ? s.relays[id] : undefined;
@@ -209,6 +211,11 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
           {actions}
           {!mobile && (
             <>
+              {threadsRelay?.isAnnouncement && (
+                <HeaderButton label="Follow" onClick={() => openModal({ kind: 'followRelay', relayId: threadsRelay.id })}>
+                  <Megaphone className="h-5 w-5" />
+                </HeaderButton>
+              )}
               {threadsRelay && (
                 <HeaderButton label="Threads" onClick={(e) => setThreadsAnchor(e.currentTarget.getBoundingClientRect())}>
                   <MessagesSquare className="h-5 w-5" />
@@ -228,8 +235,11 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
           <SearchBar scope={searchScope} />
           {!mobile && (
             <>
-              <HeaderButton label="Inbox" onClick={(e) => setInboxAnchor(e.currentTarget.getBoundingClientRect())}>
-                <Inbox className="h-5 w-5" />
+              <HeaderButton label={dueReminders ? `Inbox (${dueReminders} reminder${dueReminders === 1 ? '' : 's'} due)` : 'Inbox'} onClick={(e) => setInboxAnchor(e.currentTarget.getBoundingClientRect())}>
+                <span className="relative">
+                  <Inbox className="h-5 w-5" />
+                  {dueReminders > 0 && <span aria-hidden className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-base" />}
+                </span>
               </HeaderButton>
               <HeaderButton label="Help" onClick={() => openModal({ kind: 'help' })}>
                 <CircleHelp className="h-5 w-5" />

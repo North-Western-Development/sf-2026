@@ -6,20 +6,34 @@ import type { Plain } from '../lib/e2ee/keystore';
 /** Whether a conversation only takes ciphertext. */
 export function isEncryptedChannel(key: ChannelKey): boolean {
   const { type, id } = parseChannelKey(key);
-  return type === 'link' && !!getState().links[id]?.encryptedAt;
+  if (type === 'link') return !!getState().links[id]?.encryptedAt;
+  if (type === 'mesh') return !!getState().meshes[id]?.encryptedAt;
+  return false;
 }
 
-/** Who a transmission in an encrypted link is for (besides the sender's own devices). */
+/**
+ * Who a transmission in an encrypted conversation is for (besides the sender's own devices).
+ * In a group DM that is every other member: each of their devices gets its own sealed
+ * envelope, so someone who leaves cannot read what is sent after.
+ */
 function recipientsOf(key: ChannelKey): string[] {
   const { type, id } = parseChannelKey(key);
-  const link = type === 'link' ? getState().links[id] : undefined;
-  return link ? [link.recipient.id] : [];
+  const s = getState();
+  if (type === 'link') {
+    const link = s.links[id];
+    return link ? [link.recipient.id] : [];
+  }
+  if (type === 'mesh') return (s.meshes[id]?.members ?? []).map((m) => m.id).filter((uid) => uid !== s.me?.id);
+  return [];
 }
 
 export function encryptFor(key: ChannelKey, plain: Plain): Promise<EncryptedPayload> {
   const me = getState().me;
   if (!me) throw new Error('Not signed in');
-  return encryptPayload(me.id, recipientsOf(key), plain);
+  const recipients = recipientsOf(key);
+  // Never seal a conversation's message for this person alone.
+  if (!recipients.length) throw new Error('Could not tell who is in this conversation; try again');
+  return encryptPayload(me.id, recipients, plain);
 }
 
 export { rememberSent };

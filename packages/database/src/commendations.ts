@@ -105,19 +105,28 @@ export const commendationOrder = (code: string) => {
 
 export const badgeIconUrl = (code: string) => `/badges/${code.toLowerCase()}.svg`;
 
+/** Badges staff make in the Command Console: code custom_<id>, outside the catalog. */
+export const isCustomBadgeCode = (code: string) => code.startsWith('custom_');
+
 /**
- * Profiles show one badge per family: the highest level held. Rows not in the catalog
- * (retired badges) are dropped.
+ * Profiles show one badge per family: the highest level held. Custom badges are each their own
+ * family, a staff rank's badge first of all. Rows not in the catalog (retired badges) are dropped.
  */
-export function highestPerFamily<T extends { code: string }>(rows: T[]): T[] {
+export function highestPerFamily<T extends { code: string; criteriaType?: string }>(rows: T[]): T[] {
   const best = new Map<string, T>();
+  const custom: T[] = [];
   for (const r of rows) {
+    if (isCustomBadgeCode(r.code)) {
+      custom.push(r);
+      continue;
+    }
     const def = BY_CODE.get(r.code);
     if (!def) continue;
     const current = best.get(def.family);
     if (!current || BY_CODE.get(current.code)!.tier < def.tier) best.set(def.family, r);
   }
-  return [...best.values()].sort((a, b) => commendationOrder(a.code) - commendationOrder(b.code));
+  const rank = (r: T) => (r.criteriaType === 'staff_role' ? -1 : isCustomBadgeCode(r.code) ? COMMENDATION_CATALOG.length : commendationOrder(r.code));
+  return [...best.values(), ...custom].sort((a, b) => rank(a) - rank(b));
 }
 
 /** Inserts or refreshes the catalog rows (run at API startup). */
@@ -133,6 +142,8 @@ export async function syncCommendationCatalog(db: any) {
 
 export interface CommendationStats {
   staffRank: number;
+  /** Their staff rank's own badge, which replaces the generic Staff badge. */
+  staffBadgeId?: string | null;
   createdAt: Date;
   /** Read lazily: only counted when a transmission badge is still unearned. */
   transmissionsSent?: () => Promise<number>;
@@ -154,24 +165,61 @@ export function qualifies(def: Pick<CommendationDef, 'criteriaType' | 'threshold
   }
 }
 
-/** Awards every catalog badge the transmitter now qualifies for. Returns the newly awarded codes. */
-export async function awardEligibleCommendations(db: any, transmitterId: string, stats: CommendationStats): Promise<string[]> {
-  const owned = new Set<string>(
-    (
-      await db
-        .select({ code: commendations.code })
-        .from(transmitterCommendations)
-        .innerJoin(commendations, eq(transmitterCommendations.commendationId, commendations.id))
-        .where(eq(transmitterCommendations.transmitterId, transmitterId))
-    ).map((r: { code: string }) => r.code)
-  );
-  const pending = COMMENDATION_CATALOG.filter((c) => !owned.has(c.code));
-  if (!pending.length) return [];
+const RULE_CRITERIA = ['account_age', 'transmissions_sent', 'voice_minutes'];
 
-  const needsCount = pending.some((c) => c.criteriaType === 'transmissions_sent');
+/**
+ * Brings someone's badges up to date: awards every catalog badge and custom rule badge they now
+ * qualify for, and their staff rank's badge; takes away staff badges they no longer hold (a
+ * demotion, a changed rank). Returns the newly awarded codes.
+ */
+export async function awardEligibleCommendations(db: any, transmitterId: string, stats: CommendationStats): Promise<string[]> {
+  const ownedRows: Array<{ id: string; code: string; criteriaType: string }> = await db
+    .select({ id: commendations.id, code: commendations.code, criteriaType: commendations.criteriaType })
+    .from(transmitterCommendations)
+    .innerJoin(commendations, eq(transmitterCommendations.commendationId, commendations.id))
+    .where(eq(transmitterCommendations.transmitterId, transmitterId));
+  const owned = new Set(ownedRows.map((r) => r.code));
+  const staffBadgeId = stats.staffRank > 0 ? stats.staffBadgeId ?? null : null;
+  // The generic Staff badge only for staff whose rank has no badge of its own.
+  const effective = { ...stats, staffRank: staffBadgeId ? 0 : stats.staffRank };
+
+  const stale = ownedRows.filter((r) => (r.criteriaType === 'staff' && effective.staffRank < 1) || (r.criteriaType === 'staff_role' && r.id !== staffBadgeId));
+  if (stale.length) {
+    await db.delete(transmitterCommendations).where(
+      and(
+        eq(transmitterCommendations.transmitterId, transmitterId),
+        inArray(
+          transmitterCommendations.commendationId,
+          stale.map((r) => r.id)
+        )
+      )
+    );
+  }
+
+  const customRules: Array<{ id: string; code: string; criteriaType: CommendationCriteria; threshold: number }> = await db
+    .select({ id: commendations.id, code: commendations.code, criteriaType: commendations.criteriaType, threshold: commendations.threshold })
+    .from(commendations)
+    .where(and(eq(commendations.isCustom, true), inArray(commendations.criteriaType, RULE_CRITERIA)));
+  const pending = COMMENDATION_CATALOG.filter((c) => !owned.has(c.code));
+  const pendingCustom = customRules.filter((c) => !owned.has(c.code));
+  const roleBadge = staffBadgeId && !ownedRows.some((r) => r.id === staffBadgeId) ? staffBadgeId : null;
+  if (!pending.length && !pendingCustom.length && !roleBadge) return [];
+
+  const needsCount = [...pending, ...pendingCustom].some((c) => c.criteriaType === 'transmissions_sent');
   const sent = needsCount && stats.transmissionsSent ? await stats.transmissionsSent() : 0;
-  const earned = pending.filter((c) => qualifies(c, { ...stats, transmissionsSent: sent }));
-  if (!earned.length) return [];
+  const measured = { ...effective, transmissionsSent: sent };
+  const earnedCustom = pendingCustom.filter((c) => qualifies(c, measured));
+  const extra = [...earnedCustom.map((c) => c.id), ...(roleBadge ? [roleBadge] : [])];
+  if (extra.length) {
+    await db
+      .insert(transmitterCommendations)
+      .values(extra.map((commendationId) => ({ transmitterId, commendationId, displayOrder: commendationId === roleBadge ? -1 : COMMENDATION_CATALOG.length })))
+      .onConflictDoNothing();
+  }
+  const extraCodes = [...earnedCustom.map((c) => c.code), ...(roleBadge ? [`role:${roleBadge}`] : [])];
+
+  const earned = pending.filter((c) => qualifies(c, measured));
+  if (!earned.length) return extraCodes;
 
   const codes = earned.map((c) => c.code);
   const lookup = () => db.select({ id: commendations.id, code: commendations.code }).from(commendations).where(inArray(commendations.code, codes));
@@ -180,12 +228,12 @@ export async function awardEligibleCommendations(db: any, transmitterId: string,
     await syncCommendationCatalog(db);
     rows = await lookup();
   }
-  if (!rows.length) return [];
+  if (!rows.length) return extraCodes;
   await db
     .insert(transmitterCommendations)
     .values(rows.map((r: { id: string; code: string }) => ({ transmitterId, commendationId: r.id, displayOrder: commendationOrder(r.code) })))
     .onConflictDoNothing();
-  return rows.map((r: { code: string }) => r.code);
+  return [...rows.map((r: { code: string }) => r.code), ...extraCodes];
 }
 
 /** Transmissions a transmitter has sent (system messages excluded). */

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shared Counter</title>
+    <style>
+      body { margin: 0; display: grid; place-items: center; min-height: 100vh; background: #0b0d17; color: #eef1fa; font: 16px system-ui, sans-serif; }
+      main { text-align: center; }
+      #count { font-size: 96px; font-weight: 700; margin: 0; }
+      button { font: inherit; padding: 8px 20px; border-radius: 8px; border: 0; background: #3b8ef2; color: #fff; cursor: pointer; }
+      button.secondary { background: #2a2f45; }
+      ul { list-style: none; padding: 0; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+      li { display: flex; gap: 6px; align-items: center; background: #1a1e30; padding: 4px 10px; border-radius: 999px; font-size: 14px; }
+      li img { width: 20px; height: 20px; border-radius: 50%; }
+      #status { color: #8b93b0; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p id="status">Connecting to Subspace…</p>
+      <p id="count">0</p>
+      <button id="plus">+1</button>
+      <button id="signin" class="secondary">Verify who I am</button>
+      <ul id="people"></ul>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

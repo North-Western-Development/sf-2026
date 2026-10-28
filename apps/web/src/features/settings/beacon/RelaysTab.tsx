@@ -58,7 +58,7 @@ export function RelaysTab({ beaconId, onOpen }: { beaconId: string; onOpen: (rel
               {g.relays.map((r) => (
                 <li key={r.id}>
                   <button type="button" onClick={() => onOpen(r.id)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-hover">
-                    <RelayIcon type={r.type} className="h-5 w-5 shrink-0 text-fg-muted" />
+                    <RelayIcon type={r.type} announcement={r.isAnnouncement} className="h-5 w-5 shrink-0 text-fg-muted" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15px] font-medium text-fg">{r.name}</span>
                       <span className="block truncate text-xs text-fg-subtle">{r.topic || relayKindLabel(r.type)}</span>

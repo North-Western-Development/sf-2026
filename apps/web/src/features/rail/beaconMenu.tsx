@@ -60,7 +60,7 @@ export function beaconMenu(beaconId: string, navigate: (path: string) => void, o
     ...(can(perms, PERMISSIONS.VIEW_AUDIT_LOG) ? [{ label: 'Audit Log', onClick: settings('audit') }] : []),
     ...(can(perms, PERMISSIONS.BAN_MEMBERS) ? [{ label: 'Bans', onClick: settings('bans') }] : []),
   ];
-  if (manageBeacon || manageRelays || can(perms, PERMISSIONS.MANAGE_CLEARANCES) || can(perms, PERMISSIONS.VIEW_AUDIT_LOG)) {
+  if (manageBeacon || manageRelays || [PERMISSIONS.MANAGE_CLEARANCES, PERMISSIONS.VIEW_AUDIT_LOG, PERMISSIONS.VIEW_INSIGHTS, PERMISSIONS.CREATE_EXPRESSIONS, PERMISSIONS.MANAGE_GLYPHS].some((p) => can(perms, p))) {
     // The header dropdown opens settings itself, as Discord's does; the right-click menu lists pages.
     items.push(
       opts.header
@@ -74,7 +74,7 @@ export function beaconMenu(beaconId: string, navigate: (path: string) => void, o
   );
 
   const create: ContextMenuItem[] = [];
-  if (manageRelays) {
+  if (manageRelays || can(perms, PERMISSIONS.CREATE_RELAYS)) {
     create.push(
       { label: `Create ${term('relay')}`, onClick: () => openModal({ kind: 'createRelay', beaconId }) },
       { label: `Create ${term('band')}`, onClick: () => openModal({ kind: 'createBand', beaconId }) }

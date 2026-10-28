@@ -11,8 +11,9 @@ import { http } from '../../lib/http';
 import { memberMenu } from '../members/memberMenu';
 import { useProfile, type FullProfile } from './useProfile';
 import { ProfileActivity } from '../voice/ActivityParts';
+import { ProfileGameActivity } from '../activity/ActivityViews';
 import { ProfileConnections } from '../settings/user/ConnectionsTab';
-import { ProfileBio, ProfileClearances, ProfileEffectLayer, ProfileHeader, ProfileIdentity, ProfileMeta, ProfileNote, StatusBubble, profileHeading } from './ProfileParts';
+import { quoteStatus, ProfileApp, ProfileBio, ProfileClearances, ProfileEffectLayer, ProfileHeader, ProfileIdentity, ProfileMeta, ProfileNote, StatusBubble, profileHeading } from './ProfileParts';
 import { Avatar } from '../common/Avatar';
 import { term } from '../../lib/strings';
 
@@ -25,10 +26,17 @@ export function themeStyle(p: FullProfile): React.CSSProperties | undefined {
 
 function useDirectMessage(userId: string) {
   const navigate = useNavigate();
-  return async (text?: string) => {
+  /** Opens your Direct Link with them; sends `text`, or leaves `draft` in the message box. */
+  return async (text?: string, opts: { draft?: string } = {}) => {
     try {
       const linkId = await openDirectLink(userId);
       if (text) await sendMessage(channelKey('link', linkId), text);
+      if (opts.draft) {
+        const key = channelKey('link', linkId);
+        sessionStorage.setItem(`draft:${key}`, opts.draft);
+        // Already open: its composer picks the draft up now.
+        window.dispatchEvent(new CustomEvent('subspace:draft', { detail: { key } }));
+      }
       closePopout();
       closeModal();
       navigate(`/channels/@me/${linkId}`);
@@ -37,6 +45,12 @@ function useDirectMessage(userId: string) {
     }
   };
 }
+
+/** Someone else's status (not yours, not a bot's) can be answered with an emoji or a reply. */
+const statusAnswers = (profile: { relationship: string; user: { botKind?: string | null } }, dm: ReturnType<typeof useDirectMessage>) =>
+  profile.relationship === 'self' || profile.user.botKind
+    ? {}
+    : { onReact: (status: string, emoji: string) => void dm(quoteStatus(status, emoji)), onReply: (status: string) => void dm(undefined, { draft: quoteStatus(status) }) };
 
 function Popout({ userId, beaconId, rect, side }: { userId: string; beaconId?: string; rect: { top: number; left: number; right: number; bottom: number }; side: 'left' | 'right' }) {
   const profile = useProfile(userId, beaconId);
@@ -88,9 +102,9 @@ function Popout({ userId, beaconId, rect, side }: { userId: string; beaconId?: s
       style={{ left: pos.x, top: pos.y, ...themeStyle(profile) }}
     >
       <ProfileEffectLayer profile={profile} />
-      <ProfileHeader profile={profile} bubble={<StatusBubble userId={userId} fallback={(profile.user as FullProfile['user']).customStatus} />} />
+      <ProfileHeader profile={profile} bubble={<StatusBubble userId={userId} fallback={(profile.user as FullProfile['user']).customStatus} {...statusAnswers(profile, dm)} />} />
       <div className="absolute right-2 top-2 flex gap-1">
-        {profile.relationship === 'none' && (
+        {profile.relationship === 'none' && !profile.user.botKind && (
           <Tooltip content={`Add ${term('affiliate')}`}>
             <button
               type="button"
@@ -115,10 +129,12 @@ function Popout({ userId, beaconId, rect, side }: { userId: string; beaconId?: s
       </div>
       <div className="m-3 mt-0 space-y-3 rounded-lg bg-void/60 p-3">
         <ProfileIdentity profile={profile} beaconId={beaconId} maxBadges={8} />
+        <ProfileApp profile={profile} />
         <ProfileBio profile={profile} beaconId={beaconId} />
         <ProfileClearances profile={profile} />
+        <ProfileGameActivity userId={userId} />
         <ProfileActivity userId={userId} beaconId={beaconId} onJoined={closePopout} />
-        {!self && <ProfileNote userId={userId} initial={profile.note} />}
+        {!profile.user.botKind && <ProfileNote userId={userId} initial={profile.note} maxLength={(profile as FullProfile).noteMaxLength} />}
         {self ? (
           <button
             type="button"
@@ -181,16 +197,17 @@ export function ProfileModal({ userId, beaconId }: { userId: string; beaconId?: 
     <Modal isOpen onClose={closeModal} maxWidth="2xl" className="!bg-overlay">
       <div className="relative -mx-6 -my-4" style={themeStyle(profile)}>
         <ProfileEffectLayer profile={profile} />
-        <ProfileHeader profile={profile} avatarSize={120} bannerHeight={180} bubble={<StatusBubble userId={userId} fallback={(profile.user as FullProfile['user']).customStatus} />} />
+        <ProfileHeader profile={profile} avatarSize={120} bannerHeight={180} bubble={<StatusBubble userId={userId} fallback={(profile.user as FullProfile['user']).customStatus} {...statusAnswers(profile, dm)} />} />
         <div className="flex items-start justify-between gap-4 px-6">
           <ProfileIdentity profile={profile} beaconId={beaconId} />
+          <ProfileApp profile={profile} />
           <div className="flex shrink-0 gap-2">
             {!self && (
               <button type="button" onClick={() => void dm()} className="flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
                 <MessageCircle className="h-4 w-4" /> Message
               </button>
             )}
-            {profile.relationship === 'none' && (
+            {profile.relationship === 'none' && !profile.user.botKind && (
               <button
                 type="button"
                 onClick={() => void http.post('/affiliations/request', { targetId: userId }).then(() => toast('Affiliation request sent')).catch((e) => toast(e.message, 'error'))}
@@ -208,6 +225,9 @@ export function ProfileModal({ userId, beaconId }: { userId: string; beaconId?: 
               <MoreHorizontal className="h-4 w-4" />
             </button>
           </div>
+        </div>
+        <div className="mx-6 mt-4 empty:hidden">
+          <ProfileGameActivity userId={userId} />
         </div>
         <div className="mx-6 mb-6 mt-4 rounded-lg bg-void/60">
           <nav className="flex gap-6 border-b border-line px-4" aria-label="Profile sections">
@@ -238,7 +258,7 @@ export function ProfileModal({ userId, beaconId }: { userId: string; beaconId?: 
                 <ProfileMeta profile={profile} beaconId={beaconId} />
                 <ProfileClearances profile={profile} />
                 <ProfileConnections connections={'connections' in profile ? profile.connections : undefined} heading={profileHeading} />
-                {!self && <ProfileNote userId={userId} initial={profile.note} />}
+                {!profile.user.botKind && <ProfileNote userId={userId} initial={profile.note} maxLength={(profile as FullProfile).noteMaxLength} />}
               </>
             )}
             {tab === 'beacons' &&

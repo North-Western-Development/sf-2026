@@ -1,7 +1,12 @@
 import crypto from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
-import { and, eq, inArray, beaconMembers, beacons, oauthApps, oauthGrants, oauthTokens, transmitters } from '@subspace/database';
+import { and, eq, or, isNull, inArray, isNotNull, devTeams, devTeamMembers, loadDeveloperPolicy, accountVerification, appBots, beaconMembers, beacons, oauthApps, oauthGrants, oauthTokens, transmitters } from '@subspace/database';
+import { appRole, appWithRole } from '../../lib/app-access.js';
+import { validateMediaUrl } from '../../lib/media.js';
+import { renameAppUser } from '../../lib/app-users.js';
+import { PRIVILEGED_INTENTS, type AppRole, appRoleAtLeast, appCreationCheck, isVerifiedAccount, mayUseIntent, verifiedMeans } from '@subspace/constants';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
+import { emailVerificationEnabled } from '../../lib/mailer.js';
 
 /**
  * A small OAuth2 provider, so apps can "Sign in with Subspace" (Discord's OAuth2 and
@@ -22,7 +27,7 @@ const MAX_APPS = 25;
 
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 const secret = () => crypto.randomBytes(32).toString('base64url');
-const isUuid = (s: unknown): s is string => typeof s === 'string' && /^[0-9a-f-]{36}$/i.test(s);
+const isId = (s: unknown): s is string => typeof s === 'string' && /^[1-9][0-9]{0,18}$/.test(s);
 /** Redirect URIs: https anywhere, or http only to this machine (for development). */
 const validRedirect = (u: string) => {
   try {
@@ -33,7 +38,8 @@ const validRedirect = (u: string) => {
     return false;
   }
 };
-const serializeApp = (a: any) => ({ id: a.id, name: a.name, description: a.description, iconUrl: a.iconUrl, redirectUris: a.redirectUris, createdAt: a.createdAt });
+/** An application as its developers see it, with what the viewer may do with it. */
+const serializeApp = (a: any, role: AppRole = 'owner') => ({ id: a.id, name: a.name, description: a.description, iconUrl: a.iconUrl, redirectUris: a.redirectUris, teamId: a.teamId ?? null, role, createdAt: a.createdAt });
 
 const APP_BODY = {
   type: 'object',
@@ -41,6 +47,8 @@ const APP_BODY = {
   properties: {
     name: { type: 'string', minLength: 2, maxLength: 32 },
     description: { type: ['string', 'null'], maxLength: 400 },
+    /** An image the caller uploaded with purpose app_icon, or null to remove it. */
+    iconUrl: { type: ['string', 'null'], maxLength: 500 },
     redirectUris: { type: 'array', maxItems: 10, items: { type: 'string', maxLength: 500 } },
   },
 };
@@ -59,24 +67,58 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
   // ---------------------------------------------------------------- Developers
 
-  async function ownApp(request: FastifyRequest) {
+  /** The application in the URL, if the caller has at least `needed` on it (owner or team role); otherwise replies. */
+  async function appFor(request: FastifyRequest, reply: any, needed: AppRole) {
     const token = extractAuthToken(request)!;
     const { id } = request.params as { id: string };
-    if (!isUuid(id)) return null;
-    const [row] = await db.select().from(oauthApps).where(and(eq(oauthApps.id, id), eq(oauthApps.ownerId, token.transmitterId))).limit(1);
-    return row ?? null;
+    if (!isId(id)) return reply.status(404).send({ error: 'Application not found' }), null;
+    const found = await appWithRole(db, id, token.transmitterId, needed);
+    if (found.error === 404) return reply.status(404).send({ error: 'Application not found' }), null;
+    if (found.error === 403) return reply.status(403).send({ error: 'Your team role does not allow that', code: 'TEAM_ROLE_TOO_LOW' }), null;
+    return found as { app: any; role: AppRole };
   }
 
   app.get('/applications', async (request, reply) => {
     const token = extractAuthToken(request)!;
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
-    const rows = await db.select().from(oauthApps).where(eq(oauthApps.ownerId, token.transmitterId)).orderBy(oauthApps.createdAt);
-    return reply.send({ applications: rows.map(serializeApp) });
+    // My own, and those of the teams I am in (as owner or an accepted member), with my role on each.
+    const mine = await db.select().from(oauthApps).where(and(eq(oauthApps.ownerId, token.transmitterId), isNull(oauthApps.teamId))).orderBy(oauthApps.createdAt);
+    const teamRows = await db
+      .select({ app: oauthApps, ownerId: devTeams.ownerId, role: devTeamMembers.role })
+      .from(oauthApps)
+      .innerJoin(devTeams, eq(devTeams.id, oauthApps.teamId))
+      .leftJoin(devTeamMembers, and(eq(devTeamMembers.teamId, devTeams.id), eq(devTeamMembers.transmitterId, token.transmitterId), isNotNull(devTeamMembers.acceptedAt)))
+      .where(or(eq(devTeams.ownerId, token.transmitterId), isNotNull(devTeamMembers.role)))
+      .orderBy(oauthApps.createdAt);
+    return reply.send({
+      applications: [
+        ...mine.map((a: any) => serializeApp(a)),
+        ...teamRows.map((r: any) => serializeApp(r.app, r.ownerId === token.transmitterId ? 'owner' : r.role)),
+      ],
+    });
+  });
+
+  /**
+   * GET /api/v1/applications/policy
+   * What this instance lets me do as a developer (Command Console › Developers), and why not.
+   */
+  app.get('/applications/policy', async (request, reply) => {
+    const token = extractAuthToken(request)!;
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const [policy, me] = await Promise.all([loadDeveloperPolicy(db), accountVerification(db, token.transmitterId)]);
+    return reply.send({
+      verification: { ...me, verified: isVerifiedAccount(me, policy) },
+      verifiedMeans: verifiedMeans(policy),
+      createApps: appCreationCheck(me, policy),
+      intents: Object.fromEntries(PRIVILEGED_INTENTS.map((i) => [i, { allowed: mayUseIntent(me, policy, i), audience: policy.intents[i] }])),
+    });
   });
 
   app.post('/applications', { schema: { body: { ...APP_BODY, required: ['name'] } } }, async (request, reply) => {
     const token = extractAuthToken(request)!;
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const check = appCreationCheck(await accountVerification(db, token.transmitterId), await loadDeveloperPolicy(db));
+    if (!check.allowed) return reply.status(403).send({ error: `Creating applications here needs ${check.missing.join(' and ')}`, code: 'APP_CREATION_RESTRICTED', missing: check.missing });
     const body = request.body as { name: string; description?: string | null; redirectUris?: string[] };
     if (body.redirectUris?.some((u) => !validRedirect(u))) return reply.status(400).send({ error: 'Redirect URIs must be https (or http on localhost) without a #fragment', code: 'INVALID_REDIRECT_URI' });
     const count = await db.select({ id: oauthApps.id }).from(oauthApps).where(eq(oauthApps.ownerId, token.transmitterId));
@@ -91,22 +133,44 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
   app.patch('/applications/:id', { schema: { body: APP_BODY } }, async (request, reply) => {
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
-    const row = await ownApp(request);
-    if (!row) return reply.status(404).send({ error: 'Application not found' });
-    const body = request.body as { name?: string; description?: string | null; redirectUris?: string[] };
+    const ctx = await appFor(request, reply, 'developer');
+    if (!ctx) return;
+    const row = ctx.app;
+    const body = request.body as { name?: string; description?: string | null; iconUrl?: string | null; redirectUris?: string[] };
+    if (!body.name && body.description === undefined && body.iconUrl === undefined && !body.redirectUris) return reply.status(400).send({ error: 'Nothing to change', code: 'EMPTY_UPDATE' });
     if (body.redirectUris?.some((u) => !validRedirect(u))) return reply.status(400).send({ error: 'Redirect URIs must be https (or http on localhost) without a #fragment', code: 'INVALID_REDIRECT_URI' });
+    // Only an icon this developer uploaded for an application.
+    if (body.iconUrl && !(await validateMediaUrl(db, extractAuthToken(request)!.transmitterId, body.iconUrl, ['app_icon']))) {
+      return reply.status(400).send({ error: 'Upload the icon first', code: 'INVALID_ICON' });
+    }
     const [updated] = await db
       .update(oauthApps)
-      .set({ ...(body.name ? { name: body.name.trim() } : {}), ...(body.description !== undefined ? { description: body.description } : {}), ...(body.redirectUris ? { redirectUris: body.redirectUris } : {}) })
+      .set({
+        ...(body.name ? { name: body.name.trim() } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.iconUrl !== undefined ? { iconUrl: body.iconUrl } : {}),
+        ...(body.redirectUris ? { redirectUris: body.redirectUris } : {}),
+      })
       .where(eq(oauthApps.id, row.id))
       .returning();
-    return reply.send({ application: serializeApp(updated) });
+    // Its bot looks the same: name and picture. A verified bot that changes how it looks loses the
+    // check until staff verify it again (it was verified as what it looked like then).
+    const looksDifferent = updated.name !== row.name || (updated.iconUrl ?? null) !== (row.iconUrl ?? null);
+    if (looksDifferent) {
+      const [bot] = await db.select({ userId: appBots.userId }).from(appBots).where(eq(appBots.appId, row.id)).limit(1);
+      if (bot) {
+        await renameAppUser(db, bot.userId, updated.name, updated.iconUrl ?? null);
+        await db.update(transmitters).set({ handVerifiedAt: null }).where(eq(transmitters.id, bot.userId));
+      }
+    }
+    return reply.send({ application: serializeApp(updated, ctx.role) });
   });
 
   app.post('/applications/:id/secret', async (request, reply) => {
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
-    const row = await ownApp(request);
-    if (!row) return reply.status(404).send({ error: 'Application not found' });
+    const ctx = await appFor(request, reply, 'developer');
+    if (!ctx) return;
+    const row = ctx.app;
     const clientSecret = secret();
     await db.update(oauthApps).set({ clientSecretHash: sha(clientSecret) }).where(eq(oauthApps.id, row.id));
     return reply.send({ clientSecret });
@@ -114,8 +178,9 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
   app.delete('/applications/:id', async (request, reply) => {
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
-    const row = await ownApp(request);
-    if (!row) return reply.status(404).send({ error: 'Application not found' });
+    const ctx = await appFor(request, reply, 'admin');
+    if (!ctx) return;
+    const row = ctx.app;
     await db.delete(oauthApps).where(eq(oauthApps.id, row.id));
     return reply.status(204).send();
   });
@@ -125,15 +190,40 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.get('/oauth2/applications/:id', async (request, reply) => {
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
     const { id } = request.params as { id: string };
-    if (!isUuid(id)) return reply.status(404).send({ error: 'Unknown application', code: 'UNKNOWN_APPLICATION' });
+    if (!isId(id)) return reply.status(404).send({ error: 'Unknown application', code: 'UNKNOWN_APPLICATION' });
     const [row] = await db
-      .select({ app: oauthApps, ownerName: transmitters.username })
+      .select({ app: oauthApps, ownerName: transmitters.username, bot: { isPublic: appBots.isPublic, userId: appBots.userId } })
       .from(oauthApps)
       .innerJoin(transmitters, eq(transmitters.id, oauthApps.ownerId))
+      .leftJoin(appBots, eq(appBots.appId, oauthApps.id))
       .where(eq(oauthApps.id, id))
       .limit(1);
     if (!row) return reply.status(404).send({ error: 'Unknown application', code: 'UNKNOWN_APPLICATION' });
-    return reply.send({ application: { id: row.app.id, name: row.app.name, description: row.app.description, iconUrl: row.app.iconUrl, owner: row.ownerName, createdAt: row.app.createdAt } });
+    // `bot`: whether it can be added to beacons (scope=bot), whether I may, and whether staff verified it.
+    let bot = null;
+    if (row.bot?.userId) {
+      const viewer = extractAuthToken(request)?.transmitterId;
+      const mine = viewer ? appRoleAtLeast(await appRole(db, row.app, viewer), 'developer') : false;
+      const [account] = await db.select({ verified: transmitters.handVerifiedAt }).from(transmitters).where(eq(transmitters.id, row.bot.userId)).limit(1);
+      bot = { isPublic: row.bot.isPublic, ownerId: row.app.ownerId, canAdd: row.bot.isPublic || mine, verified: !!account?.verified, userId: row.bot.userId };
+    }
+    return reply.send({ application: { id: row.app.id, name: row.app.name, description: row.app.description, iconUrl: row.app.iconUrl, owner: row.ownerName, createdAt: row.app.createdAt, bot } });
+  });
+
+  /**
+   * GET /api/v1/oauth2/verified-games
+   * Detected games that staff linked to an application, with that application's icon. The desktop
+   * app's page shows the icon instead of the Steam cover when it shares one of these games.
+   */
+  app.get('/oauth2/verified-games', async (_request, reply) => {
+    if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+    const rows = await db
+      .select({ game: oauthApps.detectedGame, id: oauthApps.id, name: oauthApps.name, iconUrl: oauthApps.iconUrl })
+      .from(oauthApps)
+      .where(isNotNull(oauthApps.detectedGame));
+    const games: Record<string, { applicationId: string; name: string; iconUrl: string | null }> = {};
+    for (const r of rows) games[r.game!] = { applicationId: r.id, name: r.name, iconUrl: r.iconUrl };
+    return reply.header('cache-control', 'private, max-age=300').send({ games });
   });
 
   app.post(
@@ -159,7 +249,7 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       const token = extractAuthToken(request)!;
       if (!db || !redis()) return reply.status(503).send({ error: 'Authorization is unavailable right now' });
       const body = request.body as { clientId: string; redirectUri: string; scope: string; state?: string; codeChallenge?: string };
-      if (!isUuid(body.clientId)) return reply.status(400).send({ error: 'Unknown application', code: 'UNKNOWN_APPLICATION' });
+      if (!isId(body.clientId)) return reply.status(400).send({ error: 'Unknown application', code: 'UNKNOWN_APPLICATION' });
       const [row] = await db.select().from(oauthApps).where(eq(oauthApps.id, body.clientId)).limit(1);
       if (!row) return reply.status(400).send({ error: 'Unknown application', code: 'UNKNOWN_APPLICATION' });
       // An unregistered redirect is never followed: that is how codes would leak.
@@ -187,6 +277,36 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     }
   );
 
+  /**
+   * POST /api/v1/oauth2/deny  { clientId, redirectUri, state? }
+   * Cancel on the consent page: back to the app with error=access_denied (RFC 6749 §4.1.2.1), but
+   * only to a redirect URI it registered, so this is never an open redirect.
+   */
+  app.post(
+    '/oauth2/deny',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['clientId', 'redirectUri'],
+          properties: { clientId: { type: 'string', maxLength: 20 }, redirectUri: { type: 'string', maxLength: 500 }, state: { type: 'string', maxLength: 500 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+      const body = request.body as { clientId: string; redirectUri: string; state?: string };
+      if (!isId(body.clientId)) return reply.status(400).send({ error: 'Unknown application', code: 'UNKNOWN_APPLICATION' });
+      const [row] = await db.select({ redirectUris: oauthApps.redirectUris }).from(oauthApps).where(eq(oauthApps.id, body.clientId)).limit(1);
+      if (!row || !row.redirectUris.includes(body.redirectUri)) return reply.status(400).send({ error: 'That redirect URI is not registered for this application', code: 'INVALID_REDIRECT_URI' });
+      const location = new URL(body.redirectUri);
+      location.searchParams.set('error', 'access_denied');
+      if (body.state) location.searchParams.set('state', body.state);
+      return reply.send({ location: location.toString() });
+    }
+  );
+
   // ---------------------------------------------------------------- Apps
 
   const oauthError = (reply: any, status: number, error: string, description: string) => reply.status(status).send({ error, error_description: description });
@@ -196,8 +316,8 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const refresh = secret();
     const now = Date.now();
     await db.insert(oauthTokens).values([
-      { tokenHash: sha(access), grantId, kind: 'access', expiresAt: new Date(now + ACCESS_TTL_S * 1000) },
-      { tokenHash: sha(refresh), grantId, kind: 'refresh', expiresAt: new Date(now + REFRESH_TTL_S * 1000) },
+      { tokenHash: sha(access), grantId, kind: 'access', scopes, expiresAt: new Date(now + ACCESS_TTL_S * 1000) },
+      { tokenHash: sha(refresh), grantId, kind: 'refresh', scopes, expiresAt: new Date(now + REFRESH_TTL_S * 1000) },
     ]);
     return { access_token: access, token_type: 'Bearer', expires_in: ACCESS_TTL_S, refresh_token: refresh, scope: scopes.join(' ') };
   }
@@ -208,7 +328,7 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     let sec = body.client_secret;
     const basic = /^Basic (.+)$/.exec(String(request.headers.authorization ?? ''));
     if (basic) [id, sec] = Buffer.from(basic[1], 'base64').toString().split(':');
-    if (!isUuid(id) || typeof sec !== 'string') return null;
+    if (!isId(id) || typeof sec !== 'string') return null;
     const [row] = await db.select().from(oauthApps).where(eq(oauthApps.id, id)).limit(1);
     if (!row) return null;
     const a = Buffer.from(sha(sec));
@@ -229,8 +349,10 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       // Single use: take it out before anything else.
       const raw = await redis().getdel(key);
       if (!raw) return oauthError(reply, 400, 'invalid_grant', 'The code is invalid, used or expired');
-      const c = JSON.parse(raw) as { appId: string; transmitterId: string; scopes: string[]; redirectUri: string; challenge: string | null };
-      if (c.appId !== appRow.id || c.redirectUri !== body.redirect_uri) return oauthError(reply, 400, 'invalid_grant', 'The code was issued to another client or redirect URI');
+      // redirectUri is null for an Activity's code (sdk.authorize: nothing was redirected), and the
+      // request must then leave redirect_uri out, as RFC 6749 §4.1.3 has it.
+      const c = JSON.parse(raw) as { appId: string; transmitterId: string; scopes: string[]; redirectUri: string | null; challenge: string | null };
+      if (c.appId !== appRow.id || (c.redirectUri ?? undefined) !== (body.redirect_uri || undefined)) return oauthError(reply, 400, 'invalid_grant', 'The code was issued to another client or redirect URI');
       if (c.challenge && crypto.createHash('sha256').update(String(body.code_verifier ?? '')).digest('base64url') !== c.challenge) {
         return oauthError(reply, 400, 'invalid_grant', 'code_verifier does not match');
       }
@@ -242,7 +364,7 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (body.grant_type === 'refresh_token') {
       if (typeof body.refresh_token !== 'string') return oauthError(reply, 400, 'invalid_request', 'refresh_token is required');
       const [tok] = await db
-        .select({ hash: oauthTokens.tokenHash, expiresAt: oauthTokens.expiresAt, kind: oauthTokens.kind, grant: oauthGrants })
+        .select({ hash: oauthTokens.tokenHash, expiresAt: oauthTokens.expiresAt, kind: oauthTokens.kind, scopes: oauthTokens.scopes, grant: oauthGrants })
         .from(oauthTokens)
         .innerJoin(oauthGrants, eq(oauthGrants.id, oauthTokens.grantId))
         .where(eq(oauthTokens.tokenHash, sha(body.refresh_token)))
@@ -250,7 +372,8 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       if (!tok || tok.kind !== 'refresh' || tok.grant.appId !== appRow.id || new Date(tok.expiresAt) < new Date()) return oauthError(reply, 400, 'invalid_grant', 'The refresh token is invalid or expired');
       // Rotate: the old refresh token stops working.
       await db.delete(oauthTokens).where(eq(oauthTokens.tokenHash, tok.hash));
-      return reply.send(await issue(tok.grant.id, tok.grant.scopes));
+      // A refreshed token keeps what was consented to for it, never more (and never more than the grant still holds).
+      return reply.send(await issue(tok.grant.id, (tok.scopes ?? tok.grant.scopes).filter((s: string) => tok.grant.scopes.includes(s))));
     }
 
     return oauthError(reply, 400, 'unsupported_grant_type', 'Use authorization_code or refresh_token');
@@ -274,30 +397,31 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const m = /^Bearer (.+)$/.exec(String(request.headers.authorization ?? ''));
     if (!m) return null;
     const [tok] = await db
-      .select({ expiresAt: oauthTokens.expiresAt, kind: oauthTokens.kind, grant: oauthGrants, app: oauthApps })
+      .select({ expiresAt: oauthTokens.expiresAt, kind: oauthTokens.kind, tokenScopes: oauthTokens.scopes, grant: oauthGrants, app: oauthApps })
       .from(oauthTokens)
       .innerJoin(oauthGrants, eq(oauthGrants.id, oauthTokens.grantId))
       .innerJoin(oauthApps, eq(oauthApps.id, oauthGrants.appId))
       .where(eq(oauthTokens.tokenHash, sha(m[1])))
       .limit(1);
     if (!tok || tok.kind !== 'access' || new Date(tok.expiresAt) < new Date()) return null;
-    if (scope && !tok.grant.scopes.includes(scope)) return { ...tok, forbidden: true };
+    const scopes: string[] = (tok.tokenScopes ?? tok.grant.scopes).filter((s: string) => tok.grant.scopes.includes(s));
+    if (scope && !scopes.includes(scope)) return { ...tok, scopes, forbidden: true };
     await db.update(oauthGrants).set({ lastUsedAt: new Date() }).where(eq(oauthGrants.id, tok.grant.id));
-    return { ...tok, forbidden: false };
+    return { ...tok, scopes, forbidden: false };
   }
 
   app.get('/oauth2/@me', { config: { public: true } }, async (request, reply) => {
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
     const tok = await bearer(request);
     if (!tok) return reply.status(401).send({ error: 'Invalid or expired token' });
-    const scopes = tok.grant.scopes;
+    const scopes = tok.scopes;
     const [u] = await db.select().from(transmitters).where(eq(transmitters.id, tok.grant.transmitterId)).limit(1);
     return reply.send({
       application: { id: tok.app.id, name: tok.app.name },
       scopes,
       expires: tok.expiresAt,
       user: scopes.includes('identify')
-        ? { id: u.id, username: u.username, discriminator: u.discriminator, displayName: u.displayName, avatarUrl: u.avatarUrl, ...(scopes.includes('email') ? { email: u.email, verified: !!u.isEmailVerified } : {}) }
+        ? { id: u.id, username: u.username, discriminator: u.discriminator, displayName: u.displayName, avatarUrl: u.avatarUrl, ...(scopes.includes('email') ? { email: u.email, verified: !!u.isEmailVerified && emailVerificationEnabled() } : {}) }
         : undefined,
     });
   });
@@ -340,7 +464,7 @@ export const oauthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const token = extractAuthToken(request)!;
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
     const { id } = request.params as { id: string };
-    if (!isUuid(id)) return reply.status(404).send({ error: 'Not found' });
+    if (!isId(id)) return reply.status(404).send({ error: 'Not found' });
     // Its tokens go with it (cascade), so the app is cut off at once.
     await db.delete(oauthGrants).where(and(eq(oauthGrants.id, id), eq(oauthGrants.transmitterId, token.transmitterId)));
     return reply.status(204).send();

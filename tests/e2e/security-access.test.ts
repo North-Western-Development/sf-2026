@@ -11,9 +11,9 @@ import { transmitters, eq } from '@subspace/database';
 describe('Security: access control sweep', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
-  const owner = { id: 'a1000000-0000-4000-8000-000000000001', username: 'sec_owner' };
-  const member = { id: 'a1000000-0000-4000-8000-000000000002', username: 'sec_member' };
-  const outsider = { id: 'a1000000-0000-4000-8000-000000000003', username: 'sec_outsider' };
+  const owner = { id: '591212399283929089', username: 'sec_owner' };
+  const member = { id: '591212399283929090', username: 'sec_member' };
+  const outsider = { id: '591212399283929091', username: 'sec_outsider' };
   const tok = (u: { id: string; username: string }) => signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET);
   let beaconId = '';
   let relayId = '';

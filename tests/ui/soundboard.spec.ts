@@ -1,7 +1,8 @@
 import { test, expect, register, signIn, openAs } from './fixtures';
+import { MEDIA_ARGS } from '../support/fake-voice';
 
 test.use({
-  launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] },
+  launchOptions: { args: [...MEDIA_ARGS, '--autoplay-policy=no-user-gesture-required'] },
   permissions: ['microphone', 'camera'],
 });
 

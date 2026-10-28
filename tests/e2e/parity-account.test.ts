@@ -8,7 +8,7 @@ describe('Parity Section 8: Account (password, 2FA, rate limits) E2E Suite', () 
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const userId = 'd0000000-0000-0000-0000-000000000001';
+  const userId = '991868538311671809';
   const PLAIN_PASSWORD = 'CorrectHorseBattery1';
   let userToken: string;
 

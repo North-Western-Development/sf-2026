@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- C# 8 keeps the source usable as-is in Unity 2021.3 and later. -->
+    <LangVersion>8.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <RootNamespace>Subspace.RichPresence</RootNamespace>
+    <AssemblyName>Subspace.RichPresence</AssemblyName>
+    <PackageId>Subspace.RichPresence</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Rich Presence for Subspace Frequency: show what a player is doing in your game on their Subspace profile, through the Subspace desktop app.</Description>
+  </PropertyGroup>
+
+</Project>

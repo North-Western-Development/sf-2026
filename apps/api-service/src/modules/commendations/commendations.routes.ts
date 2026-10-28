@@ -123,7 +123,7 @@ export const commendationRoutes: FastifyPluginAsync = async (app: FastifyInstanc
         .limit(1);
 
       // INVARIANT: Mandatory Command Staff Insignia cannot be hidden
-      if (badge && badge.criteriaType === 'staff' && isVisible === false) {
+      if (badge && (badge.criteriaType === 'staff' || badge.criteriaType === 'staff_role') && isVisible === false) {
         return reply.status(400).send({
           error: 'Command Staff Insignia is mandatory and cannot be hidden from display',
           code: 'CANNOT_HIDE_STAFF_INSIGNIA',

@@ -24,6 +24,9 @@ export interface ClearanceContext {
 }
 
 export function extractAuthToken(request: FastifyRequest): TokenPayload | null {
+  // A bot's token was resolved by the auth hook (lib/bot-auth.ts).
+  const bot = (request as any).botAuth as TokenPayload | undefined;
+  if (bot) return bot;
   const authHeader = request.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return null;

@@ -208,6 +208,7 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
     }
     if (body.allowDelegation !== undefined) updates.allowDelegation = Boolean(body.allowDelegation);
     if (body.hoist !== undefined) updates.hoist = Boolean(body.hoist);
+    if (body.mentionable !== undefined) updates.mentionable = Boolean(body.mentionable);
 
     if (body.position !== undefined) {
       const newPos = Number(body.position);
@@ -287,6 +288,10 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
     if (!targetClearance) {
       return reply.status(404).send({ error: 'Clearance not found' });
+    }
+    // A bot's own clearance goes when the bot leaves, not before.
+    if (targetClearance.managedBy) {
+      return reply.status(400).send({ error: "A bot's clearance is removed by removing the bot", code: 'MANAGED_CLEARANCE' });
     }
 
     if (targetClearance.position === 0) {
@@ -370,6 +375,10 @@ export const clearanceRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
     if (!targetClearance) {
       return reply.status(404).send({ error: 'Clearance not found in Beacon' });
+    }
+    // A bot's own clearance belongs to it alone.
+    if (targetClearance.managedBy) {
+      return reply.status(400).send({ error: "A bot's clearance cannot be given or taken away", code: 'MANAGED_CLEARANCE' });
     }
 
     // Role rank boundary check

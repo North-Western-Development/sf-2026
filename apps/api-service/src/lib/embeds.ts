@@ -8,7 +8,8 @@ import { deriveChannel } from './transmissions.js';
 
 /** A link preview attached to a transmission, Discord-embed shaped. */
 export interface Embed {
-  type: 'link' | 'image' | 'video' | 'article';
+  /** 'rich': sent by a webhook or bot (rich-embeds.ts); the rest are link previews. */
+  type: 'link' | 'image' | 'video' | 'article' | 'rich';
   url: string;
   title?: string;
   description?: string;
@@ -18,6 +19,11 @@ export interface Embed {
   thumbnail?: EmbedImage;
   /** Large image under the text (twitter:card summary_large_image, or a direct image link). */
   image?: EmbedImage;
+  /** Rich embeds only. */
+  author?: { name: string; url?: string };
+  footer?: { text: string };
+  fields?: Array<{ name: string; value: string; inline: boolean }>;
+  timestamp?: string;
 }
 
 export interface EmbedImage {
@@ -185,10 +191,12 @@ export function scheduleEmbeds(app: FastifyInstance, row: { id: string; content:
   const previous = (row as any).embeds as Embed[] | undefined;
   if (!urls.length && !previous?.length) return;
   void (async () => {
-    const embeds = (await Promise.all(urls.map((u) => unfurlCached(app, u)))).filter(Boolean) as Embed[];
+    const previews = (await Promise.all(urls.map((u) => unfurlCached(app, u)))).filter(Boolean) as Embed[];
     const [current] = await db.select().from(transmissions).where(eq(transmissions.id, row.id)).limit(1);
     // Deleted, suppressed, or edited again while we were fetching: the newer run wins.
     if (!current || current.suppressEmbeds || current.content !== row.content) return;
+    // A webhook's or bot's own embeds stay; link previews follow them.
+    const embeds = [...((current.embeds ?? []) as Embed[]).filter((e) => e.type === 'rich'), ...previews];
     if (JSON.stringify(current.embeds ?? []) === JSON.stringify(embeds)) return;
     await db.update(transmissions).set({ embeds }).where(eq(transmissions.id, row.id));
     const channel = deriveChannel(current);

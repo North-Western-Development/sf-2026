@@ -1,10 +1,10 @@
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { eq, relays, resolveRelayAudience } from '@subspace/database';
+import { and, eq, relays, beaconMembers, resolveRelayAudience } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { requireSecret } from '@subspace/crypto';
 import { extractAuthToken, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
-import { updateLiveKitParticipant } from './livekit.js';
+import { publishSources, updateLiveKitParticipant } from './livekit.js';
 
 const LIVEKIT_API_KEY = requireSecret('LIVEKIT_API_KEY', 'subspace_api_key');
 const LIVEKIT_API_SECRET = requireSecret('LIVEKIT_API_SECRET', 'subspace_secret_key_frequency');
@@ -18,9 +18,11 @@ export interface StageState {
   startedBy: string | null;
   speakers: string[];
   requests: string[];
+  /** Invited to speak by a moderator, waiting for them to accept. */
+  invites: string[];
 }
 const key = (relayId: string) => `stage:${relayId}`;
-const EMPTY: StageState = { topic: null, startedAt: null, startedBy: null, speakers: [], requests: [] };
+const EMPTY: StageState = { topic: null, startedAt: null, startedBy: null, speakers: [], requests: [], invites: [] };
 
 export async function readStage(redis: any, relayId: string): Promise<StageState> {
   const raw = redis?.status === 'ready' ? await redis.get(key(relayId)) : null;
@@ -38,7 +40,8 @@ export const isStageModerator = (actor: { isOwner: boolean; effectivePermissions
  *   PATCH  /relays/:relayId/stage           { topic }     change the topic (moderators)
  *   DELETE /relays/:relayId/stage                         end it: everyone back to the audience
  *   POST   /relays/:relayId/stage/hand      { raised }    Request to Speak (people in it)
- *   PUT    /relays/:relayId/stage/speakers/:userId        make them a speaker (moderators; or yourself as one)
+ *   PUT    /relays/:relayId/stage/speakers/:userId        moderators: a raised hand or yourself speaks now; anyone else is invited
+ *   POST   /relays/:relayId/stage/invite  { accept }     answer an invitation to speak
  *   DELETE /relays/:relayId/stage/speakers/:userId        back to the audience (moderators, or yourself)
  */
 export const stageRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -62,19 +65,27 @@ export const stageRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
   /** Who is still connected: speakers and hands of people who left fall away. */
   async function present(relayId: string, s: StageState): Promise<StageState> {
-    const ids = [...new Set([...s.speakers, ...s.requests])];
+    const ids = [...new Set([...s.speakers, ...s.requests, ...s.invites])];
     if (!ids.length) return s;
     const where: (string | null)[] = await redis().hmget(VOICE_HASH, ...ids);
     const here = new Set(ids.filter((_, i) => where[i] === relayId));
-    return { ...s, speakers: s.speakers.filter((id) => here.has(id)), requests: s.requests.filter((id) => here.has(id)) };
+    return { ...s, speakers: s.speakers.filter((id) => here.has(id)), requests: s.requests.filter((id) => here.has(id)), invites: s.invites.filter((id) => here.has(id)) };
   }
   async function save(relay: any, s: StageState) {
     if (s.startedAt) await redis().set(key(relay.id), JSON.stringify(s), 'EX', 24 * 3600);
     else await redis().del(key(relay.id));
     await publishGatewayEvent(app, 'STAGE_UPDATE', { relayId: relay.id, beaconId: relay.beaconId, stage: s }, { transmitterIds: await resolveRelayAudience(db, relay.id) });
   }
-  const livekit = (relayId: string, identity: string, canSpeak: boolean, canHoloCast: boolean) =>
-    updateLiveKitParticipant({ apiKey: LIVEKIT_API_KEY, apiSecret: LIVEKIT_API_SECRET, room: relayId, identity, canSpeak, canHoloCast });
+  /** Speakers send what their permissions allow; the audience sends nothing. */
+  async function livekit(relayId: string, identity: string, speaker: boolean, actor: { isOwner: boolean; effectivePermissions: bigint } | null) {
+    // A server-muted speaker stays muted on the stage too.
+    const [relay] = await db.select({ beaconId: relays.beaconId }).from(relays).where(eq(relays.id, relayId)).limit(1);
+    const [m] = relay
+      ? await db.select({ muted: beaconMembers.serverMuted, deafened: beaconMembers.serverDeafened }).from(beaconMembers).where(and(eq(beaconMembers.beaconId, relay.beaconId), eq(beaconMembers.transmitterId, identity))).limit(1)
+      : [];
+    const sources = actor ? publishSources(actor.effectivePermissions, actor.isOwner, { audience: !speaker, serverMuted: !!m?.muted, serverDeafened: !!m?.deafened }) : [];
+    return updateLiveKitParticipant({ apiKey: LIVEKIT_API_KEY, apiSecret: LIVEKIT_API_SECRET, room: relayId, identity, sources, serverDeafened: !!m?.deafened });
+  }
   const inStage = async (id: string, relayId: string) => (await redis().hget(VOICE_HASH, id)) === relayId;
 
   app.get('/relays/:relayId/stage', async (request, reply) => {
@@ -93,8 +104,8 @@ export const stageRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (current.startedAt) return reply.status(409).send({ error: 'This Stage is already live', code: 'STAGE_LIVE' });
     // Whoever starts it speaks, if they are in it.
     const speakers = (await inStage(ctx.me, ctx.relay.id)) ? [ctx.me] : [];
-    const s: StageState = { topic: (request.body as { topic: string }).topic.trim(), startedAt: new Date().toISOString(), startedBy: ctx.me, speakers, requests: [] };
-    if (speakers.length) await livekit(ctx.relay.id, ctx.me, true, ctx.actor.isOwner || hasPermission(ctx.actor.effectivePermissions, PERMISSIONS.BROADCAST_HOLO_CAST));
+    const s: StageState = { topic: (request.body as { topic: string }).topic.trim(), startedAt: new Date().toISOString(), startedBy: ctx.me, speakers, requests: [], invites: [] };
+    if (speakers.length) await livekit(ctx.relay.id, ctx.me, true, ctx.actor);
     await save(ctx.relay, s);
     return reply.status(201).send({ stage: s });
   });
@@ -115,7 +126,7 @@ export const stageRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (!ctx) return;
     if (!ctx.moderator) return reply.status(403).send({ error: 'Only stage moderators can end a Stage', code: 'NOT_STAGE_MODERATOR' });
     const s = await readStage(redis(), ctx.relay.id);
-    for (const id of s.speakers) await livekit(ctx.relay.id, id, false, false);
+    for (const id of s.speakers) await livekit(ctx.relay.id, id, false, null);
     await save(ctx.relay, { ...EMPTY });
     return reply.send({ stage: EMPTY });
   });
@@ -130,7 +141,7 @@ export const stageRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       const s = await present(ctx.relay.id, await readStage(redis(), ctx.relay.id));
       if (!s.startedAt) return reply.status(404).send({ error: 'This Stage is not live', code: 'STAGE_NOT_LIVE' });
       const { raised } = request.body as { raised: boolean };
-      if (!hasPermission(ctx.actor.effectivePermissions, PERMISSIONS.SPEAK_AUDIO) && !ctx.actor.isOwner) return reply.status(403).send({ error: 'Transmitter lacks SPEAK_AUDIO clearance' });
+      if (raised && !ctx.actor.isOwner && !hasPermission(ctx.actor.effectivePermissions, PERMISSIONS.REQUEST_TO_SPEAK)) return reply.status(403).send({ error: 'Transmitter lacks REQUEST_TO_SPEAK clearance', code: 'MISSING_PERMISSIONS' });
       s.requests = s.requests.filter((id) => id !== ctx.me);
       if (raised && !s.speakers.includes(ctx.me)) s.requests.push(ctx.me);
       await save(ctx.relay, s);
@@ -151,13 +162,43 @@ export const stageRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (!target || (!target.isOwner && !hasPermission(target.effectivePermissions, PERMISSIONS.SPEAK_AUDIO))) {
       return reply.status(403).send({ error: 'They cannot speak in this Stage', code: 'TARGET_CANNOT_SPEAK' });
     }
-    if (!s.speakers.includes(userId)) s.speakers.push(userId);
-    s.requests = s.requests.filter((id) => id !== userId);
-    // LiveKit first: their client starts publishing as soon as it hears it is a speaker.
-    await livekit(ctx.relay.id, userId, true, target.isOwner || hasPermission(target.effectivePermissions, PERMISSIONS.BROADCAST_HOLO_CAST));
-    await save(ctx.relay, s);
+    // Discord's: a raised hand (or a moderator stepping up) speaks at once; anyone else is asked.
+    if (userId !== ctx.me && !s.requests.includes(userId)) {
+      if (!s.speakers.includes(userId) && !s.invites.includes(userId)) s.invites.push(userId);
+      await save(ctx.relay, s);
+      return reply.send({ stage: s });
+    }
+    await promote(ctx.relay, s, userId, target);
     return reply.send({ stage: s });
   });
+
+  async function promote(relay: any, s: StageState, userId: string, target: { isOwner: boolean; effectivePermissions: bigint }) {
+    if (!s.speakers.includes(userId)) s.speakers.push(userId);
+    s.requests = s.requests.filter((id) => id !== userId);
+    s.invites = s.invites.filter((id) => id !== userId);
+    // LiveKit first: their client starts publishing as soon as it hears it is a speaker.
+    await livekit(relay.id, userId, true, target);
+    await save(relay, s);
+  }
+
+  app.post(
+    '/relays/:relayId/stage/invite',
+    { schema: { body: { type: 'object', additionalProperties: false, required: ['accept'], properties: { accept: { type: 'boolean' } } } } },
+    async (request, reply) => {
+      const ctx = await context(request, reply);
+      if (!ctx) return;
+      const s = await present(ctx.relay.id, await readStage(redis(), ctx.relay.id));
+      if (!s.invites.includes(ctx.me)) return reply.status(404).send({ error: 'You have no invitation to speak here', code: 'NO_INVITE' });
+      if ((request.body as { accept: boolean }).accept) {
+        if (!ctx.actor.isOwner && !hasPermission(ctx.actor.effectivePermissions, PERMISSIONS.SPEAK_AUDIO)) return reply.status(403).send({ error: 'Transmitter lacks SPEAK_AUDIO clearance' });
+        await promote(ctx.relay, s, ctx.me, ctx.actor);
+      } else {
+        s.invites = s.invites.filter((id) => id !== ctx.me);
+        await save(ctx.relay, s);
+      }
+      return reply.send({ stage: s });
+    }
+  );
 
   app.delete('/relays/:relayId/stage/speakers/:userId', async (request, reply) => {
     const ctx = await context(request, reply);
@@ -166,8 +207,9 @@ export const stageRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (userId !== ctx.me && !ctx.moderator) return reply.status(403).send({ error: 'Only stage moderators can move others to the audience', code: 'NOT_STAGE_MODERATOR' });
     const s = await readStage(redis(), ctx.relay.id);
     s.speakers = s.speakers.filter((id) => id !== userId);
+    s.invites = s.invites.filter((id) => id !== userId);
     if (s.startedAt) await save(ctx.relay, s);
-    await livekit(ctx.relay.id, userId, false, false);
+    await livekit(ctx.relay.id, userId, false, null);
     return reply.send({ stage: s });
   });
 };

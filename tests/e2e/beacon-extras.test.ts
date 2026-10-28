@@ -9,8 +9,8 @@ describe('Beacon extras', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const owner = { id: 'fc000000-0000-4000-8000-000000000001', username: 'ext_owner' };
-  const guest = { id: 'fc000000-0000-4000-8000-000000000002', username: 'ext_guest' };
+  const owner = { id: '137654884795285505', username: 'ext_owner' };
+  const guest = { id: '137654884795285506', username: 'ext_guest' };
   const auth = (u: { id: string; username: string }) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
   const call = (method: string, url: string, u: { id: string; username: string } | null, payload?: unknown) =>
     app.inject({ method: method as any, url: `/api/v1${url}`, headers: u ? auth(u) : {}, payload: payload as any });
@@ -104,7 +104,7 @@ describe('Beacon extras', () => {
     expect(tags).toEqual([{ id: beaconId, name: 'Extras Beacon', tag: 'CRW', tagBadge: '🚀' }]);
     const profile = (await call('GET', `/users/${guest.id}/profile`, owner)).json();
     expect(profile.user.tagBeaconId).toBe(beaconId);
-    const stranger = { id: 'fc000000-0000-4000-8000-000000000009', username: 'ext_stranger' };
+    const stranger = { id: '137654884795285513', username: 'ext_stranger' };
     await db.delete(transmitters).where(eq(transmitters.id, stranger.id));
     await db.insert(transmitters).values({ id: stranger.id, username: stranger.username, email: 'ext_stranger@subspace.test', passwordHash: 'x', displayName: 's' });
     expect((await call('PUT', '/users/@me/tag', stranger, { beaconId })).statusCode).toBe(403);

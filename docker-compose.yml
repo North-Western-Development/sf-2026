@@ -4,6 +4,8 @@ name: subspace-frequency
 # and fill them in (compose refuses to start when a required value is missing).
 x-service-env: &service-env
   NODE_ENV: production
+  # Requests reach the services through the web edge container on the compose network.
+  TRUST_PROXY: loopback,uniquelocal
   JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
   DATABASE_URL: postgresql://${POSTGRES_USER:-subspace}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-subspace_frequency}
   REDIS_URL: redis://redis:6379
@@ -217,7 +219,8 @@ services:
     container_name: subspace-web
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-8080}:80"
+      # Loopback only: the host nginx terminates TLS in front of it.
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
     networks:
       - subspace_net
     depends_on:

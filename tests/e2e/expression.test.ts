@@ -2,22 +2,22 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../../apps/api-service/src/index.js';
 import { signAccessToken, getJwtSecret } from '@subspace/crypto';
-import { transmitters, beacons, mediaUploads, eq, or } from '@subspace/database';
+import { transmitters, beacons, mediaUploads, eq, or, newSnowflake } from '@subspace/database';
 
 /** Stickers, the soundboard and GIF favorites. */
 describe('Expression', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const owner = { id: 'fd000000-0000-4000-8000-000000000001', username: 'exp_owner' };
-  const member = { id: 'fd000000-0000-4000-8000-000000000002', username: 'exp_member' };
-  const outsider = { id: 'fd000000-0000-4000-8000-000000000003', username: 'exp_out' };
+  const owner = { id: '241461945075630081', username: 'exp_owner' };
+  const member = { id: '241461945075630082', username: 'exp_member' };
+  const outsider = { id: '241461945075630083', username: 'exp_out' };
   const users = [owner, member, outsider];
   const auth = (u: { id: string; username: string }) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
   const call = (method: string, url: string, u: { id: string; username: string }, payload?: unknown) =>
     app.inject({ method: method as any, url: `/api/v1${url}`, headers: auth(u), payload: payload as any });
   const media = async (u: { id: string }, purpose: string, mime: string) => {
-    const url = `/subspace-media/${purpose}/${crypto.randomUUID()}.${mime.split('/')[1]}`;
+    const url = `/subspace-media/${purpose}/${newSnowflake()}.${mime.split('/')[1]}`;
     await db.insert(mediaUploads).values({ ownerId: u.id, purpose, mimeType: mime, declaredSizeBytes: 100n, storageKey: url.slice(16), publicUrl: url, verified: true });
     return url;
   };

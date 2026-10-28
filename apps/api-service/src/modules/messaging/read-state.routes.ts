@@ -12,11 +12,16 @@ import {
   beaconMembers,
   readStates,
   notificationSettings,
+  canSeeThread,
+  transmissions,
 } from '@subspace/database';
 import { PERMISSIONS, hasPermission } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext, resolveRelayActorContext } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 import { CHANNEL_TYPES, loadChannel, checkChannelAccess } from '../../lib/channels.js';
+
+/** Which transmissions column holds each kind of channel. */
+const CHANNEL_COLUMN = { relay: 'relayId', thread: 'threadId', link: 'p2pLinkId', mesh: 'meshId' } as const;
 import { resolveTransmitterBeaconIds, computeRelayPermissions } from '@subspace/database';
 
 const SCOPE_TYPES = ['global', 'beacon', 'category', 'relay', 'link', 'mesh'];
@@ -58,6 +63,7 @@ export const readStateRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           const parentRelay = allRelays.find((r: any) => r.id === thread.relayId);
           if (!parentRelay) continue;
           const actorContext = await resolveRelayActorContext(db, token.transmitterId, parentRelay);
+          if (thread.isPrivate && !(await canSeeThread(db, token.transmitterId, thread))) continue;
           if (actorContext && hasPermission(actorContext.effectivePermissions, PERMISSIONS.VIEW_RELAY)) {
             channels.push({
               channelType: 'thread',
@@ -118,13 +124,13 @@ export const readStateRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           type: 'object',
           additionalProperties: false,
           required: ['channelType', 'channelId'],
-          properties: { channelType: { type: 'string', enum: CHANNEL_TYPES }, channelId: { type: 'string', format: 'uuid' } },
+          properties: { channelType: { type: 'string', enum: CHANNEL_TYPES }, channelId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
         },
         body: {
           type: 'object',
           additionalProperties: false,
           required: ['transmissionId'],
-          properties: { transmissionId: { type: 'string', format: 'uuid' } },
+          properties: { transmissionId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
         },
       },
     },
@@ -158,6 +164,73 @@ export const readStateRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
       );
 
       return reply.send({ message: 'Acknowledged' });
+    }
+  );
+
+  /**
+   * POST /api/v1/channels/:channelType/:channelId/unread  { transmissionId }
+   * Mark Unread (Discord's): that transmission and everything after it become unread again, with
+   * the mentions among them counted again.
+   */
+  app.post(
+    '/channels/:channelType/:channelId/unread',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['channelType', 'channelId'],
+          properties: { channelType: { type: 'string', enum: CHANNEL_TYPES }, channelId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
+        },
+        body: { type: 'object', additionalProperties: false, required: ['transmissionId'], properties: { transmissionId: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } } },
+      },
+    },
+    async (request, reply) => {
+      const token = extractAuthToken(request);
+      if (!token) return reply.status(401).send({ error: 'Authentication required' });
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+      const { channelType, channelId } = request.params as { channelType: keyof typeof CHANNEL_COLUMN; channelId: string };
+      const { transmissionId } = request.body as { transmissionId: string };
+
+      const channel = await loadChannel(db, channelType, channelId);
+      if (!channel) return reply.status(404).send({ error: 'Channel not found or not visible' });
+      const access = await checkChannelAccess(db, channel, token.transmitterId, 'view');
+      if (!access.allowed) return reply.status(access.status).send({ error: access.error });
+
+      const column = (transmissions as any)[CHANNEL_COLUMN[channelType]];
+      const [target] = await db.select({ id: transmissions.id }).from(transmissions).where(and(eq(transmissions.id, transmissionId), eq(column, channelId))).limit(1);
+      if (!target) return reply.status(404).send({ error: 'Transmission not found' });
+      // Read up to the one before it (none: the whole channel is unread).
+      const [previous] = await db
+        .select({ id: transmissions.id, createdAt: transmissions.createdAt })
+        .from(transmissions)
+        .where(and(eq(column, channelId), sql`${transmissions.id} < ${transmissionId}`))
+        .orderBy(sql`${transmissions.id} desc`)
+        .limit(1);
+      const [{ n }] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(transmissions)
+        .where(
+          and(
+            eq(column, channelId),
+            sql`${transmissions.id} >= ${transmissionId}`,
+            sql`${transmissions.transmitterId} <> ${token.transmitterId}`,
+            sql`(${transmissions.mentions} @> ${JSON.stringify([token.transmitterId])}::jsonb or ${transmissions.mentionEveryone})`
+          )
+        );
+      const lastReadId = previous?.id ?? null;
+      const lastReadAt = previous?.createdAt ?? new Date(0);
+      await db
+        .insert(readStates)
+        .values({ transmitterId: token.transmitterId, channelType, channelId, lastReadId, lastReadAt, mentionCount: n })
+        .onConflictDoUpdate({ target: [readStates.transmitterId, readStates.channelType, readStates.channelId], set: { lastReadId, lastReadAt, mentionCount: n } });
+      await publishGatewayEvent(
+        app,
+        'READ_STATE_UPDATE',
+        { channelType, channelId, lastReadId, lastReadAt: new Date(lastReadAt).toISOString(), mentionCount: n, manual: true },
+        { transmitterIds: [token.transmitterId] }
+      );
+      return reply.send({ lastReadId, mentionCount: n });
     }
   );
 

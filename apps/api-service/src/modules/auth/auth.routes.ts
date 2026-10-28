@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
-import { eq, and, or, transmitters, transmitterPasskeys, beacons, beaconMembers, affiliations } from '@subspace/database';
-import { SUBSPACE_DIRECTIVES, isValidUsername } from '@subspace/constants';
+import { eq, and, or, transmitters, transmitterPasskeys, beacons, beaconMembers, affiliations, blockEu } from '@subspace/database';
+import { SUBSPACE_DIRECTIVES, isGdprEmail, isValidUsername } from '@subspace/constants';
 import { checkRateLimit } from '../../lib/rate-limit.js';
 import { createSession, touchSession, listSessions, revokeSessions } from '../../lib/sessions.js';
 import { publishSessionRefresh, publishGatewayEvent } from '../../lib/events.js';
 import { confirmPassword } from '../../lib/confirm-password.js';
-import { sendVerificationEmail, sendEmailChangedNotice, verifyEmailToken } from '../../lib/email-verification.js';
+import { EMAIL_LIMIT_MESSAGES, emailSendLimit, sendVerificationEmail, sendEmailChangedNotice, verifyEmailToken } from '../../lib/email-verification.js';
 import { emailVerificationEnabled } from '../../lib/mailer.js';
 import {
   hashPassword,
@@ -104,6 +104,8 @@ async function allocateDiscriminator(db: any, username: string): Promise<string 
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** BLOCK_EU: no addresses at providers or domains from the EU, the EEA or the UK. */
+const EMAIL_REGION_BLOCKED = { error: 'Email addresses from the EU, the EEA and the UK cannot be used here', code: 'EMAIL_REGION_BLOCKED' };
 
 // The isolated UI-test stack raises this (every browser test registers fresh accounts). Never honoured in production.
 const REGISTER_LIMIT = process.env.NODE_ENV !== 'production' && Number(process.env.REGISTER_RATE_LIMIT) > 0 ? Number(process.env.REGISTER_RATE_LIMIT) : 5;
@@ -126,6 +128,8 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (password.length < 8) {
       return reply.status(400).send({ error: 'Password must be at least 8 characters long' });
     }
+
+    if (blockEu() && isGdprEmail(email)) return reply.status(400).send(EMAIL_REGION_BLOCKED);
 
     if (!db) {
       return reply.status(503).send({ error: 'Database service unavailable' });
@@ -157,6 +161,8 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (existingEmail.length > 0) {
       return reply.status(409).send({ error: 'Email address already in use' });
     }
+    const emailHit = await emailSendLimit(app, { email: email.trim().toLowerCase(), ip: request.ip });
+    if (emailHit) return reply.status(429).send({ error: EMAIL_LIMIT_MESSAGES[emailHit], code: 'EMAIL_RATE_LIMITED', limit: emailHit });
 
     const passwordHash = await hashPassword(password);
     const [newTransmitter] = await db
@@ -196,8 +202,11 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
     const cleanInput = username.trim();
 
-    const accountKey = `rl:login:account:${cleanInput.toLowerCase()}`;
-    if (!(await checkRateLimit(redis, accountKey, 5, 60))) {
+    // Per account and address, so a stranger guessing cannot lock the owner out from elsewhere;
+    // a looser per-account cap still stops guessing spread across many addresses.
+    const accountKey = `rl:login:account:${cleanInput.toLowerCase()}:${request.ip}`;
+    const spreadKey = `rl:login:account:${cleanInput.toLowerCase()}`;
+    if (!(await checkRateLimit(redis, accountKey, 5, 60)) || !(await checkRateLimit(redis, spreadKey, 30, 600))) {
       return reply.status(429).send({ error: 'Too many login attempts for this account; try again shortly' });
     }
     let user: any = null;
@@ -239,7 +248,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       user = users[0];
     }
 
-    if (!user || user.deletedAt) {
+    if (!user || user.deletedAt || user.botKind) {
       return reply.status(401).send({ error: 'Invalid credentials' });
     }
 
@@ -343,6 +352,10 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const payload = challenge ?? verifyAccessToken(token, JWT_SECRET);
     if (!payload) {
       return reply.status(401).send({ error: 'Invalid or expired token' });
+    }
+    // Per account, however many login challenges are minted: 10 codes per 15 minutes.
+    if (!(await checkRateLimit(redis, `rl:2fa:${payload.transmitterId}`, 10, 900))) {
+      return reply.status(429).send({ error: 'Too many codes tried; wait a few minutes', code: 'TWO_FACTOR_RATE_LIMITED' });
     }
 
     if (!db) {
@@ -697,6 +710,7 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (typeof email !== 'string' || email.length > 254 || !EMAIL_RE.test(email.trim())) {
       return reply.status(400).send({ error: 'Enter a valid email address', code: 'INVALID_EMAIL' });
     }
+    if (blockEu() && isGdprEmail(email)) return reply.status(400).send(EMAIL_REGION_BLOCKED);
     const check = await confirmPassword(db, payload.transmitterId, password);
     if (check.fail) return reply.status(check.fail.status).send(check.fail.body);
 
@@ -704,6 +718,8 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (clean !== check.user.email) {
       const [taken] = await db.select({ id: transmitters.id }).from(transmitters).where(eq(transmitters.email, clean)).limit(1);
       if (taken) return reply.status(409).send({ error: 'Email address already in use', code: 'EMAIL_TAKEN' });
+      const hit = await emailSendLimit(app, { userId: check.user.id, email: clean, ip: request.ip });
+      if (hit) return reply.status(429).send({ error: EMAIL_LIMIT_MESSAGES[hit], code: 'EMAIL_RATE_LIMITED', limit: hit });
     }
     const [updated] = await db
       .update(transmitters)
@@ -731,7 +747,8 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     },
     async (request, reply) => {
       if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
-      const result = await verifyEmailToken(db, (request.body as { token: string }).token);
+      const result = await verifyEmailToken(db, (request.body as { token: string }).token, { redis: redis?.status === 'ready' ? redis : null, ip: request.ip });
+      if (!result.ok && result.code === 'RATE_LIMITED') return reply.status(429).send({ error: EMAIL_LIMIT_MESSAGES[result.limit], code: 'EMAIL_RATE_LIMITED', limit: result.limit });
       if (!result.ok) {
         return reply.status(400).send({
           error: result.code === 'TOKEN_EXPIRED' ? 'This link has expired. Send a new one from Subspace.' : 'This link is invalid or was already used.',
@@ -756,6 +773,8 @@ export const authRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     const [user] = await db.select().from(transmitters).where(eq(transmitters.id, payload.transmitterId)).limit(1);
     if (!user) return reply.status(404).send({ error: 'Transmitter not found' });
     if (user.isEmailVerified) return reply.status(409).send({ error: 'Your email is already verified', code: 'ALREADY_VERIFIED' });
+    const hit = await emailSendLimit(app, { userId: user.id, email: user.email, ip: request.ip });
+    if (hit) return reply.status(429).send({ error: EMAIL_LIMIT_MESSAGES[hit], code: 'EMAIL_RATE_LIMITED', limit: hit });
     await sendVerificationEmail(app, user, request);
     return reply.status(202).send({ sent: true });
   });

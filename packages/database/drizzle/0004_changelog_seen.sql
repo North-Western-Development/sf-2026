@@ -1,0 +1,1 @@
+ALTER TABLE "transmitters" ADD COLUMN "changelog_seen" jsonb DEFAULT '{}'::jsonb NOT NULL;

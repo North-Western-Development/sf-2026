@@ -8,6 +8,8 @@ import { useChatPrefs } from '../../lib/chatPrefs';
 import { confirmAction, toast } from '../../app/ui';
 import { http } from '../../lib/http';
 import { isTrustedLink, openLeavingDialog } from '../../lib/links';
+import { Markdown } from './markdown';
+import { formatFullDate } from '../../lib/time';
 
 const guardLink = (href: string) => (e: React.MouseEvent) => {
   if (isTrustedLink(href)) return;
@@ -41,6 +43,52 @@ function GifStar({ url, preview }: { url: string; preview: string }) {
   );
 }
 
+/** A bot's or webhook's embed (Discord's layout): color bar, author, title, text, fields, image, footer. */
+function RichEmbed({ embed, remove }: { embed: Embed; remove: React.ReactNode }) {
+  const link = (href: string | undefined, children: React.ReactNode, className: string) =>
+    href ? (
+      <a href={href} target="_blank" rel="noreferrer noopener" onClick={guardLink(href)} className={`${className} hover:underline`}>
+        {children}
+      </a>
+    ) : (
+      <span className={className}>{children}</span>
+    );
+  // Inline fields sit three to a row; a full-width field breaks the row.
+  return (
+    <article
+      aria-label={`Embed${embed.title ? `: ${embed.title}` : ''}`}
+      className="group/embed relative grid max-w-[520px] gap-2 rounded-[4px] border-l-4 bg-raised py-2 pl-3 pr-4"
+      style={{ borderLeftColor: embed.color ?? 'var(--color-line-strong)', gridTemplateColumns: embed.thumbnail ? '1fr auto' : '1fr' }}
+    >
+      <div className="min-w-0 space-y-1.5 pt-1">
+        {embed.author && link(embed.author.url, embed.author.name, 'block text-sm font-semibold text-fg')}
+        {embed.title && link(embed.url || undefined, embed.title, `block font-semibold ${embed.url ? 'text-brand-sky' : 'text-fg'}`)}
+        {embed.description && <Markdown content={embed.description} className="break-words text-sm text-fg-muted" />}
+        {!!embed.fields?.length && (
+          <div className="grid grid-cols-3 gap-x-4 gap-y-2 pt-1">
+            {embed.fields.map((f, i) => (
+              <div key={i} className={f.inline ? 'min-w-0' : 'col-span-3 min-w-0'}>
+                <p className="text-sm font-semibold text-fg">{f.name}</p>
+                <Markdown content={f.value} className="break-words text-sm text-fg-muted" />
+              </div>
+            ))}
+          </div>
+        )}
+        {embed.image && <img src={embed.image.proxyUrl} alt="" loading="lazy" className="mt-2 max-h-[300px] max-w-full rounded-[4px] object-contain" />}
+        {(embed.footer || embed.timestamp) && (
+          <p className="pt-1 text-xs text-fg-subtle">
+            {embed.footer?.text}
+            {embed.footer && embed.timestamp && ' • '}
+            {embed.timestamp && formatFullDate(embed.timestamp)}
+          </p>
+        )}
+      </div>
+      {embed.thumbnail && <img src={embed.thumbnail.proxyUrl} alt="" loading="lazy" className="mt-1 h-20 w-20 rounded-[4px] object-cover" />}
+      {remove}
+    </article>
+  );
+}
+
 function EmbedCard({ embed, onRemove, filter }: { embed: Embed; onRemove?: () => void; filter: boolean }) {
   const remove = onRemove && (
     <Tooltip content="Remove all embeds">
@@ -67,6 +115,8 @@ function EmbedCard({ embed, onRemove, filter }: { embed: Embed; onRemove?: () =>
       </div>
     );
   }
+
+  if (embed.type === 'rich') return <RichEmbed embed={embed} remove={remove} />;
 
   const title = embed.title ?? hostOf(embed.url);
   return (

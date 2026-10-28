@@ -3,7 +3,7 @@ import { http, optional } from '../../lib/http';
 import { toast } from '../../app/ui';
 import { getState } from '../../data/store';
 import { rtcManager } from '../../services/rtc';
-import { rejoinMedia, useVoice } from './session';
+import { useVoice } from './session';
 
 export interface StageState {
   topic: string | null;
@@ -11,6 +11,8 @@ export interface StageState {
   startedBy: string | null;
   speakers: string[];
   requests: string[];
+  /** Invited to speak, waiting to accept. */
+  invites: string[];
 }
 
 interface StageStore {
@@ -20,7 +22,7 @@ interface StageStore {
 }
 
 export const useStages = create<StageStore>()(() => ({ byRelay: {}, moderator: {} }));
-export const EMPTY_STAGE: StageState = { topic: null, startedAt: null, startedBy: null, speakers: [], requests: [] };
+export const EMPTY_STAGE: StageState = { topic: null, startedAt: null, startedBy: null, speakers: [], requests: [], invites: [] };
 
 /** Publish or stop publishing to match whether I speak on the stage I am in. */
 function syncMyRole(relayId: string) {
@@ -28,8 +30,11 @@ function syncMyRole(relayId: string) {
   const v = useVoice.getState();
   if (!me || v.relayId !== relayId || v.state === 'idle') return;
   const speaking = (useStages.getState().byRelay[relayId] ?? EMPTY_STAGE).speakers.includes(me);
-  // Rejoin with a token for the new role when it no longer matches what we publish.
-  if (speaking !== !!rtcManager.getLocalAudioTrack()) void rejoinMedia();
+  if (speaking) void rtcManager.startSpeaking();
+  else if (rtcManager.getLocalAudioTrack()) {
+    void rtcManager.stopSpeaking();
+    useVoice.setState({ cameraOn: false, screenOn: false });
+  }
 }
 
 function apply(relayId: string, stage: StageState, moderator?: boolean) {
@@ -58,11 +63,12 @@ export const setStageTopic = (relayId: string, topic: string) => run(http.patch(
 export const endStage = (relayId: string) => run(http.delete(`/relays/${relayId}/stage`), relayId);
 export const raiseHand = (relayId: string, raised: boolean) => run(http.post(`/relays/${relayId}/stage/hand`, { raised }), relayId);
 export const inviteToSpeak = (relayId: string, userId: string) => run(http.put(`/relays/${relayId}/stage/speakers/${userId}`), relayId);
+export const answerInvite = (relayId: string, accept: boolean) => run(http.post(`/relays/${relayId}/stage/invite`, { accept }), relayId);
 export const moveToAudience = (relayId: string, userId: string) => run(http.delete(`/relays/${relayId}/stage/speakers/${userId}`), relayId);
 
 /** STAGE_UPDATE: a stage I can see started, ended, or changed speakers. */
 export function onStageUpdate(d: { relayId: string; stage: StageState }) {
-  apply(d.relayId, d.stage);
+  apply(d.relayId, { ...EMPTY_STAGE, ...d.stage });
 }
 
 // Joining a stage that is already live: catch up on who speaks.

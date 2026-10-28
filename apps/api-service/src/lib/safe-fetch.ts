@@ -19,6 +19,7 @@ const V4_BLOCKS: Array<[string, number]> = [
   ['172.16.0.0', 12],
   ['192.0.0.0', 24],
   ['192.0.2.0', 24],
+  ['192.88.99.0', 24], // 6to4 relay anycast
   ['192.168.0.0', 16],
   ['198.18.0.0', 15],
   ['198.51.100.0', 24],
@@ -64,6 +65,13 @@ function isPrivateV6(ip: string): boolean {
   const embedded = `${g[6] >> 8}.${g[6] & 0xff}.${g[7] >> 8}.${g[7] & 0xff}`;
   if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) return isPrivateV4(embedded);
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return isPrivateV4(embedded);
+  // IPv4-translated (::ffff:0:a.b.c.d) carries one too.
+  if (g.slice(0, 4).every((x) => x === 0) && g[4] === 0xffff && g[5] === 0) return isPrivateV4(embedded);
+  // 6to4 (2002::/16) embeds the IPv4 address in its second and third groups.
+  if (g[0] === 0x2002) return isPrivateV4(`${g[1] >> 8}.${g[1] & 0xff}.${g[2] >> 8}.${g[2] & 0xff}`);
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return true; // 64:ff9b:1::/48 local-use NAT64
+  if (g[0] === 0x2001 && g[1] === 0) return true; // 2001::/32 Teredo: tunnels to anywhere
+  if (g[0] === 0x100 && g.slice(1, 4).every((x) => x === 0)) return true; // 100::/64 discard-only
   if ((g[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
   if ((g[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((g[0] & 0xffc0) === 0xfec0) return true; // fec0::/10 site-local (deprecated)
@@ -188,4 +196,43 @@ export async function safeGet(rawUrl: string, opts: SafeGetOptions = {}): Promis
     url = new URL(res.location, url);
   }
   throw new Error('Too many redirects');
+}
+
+/**
+ * A POST to an outside server (bot interaction endpoints), under the same rules as safeGet: the
+ * host is resolved and checked, the connection pinned to that address, redirects not followed.
+ */
+export async function safePost(rawUrl: string, body: string, headers: Record<string, string>, opts: { timeoutMs?: number; maxBytes?: number } = {}): Promise<SafeResponse> {
+  const url = new URL(rawUrl);
+  const pinned = await resolveSafe(url);
+  const maxBytes = opts.maxBytes ?? 256 * 1024;
+  return new Promise<SafeResponse>((resolve, reject) => {
+    const client = url.protocol === 'https:' ? https : http;
+    const req = client.request(
+      url,
+      {
+        method: 'POST',
+        headers: { 'User-Agent': 'SubspaceBot/1.0 (+https://subspace.click)', 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...headers },
+        lookup: (_host, options, cb) => {
+          if ((options as { all?: boolean }).all) (cb as any)(null, [{ address: pinned.address, family: pinned.family }]);
+          else (cb as any)(null, pinned.address, pinned.family);
+        },
+        timeout: opts.timeoutMs ?? 3000,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        response.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > maxBytes) return response.destroy(new Error('Response too large'));
+          chunks.push(chunk);
+        });
+        response.on('end', () => resolve({ status: response.statusCode ?? 0, url: url.href, contentType: String(response.headers['content-type'] || ''), body: Buffer.concat(chunks), truncated: false }));
+        response.on('error', reject);
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('Timed out')));
+    req.on('error', reject);
+    req.end(body);
+  });
 }

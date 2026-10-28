@@ -10,7 +10,8 @@ import { useAudioPrefs } from './audioPrefs';
 import { toast } from '../../app/ui';
 import { playPing } from '../../data/notifications';
 import { ensureDevice } from '../../lib/e2ee/client';
-import { establishRoomKey, leaveRoomKey } from './roomKeys';
+import { isEncryptedChannel } from '../../data/e2ee';
+import { establishRoomKey, leaveRoomKey, roomKeyIndex } from './roomKeys';
 
 type MediaTracks = { camera?: Track | null; screen?: Track | null };
 
@@ -77,14 +78,11 @@ const setTrack = (identity: string, kind: keyof MediaTracks, track: Track | null
   useVoice.setState((s) => ({ tracks: { ...s.tracks, [identity]: { ...s.tracks[identity], [kind]: track } } }));
 
 let wired = false;
-/** Reconnecting the media on purpose (a Stage role change): not a disconnect. */
-let rejoining = false;
 function wire() {
   if (wired) return;
   wired = true;
   rtcManager.onSpeakingChanged((speaking) => useVoice.setState({ speaking }));
   rtcManager.onConnectionStateChanged((state) => {
-    if (rejoining) return;
     const map: Record<string, VoiceSession['state']> = { connected: 'connected', connecting: 'connecting', reconnecting: 'reconnecting', disconnected: 'idle' };
     const next = map[String(state)] ?? 'connecting';
     const s = useVoice.getState();
@@ -117,29 +115,6 @@ function wire() {
   });
 }
 
-/**
- * Reconnect the media with a fresh token while staying in the room: a Stage speaker's token can
- * publish and an audience member's cannot, and LiveKit only reports levels for a microphone
- * published as the connection starts.
- */
-export async function rejoinMedia() {
-  const { relayId, state } = useVoice.getState();
-  if (!relayId || state === 'idle' || rejoining) return;
-  rejoining = true;
-  try {
-    const { muted, deafened } = useAudioPrefs.getState();
-    const grant = await api.getCommLinkToken(relayId);
-    await rtcManager.disconnect();
-    useVoice.setState({ tracks: {}, speaking: [], cameraOn: false, screenOn: false });
-    await rtcManager.connect(grant.livekitUrl, grant.token, { canSpeak: grant.canSpeak, isMuted: muted, isDeafened: deafened });
-    useVoice.setState({ state: 'connected' });
-  } catch (err) {
-    toast(`Could not rejoin the Stage: ${(err as Error).message}`, 'error');
-  } finally {
-    rejoining = false;
-  }
-}
-
 export async function joinVoice(relayId: string, beaconId: string) {
   wire();
   const cur = useVoice.getState();
@@ -153,7 +128,7 @@ export async function joinVoice(relayId: string, beaconId: string) {
     const grant = await api.getCommLinkToken(relayId);
     const announce = () => gateway.updateVoiceState(relayId, muted, deafened, false);
     const e2eeKey = encrypted ? await agreeKeyFirst(`relay:${relayId}`, announce) : undefined;
-    await rtcManager.connect(grant.livekitUrl, grant.token, { canSpeak: grant.canSpeak, isMuted: muted, isDeafened: deafened, e2ee: encrypted, e2eeKey });
+    await rtcManager.connect(grant.livekitUrl, grant.token, { canSpeak: grant.canSpeak, isMuted: muted, isDeafened: deafened, e2ee: encrypted, e2eeKey, e2eeKeyIndex: roomKeyIndex(), forceRelay: grant.forceRelay });
     if (encrypted && !rtcManager.isEncrypted) {
       await rtcManager.disconnect().catch(() => {});
       throw new Error('this browser cannot encrypt calls');
@@ -189,14 +164,14 @@ export async function joinCall(key: ChannelKey, { video = false } = {}) {
   useVoice.setState({ ...idle, callKey: key, state: 'connecting' });
   try {
     if (!getState().calls[key]) await http.post(`/calls/${type}/${id}/ring`);
-    const grant = await http.post<{ token: string; livekitUrl: string | null }>(`/calls/${type}/${id}/token`);
+    const grant = await http.post<{ token: string; livekitUrl: string | null; forceRelay?: boolean }>(`/calls/${type}/${id}/token`);
     const sameOrigin = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
     const { muted, deafened } = useAudioPrefs.getState();
-    const encrypted = type === 'link' && !!getState().links[id]?.encryptedAt;
+    const encrypted = isEncryptedChannel(key);
     if (encrypted && !(await ensureDevice(getState().me!.id))) throw new Error('this browser cannot keep encryption keys');
     const announce = () => gateway.updateVoiceState({ callType: type as 'link' | 'mesh', callId: id }, muted, deafened, false);
     const e2eeKey = encrypted ? await agreeKeyFirst(`call:${key}`, announce) : undefined;
-    await rtcManager.connect(grant.livekitUrl || sameOrigin, grant.token, { canSpeak: true, isMuted: muted, isDeafened: deafened, e2ee: encrypted, e2eeKey });
+    await rtcManager.connect(grant.livekitUrl || sameOrigin, grant.token, { canSpeak: true, isMuted: muted, isDeafened: deafened, e2ee: encrypted, e2eeKey, e2eeKeyIndex: roomKeyIndex(), forceRelay: grant.forceRelay });
     if (encrypted && !rtcManager.isEncrypted) {
       await rtcManager.disconnect().catch(() => {});
       throw new Error('this browser cannot encrypt calls');

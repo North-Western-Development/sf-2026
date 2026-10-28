@@ -98,3 +98,20 @@ test.describe('Shell layout', () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+
+test('the AMOLED theme turns surfaces true black with the deeper NWD cobalt, and sticks after a reload', async ({ page, me }) => {
+  await signIn(page, me);
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(await bg()).toBe('rgb(3, 3, 5)');
+  await page.getByRole('button', { name: 'User Settings' }).click();
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+  const themes = page.getByRole('radiogroup', { name: 'Theme' });
+  await expect(themes.getByRole('radio', { name: 'Deep Space' })).toHaveAttribute('aria-checked', 'true');
+  await themes.getByRole('radio', { name: 'AMOLED' }).click();
+  await expect(themes.getByRole('radio', { name: 'AMOLED' })).toHaveAttribute('aria-checked', 'true');
+  expect(await bg()).toBe('rgb(0, 0, 0)');
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--color-brand').trim().toLowerCase())).toBe('#3353d6');
+  await page.reload();
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('amoled');
+  expect(await bg()).toBe('rgb(0, 0, 0)');
+});

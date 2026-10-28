@@ -10,9 +10,9 @@ describe('E2EE: key server and encrypted links', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const alice = { id: 'e7000000-0000-4000-8000-000000000001', username: 'e2ee_alice' };
-  const bob = { id: 'e7000000-0000-4000-8000-000000000002', username: 'e2ee_bob' };
-  const eve = { id: 'e7000000-0000-4000-8000-000000000003', username: 'e2ee_eve' };
+  const alice = { id: '657706618908049409', username: 'e2ee_alice' };
+  const bob = { id: '657706618908049410', username: 'e2ee_bob' };
+  const eve = { id: '657706618908049411', username: 'e2ee_eve' };
   const tok = (u: typeof alice) => signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET);
   const call = (method: string, url: string, u?: typeof alice, payload?: unknown) =>
     app.inject({ method: method as any, url, headers: u ? { authorization: `Bearer ${tok(u)}` } : {}, payload: payload as any });
@@ -117,7 +117,7 @@ describe('E2EE: key server and encrypted links', () => {
     const ok = await call('POST', '/api/v1/e2ee/signal', alice, { to: bob.id, fromDevice: deviceIds.alice, toDevice: deviceIds.bob, envelope });
     expect(ok.statusCode).toBe(202);
     expect((await call('POST', '/api/v1/e2ee/signal', alice, { to: bob.id, fromDevice: deviceIds.bob, toDevice: deviceIds.bob, envelope })).statusCode).toBe(404);
-    const stranger = '00000000-0000-4000-8000-0000000000ee';
+    const stranger = '978275694148452590';
     expect((await call('POST', '/api/v1/e2ee/signal', alice, { to: stranger, fromDevice: deviceIds.alice, toDevice: deviceIds.bob, envelope })).statusCode).toBe(404);
   });
 });

@@ -14,6 +14,8 @@ interface Account {
   refresh: string;
   user: { id: string; username: string; displayName: string };
   api: APIRequestContext;
+  /** Set for an account this run registered (and so deletes at the end). */
+  password?: string;
 }
 
 async function account(n: 1 | 2): Promise<Account> {
@@ -21,23 +23,44 @@ async function account(n: 1 | 2): Promise<Account> {
   const email = process.env[n === 1 ? 'LIVE_EMAIL' : 'LIVE_EMAIL_2'];
   const password = process.env[n === 1 ? 'LIVE_PASSWORD' : 'LIVE_PASSWORD_2'];
   let body: any;
+  let created: string | undefined;
   if (email && password) {
     const res = await ctx.post('/api/v1/auth/login', { data: { username: email, password } });
     expect(res.ok(), await res.text()).toBe(true);
     body = await res.json();
   } else {
     const username = `live_${Date.now().toString(36)}_${n}`;
+    created = `live-smoke-${Date.now()}-pw`;
     const res = await ctx.post('/api/v1/auth/register', {
-      data: { username, email: `${username}@live-smoke.invalid`, password: `live-smoke-${Date.now()}-pw`, displayName: `Live Smoke ${n}`, acceptDirectives: true },
+      data: { username, email: `${username}@live-smoke.invalid`, password: created, displayName: `Live Smoke ${n}`, acceptDirectives: true },
     });
     expect(res.ok(), `register: ${await res.text()}`).toBe(true);
     body = await res.json();
   }
   const api = await playwrightRequest.newContext({ baseURL: BASE, extraHTTPHeaders: { authorization: `Bearer ${body.accessToken}` } });
-  return { token: body.accessToken, refresh: body.refreshToken, user: body.transmitter, api };
+  return { token: body.accessToken, refresh: body.refreshToken, user: body.transmitter, api, password: created };
 }
 
+/** Content-Security-Policy violations seen by signed-in pages; the suite fails on any. */
+const cspViolations: string[] = [];
+
 async function signedInPage(page: Page, a: Account, path: string) {
+  page.on('console', (m) => {
+    if (/Content.Security.Policy/i.test(m.text())) cspViolations.push(m.text());
+  });
+  // Keep every peer connection, to see which network path the media took.
+  await page.addInitScript(() => {
+    const Native = window.RTCPeerConnection;
+    const all: RTCPeerConnection[] = ((window as any).__pcs = []);
+    window.RTCPeerConnection = function (this: any, ...args: any[]) {
+      const pc = new (Native as any)(...args);
+      all.push(pc);
+      return pc;
+    } as any;
+    window.RTCPeerConnection.prototype = Native.prototype;
+  });
+  // The cookie notice sits over the bottom of the window (the browser suite checks it).
+  await page.addInitScript(() => localStorage.setItem('subspace:cookie-notice', '1'));
   await page.addInitScript((s) => {
     if (sessionStorage.getItem('live-signed-in')) return;
     sessionStorage.setItem('live-signed-in', '1');
@@ -63,6 +86,10 @@ test.describe.serial('Live instance smoke test', () => {
 
   test.afterAll(async () => {
     if (beaconId) await one.api.delete(`/api/v1/beacons/${beaconId}`).catch(() => {});
+    // Accounts this run registered go too, so runs do not pile up in the Command Console.
+    for (const a of [one, two]) {
+      if (a?.password) await a.api.post('/api/v1/auth/me/delete', { data: { password: a.password } }).catch(() => {});
+    }
   });
 
   test('the edge serves the app and the API, with security headers', async ({ request }) => {
@@ -147,7 +174,24 @@ test.describe.serial('Live instance smoke test', () => {
     await expect(theirs.getByRole('main').getByRole('button', { name: 'Disconnect' })).toBeVisible();
     // The SFU reports the other person's (fake) microphone as speaking: media got through.
     await expect(theirs.getByRole('group', { name: one.user.displayName })).toHaveAttribute('data-speaking', 'true', { timeout: 40_000 });
+    // The candidate type of every connected path: "relay" means through the TURN server.
+    const paths = await page.evaluate(async () => {
+      const types: string[] = [];
+      for (const pc of (window as any).__pcs as RTCPeerConnection[]) {
+        if (pc.connectionState !== 'connected') continue;
+        const stats = await pc.getStats();
+        stats.forEach((r: any) => {
+          if (r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') types.push(stats.get(r.localCandidateId)?.candidateType);
+        });
+      }
+      return types;
+    });
+    console.log(`media paths: ${paths.join(', ')}`);
+    expect(paths.length).toBeGreaterThan(0);
+    // LIVE_EXPECT_RELAY=1 on an instance with LIVEKIT_FORCE_RELAY=true.
+    if (process.env.LIVE_EXPECT_RELAY) expect(paths.every((t) => t === 'relay'), `media paths: ${paths.join(', ')}`).toBe(true);
     await page.getByRole('main').getByRole('button', { name: 'Disconnect' }).click();
+    expect(cspViolations, 'Content-Security-Policy violations').toEqual([]);
     await theirs.getByRole('main').getByRole('button', { name: 'Disconnect' }).click();
     await other.close();
   });

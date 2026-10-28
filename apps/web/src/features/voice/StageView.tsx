@@ -14,9 +14,9 @@ import { useAudioPrefs, toggleMute } from './audioPrefs';
 import { Avatar } from '../common/Avatar';
 import { ControlButton } from './ControlButton';
 import { Tile } from './CommLinkView';
-import { EMPTY_STAGE, endStage, inviteToSpeak, loadStage, moveToAudience, raiseHand, setStageTopic, startStage, useStages } from './stage';
+import { EMPTY_STAGE, answerInvite, endStage, inviteToSpeak, loadStage, moveToAudience, raiseHand, setStageTopic, startStage, useStages } from './stage';
 
-function AudienceMember({ userId, relay, hand, moderator }: { userId: string; relay: Relay; hand: boolean; moderator: boolean }) {
+function AudienceMember({ userId, relay, hand, invited, moderator }: { userId: string; relay: Relay; hand: boolean; invited: boolean; moderator: boolean }) {
   const user = useStore((s) => s.users[userId]);
   const member = useStore((s) => s.members[relay.beaconId]?.[userId]);
   const vs = useStore((s) => s.voice[userId]);
@@ -32,7 +32,8 @@ function AudienceMember({ userId, relay, hand, moderator }: { userId: string; re
         )}
       </span>
       <span className="w-full truncate text-xs text-fg-muted">{name}</span>
-      {moderator && (
+      {moderator && invited && <span className="text-xs text-fg-subtle">Invited</span>}
+      {moderator && !invited && (
         <button
           type="button"
           aria-label={`Invite ${name} to speak`}
@@ -54,6 +55,7 @@ export function StageView({ relay }: { relay: Relay }) {
   const moderator = useStages((s) => !!s.moderator[relay.id]);
   const meId = useStore((s) => s.me?.id ?? '');
   const canConnect = useStore((s) => can(relayPermissions(s, relay.id), PERMISSIONS.CONNECT_AUDIO));
+  const canRequest = useStore((s) => can(relayPermissions(s, relay.id), PERMISSIONS.REQUEST_TO_SPEAK));
   const { muted } = useAudioPrefs();
   // Joined once the gateway has us in the room: only then can the API see us on the Stage.
   const joined = session.relayId === relay.id && session.state === 'connected' && inRoom.includes(meId);
@@ -62,6 +64,7 @@ export function StageView({ relay }: { relay: Relay }) {
   const audience = inRoom.filter((id) => !speakers.includes(id));
   const iSpeak = speakers.includes(meId);
   const handUp = stage.requests.includes(meId);
+  const invited = live && joined && stage.invites.includes(meId);
 
   useEffect(() => {
     void loadStage(relay.id);
@@ -152,10 +155,23 @@ export function StageView({ relay }: { relay: Relay }) {
             .slice()
             .sort((a, b) => Number(stage.requests.includes(b)) - Number(stage.requests.includes(a)))
             .map((id) => (
-              <AudienceMember key={id} userId={id} relay={relay} hand={stage.requests.includes(id)} moderator={moderator && live} />
+              <AudienceMember key={id} userId={id} relay={relay} hand={stage.requests.includes(id)} invited={stage.invites.includes(id)} moderator={moderator && live} />
             ))}
         </ul>
       </section>
+
+      {invited && (
+        <div role="alertdialog" aria-label="Invited to speak" className="mx-auto mb-3 flex w-full max-w-md items-center gap-3 rounded-lg bg-raised px-4 py-3 ring-1 ring-line">
+          <UserPlus className="h-5 w-5 shrink-0 text-brand-sky" />
+          <p className="min-w-0 flex-1 text-sm text-fg">You have been invited to speak.</p>
+          <Button size="sm" variant="secondary" onClick={() => void answerInvite(relay.id, false)}>
+            Decline
+          </Button>
+          <Button size="sm" onClick={() => void answerInvite(relay.id, true)}>
+            Join as Speaker
+          </Button>
+        </div>
+      )}
 
       <div className="flex shrink-0 items-center justify-center gap-3 pb-6 pt-2">
         {joined ? (
@@ -171,7 +187,7 @@ export function StageView({ relay }: { relay: Relay }) {
               </Button>
             )}
             {live && !iSpeak && moderator && <Button onClick={() => void inviteToSpeak(relay.id, meId)}>Speak</Button>}
-            {live && !iSpeak && !moderator && (
+            {live && !iSpeak && !moderator && (canRequest || handUp) && (
               <ControlButton label={handUp ? 'Lower Hand' : 'Request to Speak'} active={handUp} onClick={() => void raiseHand(relay.id, !handUp)}>
                 <Hand className="h-5 w-5" />
               </ControlButton>

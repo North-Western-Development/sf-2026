@@ -21,8 +21,8 @@ describe('Link previews (embeds) and the media proxy', () => {
   let site: http.Server;
   let origin = '';
   let hits: Record<string, number> = {};
-  const author = { id: 'c3000000-0000-4000-8000-000000000001', username: 'embed_author' };
-  const member = { id: 'c3000000-0000-4000-8000-000000000002', username: 'embed_member' };
+  const author = { id: '520652448815644673', username: 'embed_author' };
+  const member = { id: '520652448815644674', username: 'embed_member' };
   const tok = (u: typeof author) => signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET);
   const inject = (method: string, url: string, token?: string, payload?: unknown) =>
     app.inject({ method: method as any, url, headers: token ? { authorization: `Bearer ${token}` } : {}, payload: payload as any });

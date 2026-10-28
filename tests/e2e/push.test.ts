@@ -15,8 +15,8 @@ describe('Mobile push notifications', () => {
   let expo: http.Server;
   let received: any[] = [];
   let reply: (batch: any[]) => any = (batch) => ({ data: batch.map(() => ({ status: 'ok', id: 'x' })) });
-  const alice = { id: 'f8000000-0000-4000-8000-000000000001', username: 'push_alice' };
-  const bob = { id: 'f8000000-0000-4000-8000-000000000002', username: 'push_bob' };
+  const alice = { id: '622426643673907201', username: 'push_alice' };
+  const bob = { id: '622426643673907202', username: 'push_bob' };
   const tok = (u: typeof alice) => signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET);
   const call = (method: string, url: string, u: typeof alice, payload?: unknown) => app.inject({ method: method as any, url, headers: { authorization: `Bearer ${tok(u)}` }, payload: payload as any });
   const TOKEN = 'ExponentPushToken[bob-phone-123456]';
@@ -117,6 +117,6 @@ describe('Mobile push notifications', () => {
   });
 
   it('turns markup into plain preview text', () => {
-    expect(pushText('> quote `code` ~~x~~ <#00000000-0000-4000-8000-000000000001> <a:wave:00000000-0000-4000-8000-000000000002>')).toBe('quote code x #relay :wave:');
+    expect(pushText('> quote `code` ~~x~~ <#978275694148452353> <a:wave:978275694148452354>')).toBe('quote code x #relay :wave:');
   });
 });

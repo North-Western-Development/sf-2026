@@ -8,10 +8,12 @@ export interface ChatPrefs {
   inlineMedia: boolean;
   /** Discord's compact message display: time and name on one line, no avatars. */
   compact: boolean;
+  /** Show my private note about someone in the profile panel beside our Direct Link. */
+  notesInProfilePanel: boolean;
 }
 
 const KEY = 'subspace_chat_prefs';
-const defaults: ChatPrefs = { showEmbeds: true, inlineMedia: true, compact: false };
+const defaults: ChatPrefs = { showEmbeds: true, inlineMedia: true, compact: false, notesInProfilePanel: true };
 
 const read = (): ChatPrefs => {
   try {

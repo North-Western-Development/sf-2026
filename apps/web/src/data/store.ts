@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Activity } from '@subspace/constants';
 import type {
   Beacon,
   CallInfo,
@@ -34,6 +35,8 @@ export interface ChannelMessages {
 export interface PresenceEntry {
   status: Presence;
   customStatus?: CustomStatus | null;
+  /** What they are playing, when their Activity Privacy lets me see it. */
+  activity?: Activity | null;
 }
 
 export interface SubspaceState {
@@ -147,7 +150,9 @@ export function upsertMessages(key: ChannelKey, incoming: Transmission[], opts: 
       byId[t.id] = { ...prev, ...t, embeds, ...opened, pending: false, failed: false };
     }
     const ids = Object.values(byId).sort(byTime).map((t) => t.id);
-    const latest = ids.length ? byId[ids[ids.length - 1]] : null;
+    // Ephemeral answers live on this device only; they are never the channel's latest.
+    const latestId = [...ids].reverse().find((id) => !byId[id].ephemeral);
+    const latest = latestId ? byId[latestId] : null;
     const activity = latest && !latest.pending
       ? {
           ...s.activity,

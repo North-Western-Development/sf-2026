@@ -134,4 +134,51 @@ describe('Email verification', () => {
     const mail = await sink.waitFor(email('e'), /Verify/);
     expect(mail.text).not.toContain('evil.example');
   });
+
+  it('rations verification emails and finished verifications per account, address and network', async () => {
+    if (!db) return;
+    const redis = (app as any).redis;
+    const clear = async () => {
+      const keys: string[] = await redis.keys('email:*');
+      if (keys.length) await redis.del(...keys);
+    };
+    const saved = { ...process.env };
+    try {
+      await clear();
+      Object.assign(process.env, { EMAIL_CODES_PER_USER: '2/24h', EMAIL_VERIFY_PER_USER: '1/30d', EMAIL_CODES_PER_IP: '1000/1m', EMAIL_CODES_PER_ADDRESS: '1000/1m', EMAIL_VERIFY_PER_IP: '1000/1m' });
+      const account = await register('f');
+      const auth = { authorization: `Bearer ${account.accessToken}`, origin: ORIGIN };
+      await sink.waitFor(email('f'), /Verify/);
+      expect((await app.inject({ method: 'POST', url: '/api/v1/auth/verify-email/resend', headers: auth })).statusCode).toBe(202);
+      const limited = await app.inject({ method: 'POST', url: '/api/v1/auth/verify-email/resend', headers: auth });
+      expect(limited.json()).toMatchObject({ code: 'EMAIL_RATE_LIMITED', limit: 'EMAIL_CODES_PER_USER' });
+
+      // One finished verification a month: a changed address waits.
+      await new Promise((r) => setTimeout(r, 300));
+      const latest = sink.inbox.filter((m) => m.to.includes(email('f'))).at(-1)!;
+      expect((await verify(tokenFrom(latest.text))).statusCode).toBe(200);
+      process.env.EMAIL_CODES_PER_USER = '1000/1m';
+      await app.inject({ method: 'PATCH', url: '/api/v1/auth/me/email', headers: auth, payload: { email: email('f2'), password: PASSWORD } });
+      const again = await verify(tokenFrom((await sink.waitFor(email('f2'), /Verify/)).text));
+      expect(again.json()).toMatchObject({ code: 'EMAIL_RATE_LIMITED', limit: 'EMAIL_VERIFY_PER_USER' });
+
+      // Sign-ups from one network: one verification email, then no more accounts that need one.
+      await clear();
+      process.env.EMAIL_CODES_PER_IP = '1/24h';
+      const signUp = (k: string) =>
+        app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/register',
+          remoteAddress: '10.77.2.2',
+          headers: { origin: ORIGIN },
+          payload: { username: `verify_${k}_${stamp}`.slice(0, 32), email: email(k), password: PASSWORD, acceptDirectives: true },
+        });
+      expect((await signUp('g')).statusCode).toBe(201);
+      expect((await signUp('h')).json()).toMatchObject({ code: 'EMAIL_RATE_LIMITED', limit: 'EMAIL_CODES_PER_IP' });
+    } finally {
+      for (const k of Object.keys(process.env)) if (k.startsWith('EMAIL_') && !(k in saved)) delete process.env[k];
+      Object.assign(process.env, saved);
+      await clear();
+    }
+  });
 });

@@ -9,12 +9,15 @@ import { openPopout } from '../../app/ui';
 import { Avatar } from '../common/Avatar';
 import { BeaconTag } from '../common/BeaconTag';
 import { UserName } from '../common/UserName';
+import { AppTag } from '../common/AppTag';
 import { memberMenu } from './memberMenu';
+import { ActivityLine, useActivityOf } from '../activity/ActivityViews';
 
 const ONLINE: Presence[] = ['online', 'idle', 'dnd', 'away'];
 
 function MemberRow({ member, beaconId, offline }: { member: Member; beaconId: string; offline: boolean }) {
   const status = useStore((s) => s.presence[member.transmitterId]);
+  const activity = useActivityOf(member.transmitterId);
   const { openContextMenu } = useContextMenu();
   return (
     <button
@@ -29,9 +32,14 @@ function MemberRow({ member, beaconId, offline }: { member: Member; beaconId: st
         <span className="flex items-center gap-1">
           <UserName user={member.user} beaconId={beaconId} className="text-[15px] font-medium" />
           <BeaconTag beaconId={member.user.tagBeaconId} />
+          <AppTag user={member.user} />
           {member.isOwner && <span title="Beacon Owner" aria-label="Beacon Owner" className="text-star text-xs">★</span>}
         </span>
-        {!offline && status?.customStatus?.text && <span className="block truncate text-xs text-fg-subtle">{status.customStatus.text}</span>}
+        {!offline && status?.customStatus?.text ? (
+          <span className="block truncate text-xs text-fg-subtle">{status.customStatus.text}</span>
+        ) : activity ? (
+          <ActivityLine activity={activity} />
+        ) : null}
       </span>
     </button>
   );

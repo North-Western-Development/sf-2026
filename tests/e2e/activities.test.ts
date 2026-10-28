@@ -10,9 +10,9 @@ describe('Message requests and activities', () => {
   let app: FastifyInstance;
   let db: any;
   let redis: any;
-  const host = { id: 'fe200000-0000-4000-8000-000000000001', username: 'act_host' };
-  const guest = { id: 'fe200000-0000-4000-8000-000000000002', username: 'act_guest' };
-  const shy = { id: 'fe200000-0000-4000-8000-000000000003', username: 'act_shy' };
+  const host = { id: '358244887891017729', username: 'act_host' };
+  const guest = { id: '358244887891017730', username: 'act_guest' };
+  const shy = { id: '358244887891017731', username: 'act_shy' };
   const users = [host, guest, shy];
   const auth = (u: { id: string; username: string }) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
   const call = (method: string, url: string, u: { id: string; username: string }, payload?: unknown) =>
@@ -73,42 +73,57 @@ describe('Message requests and activities', () => {
     expect((await call('POST', `/channels/link/${link.id}/transmissions`, guest, { content: 'thanks' })).statusCode).toBe(201);
   });
 
-  it('runs a whiteboard only for people in the comm-link, and ends when the last one leaves', async () => {
+  it('runs several activities at once, only for people in the comm-link, each ending when its last one leaves', async () => {
     if (!db || !redis) return;
-    expect((await call('POST', `/relays/${commLink}/activity`, host, { kind: 'whiteboard' })).json().code).toBe('NOT_IN_COMM_LINK');
+    const acts = `/relays/${commLink}/activities`;
+    expect((await call('POST', acts, host, { kind: 'whiteboard' })).json().code).toBe('NOT_IN_COMM_LINK');
     await inVoice(host, commLink);
-    const started = (await call('POST', `/relays/${commLink}/activity`, host, { kind: 'whiteboard' })).json().activity;
+    const started = (await call('POST', acts, host, { kind: 'whiteboard' })).json().activity;
     expect(started).toMatchObject({ kind: 'whiteboard', hostId: host.id, participants: [host.id] });
-    expect((await call('POST', `/relays/${commLink}/activity`, host, { kind: 'whiteboard' })).json().code).toBe('ACTIVITY_RUNNING');
 
     // Outsiders see it, but cannot draw until they join from inside the comm-link.
-    expect((await call('GET', `/relays/${commLink}/activity`, guest)).json().activity).toMatchObject({ kind: 'whiteboard', count: 1 });
-    expect((await call('POST', `/relays/${commLink}/activity/join`, guest)).json().code).toBe('NOT_IN_COMM_LINK');
+    expect((await call('GET', acts, guest)).json().activities).toMatchObject([{ id: started.id, kind: 'whiteboard', count: 1 }]);
+    expect((await call('POST', `${acts}/${started.id}/join`, guest)).json().code).toBe('NOT_IN_COMM_LINK');
     await inVoice(guest, commLink);
-    await call('POST', `/relays/${commLink}/activity/join`, guest);
+    await call('POST', `${acts}/${started.id}/join`, guest);
 
     const stroke = { id: 's1', points: [0.1, 0.1, 0.5, 0.5, 0.9, 0.2], color: '#3DCBFF', width: 4 };
-    expect((await call('POST', `/relays/${commLink}/activity/events`, guest, { type: 'stroke', data: stroke })).json().ok).toBe(true);
-    expect((await call('POST', `/relays/${commLink}/activity/events`, guest, { type: 'stroke', data: { points: [2, 2, 3, 3] } })).statusCode).toBe(400);
-    expect((await call('GET', `/relays/${commLink}/activity/strokes`, host)).json().strokes).toMatchObject([{ id: 's1', color: '#3DCBFF', by: guest.id }]);
-    expect((await call('POST', `/relays/${commLink}/activity/events`, guest, { type: 'watch', data: { playing: true } })).statusCode).toBe(400);
+    expect((await call('POST', `${acts}/${started.id}/events`, guest, { type: 'stroke', data: stroke })).json().ok).toBe(true);
+    expect((await call('POST', `${acts}/${started.id}/events`, guest, { type: 'stroke', data: { points: [2, 2, 3, 3] } })).statusCode).toBe(400);
+    expect((await call('GET', `${acts}/${started.id}/strokes`, host)).json().strokes).toMatchObject([{ id: 's1', color: '#3DCBFF', by: guest.id }]);
+    expect((await call('POST', `${acts}/${started.id}/events`, guest, { type: 'watch', data: { playing: true } })).statusCode).toBe(400);
 
-    // Leaving the comm-link leaves the activity; the host's leaving hands it over, then it ends.
+    // A second whiteboard beside the first: the guest moves to it and leaves the first.
+    const second = (await call('POST', acts, guest, { kind: 'whiteboard' })).json().activity;
+    expect(second.id).not.toBe(started.id);
+    let list = (await call('GET', acts, host)).json().activities;
+    expect(list.map((x: any) => [x.id, x.count])).toEqual([
+      [started.id, 1],
+      [second.id, 1],
+    ]);
+    // Each board keeps its own strokes.
+    expect((await call('GET', `${acts}/${second.id}/strokes`, guest)).json().strokes).toEqual([]);
+
+    // Leaving the comm-link leaves the activity; the last one out ends it.
     await inVoice(host, null);
-    expect((await call('GET', `/relays/${commLink}/activity`, guest)).json().activity).toMatchObject({ hostId: guest.id, participants: [guest.id] });
-    await call('POST', `/relays/${commLink}/activity/leave`, guest);
-    expect((await call('GET', `/relays/${commLink}/activity`, guest)).json().activity).toBeNull();
+    list = (await call('GET', acts, guest)).json().activities;
+    expect(list.map((x: any) => x.id)).toEqual([second.id]);
+    await call('POST', `${acts}/${second.id}/leave`, guest);
+    expect((await call('GET', acts, guest)).json().activities).toEqual([]);
+    expect((await call('POST', `${acts}/${second.id}/join`, guest)).json().code).toBe('NO_ACTIVITY');
     await inVoice(guest, null);
   });
 
   it('keeps Watch Together in sync, and profiles show it only to members it is shared with', async () => {
     if (!db || !redis) return;
     await inVoice(host, commLink);
-    expect((await call('POST', `/relays/${commLink}/activity`, host, { kind: 'watch', url: 'https://evil.example/page' })).json().code).toBe('INVALID_VIDEO_URL');
-    const a = (await call('POST', `/relays/${commLink}/activity`, host, { kind: 'watch', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })).json().activity;
+    const acts = `/relays/${commLink}/activities`;
+    expect((await call('POST', acts, host, { kind: 'watch', url: 'https://evil.example/page' })).json().code).toBe('INVALID_VIDEO_URL');
+    expect((await call('POST', acts, host, { kind: 'watch', url: 'http://plain.example/clip.mp4' })).json().code).toBe('INVALID_VIDEO_URL');
+    const a = (await call('POST', acts, host, { kind: 'watch', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })).json().activity;
     expect(a.watch).toMatchObject({ playing: false, position: 0 });
-    await call('POST', `/relays/${commLink}/activity/events`, host, { type: 'watch', data: { playing: true, position: 42 } });
-    expect((await call('GET', `/relays/${commLink}/activity`, host)).json().activity.watch).toMatchObject({ playing: true, position: 42 });
+    await call('POST', `${acts}/${a.id}/events`, host, { type: 'watch', data: { playing: true, position: 42 } });
+    expect((await call('GET', acts, host)).json().activities[0].watch).toMatchObject({ playing: true, position: 42 });
 
     // Share my activity / Activity joining.
     expect((await call('GET', `/users/${host.id}/activity?beaconId=${beaconId}`, guest)).json().activity).toMatchObject({ kind: 'watch', relayId: commLink, joinable: true });
@@ -116,9 +131,9 @@ describe('Message requests and activities', () => {
     expect((await call('GET', `/users/${host.id}/activity?beaconId=${beaconId}`, guest)).json().activity.joinable).toBe(false);
     await call('PATCH', `/beacons/${beaconId}/members/@me`, host, { shareActivity: false });
     expect((await call('GET', `/users/${host.id}/activity?beaconId=${beaconId}`, guest)).json().activity).toBeNull();
-    expect((await call('GET', `/relays/${commLink}/activity`, guest)).json().activity).toMatchObject({ count: 1, participants: [] });
+    expect((await call('GET', acts, guest)).json().activities).toMatchObject([{ count: 1, participants: [] }]);
 
-    await call('POST', `/relays/${commLink}/activity/leave`, host);
+    await call('POST', `${acts}/${a.id}/leave`, host);
     await inVoice(host, null);
   });
 });

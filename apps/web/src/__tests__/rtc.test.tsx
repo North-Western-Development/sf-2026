@@ -52,6 +52,13 @@ vi.mock('livekit-client', () => {
       Kind: { Audio: 'audio', Video: 'video' },
     },
     ConnectionState,
+    // Encrypted rooms (not exercised here): the key provider the service extends.
+    ExternalE2EEKeyProvider: class {
+      emit() {}
+      protected onSetEncryptionKey() {}
+    },
+    KeyProviderEvent: { SetKey: 'setKey' },
+    createKeyMaterialFromString: vi.fn(),
     createLocalAudioTrack: vi.fn().mockResolvedValue({
       mute: vi.fn(),
       unmute: vi.fn(),

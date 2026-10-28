@@ -32,7 +32,7 @@ export function RelayRoute() {
       key={relay.id}
       channelKey={channelKey('relay', relay.id)}
       beaconId={beaconId}
-      icon={<RelayIcon type={relay.type} className="h-6 w-6" />}
+      icon={<RelayIcon type={relay.type} announcement={relay.isAnnouncement} className="h-6 w-6" />}
       title={relay.name}
       topic={relay.topic}
       placeholder={`Transmit to #${relay.name}`}
@@ -40,7 +40,7 @@ export function RelayRoute() {
       welcome={
         <div className="mx-4 mb-4 mt-16">
           <span className="mb-2 flex h-[68px] w-[68px] items-center justify-center rounded-full bg-overlay">
-            <RelayIcon type={relay.type} className="h-10 w-10 text-fg" />
+            <RelayIcon type={relay.type} announcement={relay.isAnnouncement} className="h-10 w-10 text-fg" />
           </span>
           <h2 className="text-[32px] font-bold leading-tight text-fg">Welcome to #{relay.name}!</h2>
           <p className="text-fg-muted">This is the start of the #{relay.name} relay{beacon ? ` in ${beacon.name}` : ''}.</p>

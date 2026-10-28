@@ -3,7 +3,7 @@
 export type Presence = 'online' | 'idle' | 'dnd' | 'away' | 'invisible' | 'offline';
 
 export type ChannelType = 'relay' | 'link' | 'mesh' | 'thread';
-/** Stable key for a message container, e.g. `relay:<uuid>`. */
+/** Stable key for a message container, e.g. `relay:<id>`. */
 export type ChannelKey = `${ChannelType}:${string}`;
 export const channelKey = (type: ChannelType, id: string): ChannelKey => `${type}:${id}`;
 export const parseChannelKey = (key: ChannelKey) => {
@@ -41,6 +41,10 @@ export interface UserRef {
   /** Avatar decoration (AVATAR_DECORATIONS) and profile effect (PROFILE_EFFECTS). */
   avatarDecoration?: string | null;
   profileEffect?: string | null;
+  /** 'bot' for an application's bot, 'webhook' for a webhook's posts. */
+  botKind?: 'bot' | 'webhook' | null;
+  /** A bot instance staff verified (the check on its APP tag). */
+  botVerified?: boolean;
 }
 
 export interface SelfUser extends UserRef {
@@ -100,9 +104,13 @@ export interface Relay {
   topic: string | null;
   position: number;
   isUnhideable: boolean;
+  /** Seconds between transmissions per member (0 = off). */
+  slowmodeSeconds?: number;
   isHidden?: boolean;
   /** Comm-Links: voice and video are end-to-end encrypted. */
   isE2ee?: boolean;
+  /** A text relay whose transmissions can be published to the relays that follow it. */
+  isAnnouncement?: boolean;
   /** Decimal-string bitfield of the viewer's effective permissions. */
   myPermissions?: string;
   lastTransmissionId?: string | null;
@@ -116,6 +124,8 @@ export interface Clearance {
   position: number;
   permissions: string;
   hoist: boolean;
+  /** Anyone may @mention it. */
+  mentionable?: boolean;
   allowDelegation?: boolean;
 }
 
@@ -135,6 +145,9 @@ export interface Member {
   hasCompletedOnboarding?: boolean;
   /** Timed out until (ISO), while it lasts. */
   timeoutUntil?: string | null;
+  /** Server mute and deafen by a moderator, until lifted. */
+  serverMuted?: boolean;
+  serverDeafened?: boolean;
 }
 
 export interface Attachment {
@@ -145,6 +158,19 @@ export interface Attachment {
   mimeType?: string;
   width?: number;
   height?: number;
+  /** Voice messages: length and a waveform (base64 of 0-255 levels). */
+  durationMs?: number;
+  waveform?: string;
+}
+
+export interface Poll {
+  question: string;
+  answers: Array<{ id: number; text: string; emoji?: string | null; votes: number }>;
+  allowMultiselect: boolean;
+  expiresAt: string;
+  ended: boolean;
+  totalVoters: number;
+  myVotes: number[];
 }
 
 export interface ReactionSummary {
@@ -173,6 +199,9 @@ export interface Transmission {
   editedAt: string | null;
   attachments: Attachment[];
   stickers?: Array<{ id: string; name: string; url: string }>;
+  poll?: Poll | null;
+  /** A recorded voice message: its one attachment is the audio. */
+  voiceMessage?: boolean;
   /** The thread this transmission started (text relays). */
   thread?: { id: string; relayId: string; title: string; messageCount: number; lastTransmissionAt: string; isLocked: boolean } | null;
   /** A forwarded transmission: what was forwarded, and from where. */
@@ -202,6 +231,18 @@ export interface Transmission {
   pending?: boolean;
   failed?: boolean;
   nonce?: string;
+  /** Posted by a webhook. */
+  webhookId?: string | null;
+  /** The answer to a slash command: who used which command. */
+  interaction?: { name: string; user: UserRef | null } | null;
+  /** In an announcement relay: when it was published to the relays that follow it. */
+  publishedAt?: string | null;
+  /** A published announcement from a relay this one follows: where it came from. */
+  crosspost?: { beaconId: string; beaconName: string; relayId: string; relayName: string; transmissionId: string } | null;
+  /** Client-only: an ephemeral reply only this person sees. */
+  ephemeral?: boolean;
+  /** Client-only: a bot deferred its answer ("is thinking…"). */
+  thinking?: boolean;
 }
 
 export interface EmbedImage {
@@ -212,7 +253,7 @@ export interface EmbedImage {
 }
 
 export interface Embed {
-  type: 'link' | 'image' | 'video' | 'article';
+  type: 'link' | 'image' | 'video' | 'article' | 'rich';
   url: string;
   title?: string;
   description?: string;
@@ -220,6 +261,11 @@ export interface Embed {
   color?: string;
   thumbnail?: EmbedImage;
   image?: EmbedImage;
+  /** Rich embeds (bots and webhooks). */
+  author?: { name: string; url?: string };
+  footer?: { text: string };
+  fields?: Array<{ name: string; value: string; inline?: boolean }>;
+  timestamp?: string;
 }
 
 export interface ReadState {
@@ -283,6 +329,8 @@ export interface Mesh {
   members: UserRef[];
   lastTransmissionId?: string | null;
   lastTransmissionAt: string | null;
+  /** End-to-end encrypted since then (one-way). */
+  encryptedAt?: string | null;
 }
 
 export interface Cluster {
@@ -304,6 +352,10 @@ export interface VoiceState {
   isMuted: boolean;
   isDeafened: boolean;
   isSpeaking: boolean;
+  /** Keeping clips of the room (their audio is in what they save). */
+  isClipping?: boolean;
+  /** Talking as Priority Speaker: everyone else is played quieter. */
+  isPriority?: boolean;
 }
 
 /** A call in a direct link or mesh: who started it and who is still being rung. */

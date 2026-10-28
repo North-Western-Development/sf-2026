@@ -9,15 +9,15 @@ import { createThread, useThreads } from './threads';
 export const threadPath = (beaconId: string, relayId: string, threadId: string) => `/channels/${beaconId}/${relayId}/threads/${threadId}`;
 
 /** Asks for a name and starts a thread (from a transmission, or on its own), then opens it. */
-export function startThread(relay: Relay, navigate: (path: string) => void, starter?: Transmission) {
+export function startThread(relay: Relay, navigate: (path: string) => void, starter?: Transmission, isPrivate = false) {
   promptText({
-    title: 'Create Thread',
+    title: isPrivate ? 'Create Private Thread' : 'Create Thread',
     label: 'Thread Name',
     initial: starter ? (starter.content.replace(/\s+/g, ' ').trim().slice(0, 40) || 'New Thread') : 'New Thread',
     maxLength: 100,
     confirmLabel: 'Create Thread',
     onSubmit: async (name) => {
-      const t = await createThread(relay.id, name || 'New Thread', starter?.id);
+      const t = await createThread(relay.id, name || 'New Thread', starter?.id, isPrivate);
       navigate(threadPath(relay.beaconId, relay.id, t.id));
     },
   });

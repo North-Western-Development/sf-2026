@@ -10,8 +10,8 @@ describe('Stages', () => {
   let app: FastifyInstance;
   let db: any;
   let redis: any;
-  const host = { id: 'fe500000-0000-4000-8000-000000000001', username: 'stage_host' };
-  const fan = { id: 'fe500000-0000-4000-8000-000000000002', username: 'stage_fan' };
+  const host = { id: '827708711693582337', username: 'stage_host' };
+  const fan = { id: '827708711693582338', username: 'stage_fan' };
   const users = [host, fan];
   const auth = (u: typeof host) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
   const call = (method: string, url: string, u: typeof host, payload?: unknown) => app.inject({ method: method as any, url: `/api/v1${url}`, headers: auth(u), payload: payload as any });
@@ -76,6 +76,17 @@ describe('Stages', () => {
     // Anyone can step down; only moderators move others.
     expect((await call('DELETE', `/relays/${stageId}/stage/speakers/${host.id}`, fan)).json().code).toBe('NOT_STAGE_MODERATOR');
     expect((await call('DELETE', `/relays/${stageId}/stage/speakers/${fan.id}`, fan)).json().stage.speakers).toEqual([host.id]);
+
+    // Invited without asking: they are asked first, and stay in the audience until they accept.
+    expect((await call('POST', `/relays/${stageId}/stage/invite`, fan, { accept: true })).json().code).toBe('NO_INVITE');
+    const asked = (await call('PUT', `/relays/${stageId}/stage/speakers/${fan.id}`, host)).json().stage;
+    expect(asked).toMatchObject({ speakers: [host.id], invites: [fan.id] });
+    expect(await grant(fan)).toEqual({ canSpeak: false, canPublish: false });
+    expect((await call('POST', `/relays/${stageId}/stage/invite`, fan, { accept: false })).json().stage).toMatchObject({ speakers: [host.id], invites: [] });
+    await call('PUT', `/relays/${stageId}/stage/speakers/${fan.id}`, host);
+    expect((await call('POST', `/relays/${stageId}/stage/invite`, fan, { accept: true })).json().stage).toMatchObject({ speakers: [host.id, fan.id], invites: [] });
+    expect(await grant(fan)).toEqual({ canSpeak: true, canPublish: true });
+    await call('DELETE', `/relays/${stageId}/stage/speakers/${fan.id}`, fan);
 
     // Leaving the stage takes you off it.
     await inStage(host, null);

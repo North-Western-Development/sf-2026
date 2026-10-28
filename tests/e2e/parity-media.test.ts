@@ -11,8 +11,8 @@ describe('Parity Section 7: Media Uploads (file-service) E2E Suite', () => {
   let fileApp: FastifyInstance;
   let apiApp: FastifyInstance;
 
-  const userId = 'c0000000-0000-0000-0000-000000000001';
-  const otherUserId = 'c0000000-0000-0000-0000-000000000002';
+  const userId = '230955573826158593';
+  const otherUserId = '230955573826158594';
   let userToken: string;
   let otherToken: string;
 

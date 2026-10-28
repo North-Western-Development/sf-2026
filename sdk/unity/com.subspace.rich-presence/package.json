@@ -1,0 +1,18 @@
+{
+  "name": "com.subspace.rich-presence",
+  "version": "0.1.0",
+  "displayName": "Subspace Rich Presence",
+  "description": "Show what the player is doing in your game on their Subspace Frequency profile, through the Subspace desktop app running on the same computer. Desktop platforms only; WebGL builds compile but do nothing.",
+  "unity": "2021.3",
+  "author": {
+    "name": "Subspace Frequency"
+  },
+  "keywords": ["subspace", "rich presence", "activity", "status"],
+  "samples": [
+    {
+      "displayName": "Basic",
+      "description": "Sets an activity on start and updates it when a match begins.",
+      "path": "Samples~/Basic"
+    }
+  ]
+}

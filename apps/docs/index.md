@@ -13,6 +13,9 @@ hero:
       text: Deploy an instance
       link: /operate/deployment
     - theme: alt
+      text: Build a bot
+      link: /developers/
+    - theme: alt
       text: Run it locally
       link: /guide/local-development
 
@@ -27,6 +30,10 @@ features:
     details: Every route needs a session unless it says otherwise, device sessions revoke instantly, passkeys and authenticator 2FA are built in.
   - title: Web, desktop and mobile
     details: A React web app, a Tauri desktop app and an Expo mobile app with push notifications.
+  - title: A developer platform
+    details: Bots with slash commands and a real-time gateway, webhooks, Sign in with Subspace (OAuth2) and Rich Presence, with SDKs for JavaScript, Deno, Python, Java, C#, C++, Unity and Unreal Engine on the instance's own package registry.
+    link: /developers/
+    linkText: Developer docs
   - title: Yours to operate
     details: One compose file, one domain, a migrate step, and guides for TLS, email, backups and moderation.
 ---

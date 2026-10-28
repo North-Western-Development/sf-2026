@@ -20,6 +20,8 @@ import {
   DEFAULT_EVERYONE_PERMISSIONS,
   hasPermission,
   TIMEOUT_DURATIONS,
+  canCreateExpressions,
+  canEditExpression,
 } from '@subspace/constants';
 import {
   extractAuthToken,
@@ -227,8 +229,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     const { id: beaconId } = request.params as { id: string };
     if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
 
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_REGEX.test(beaconId)) {
+    const SNOWFLAKE_RE = /^[1-9][0-9]{0,18}$/;
+    if (!SNOWFLAKE_RE.test(beaconId)) {
       return reply.status(404).send({ error: 'Beacon not found' });
     }
 
@@ -597,6 +599,13 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
         )
       );
 
+    // A kicked bot takes its own clearance with it.
+    const managed = await db.select({ id: clearances.id }).from(clearances).where(and(eq(clearances.beaconId, beaconId), eq(clearances.managedBy, targetId)));
+    for (const c of managed) {
+      await db.delete(clearances).where(eq(clearances.id, c.id));
+      await publishGatewayEvent(app, 'CLEARANCE_DELETE', { beaconId, clearanceId: c.id }, { beaconId });
+    }
+
     const audience = await resolveBeaconAudience(db, beaconId);
     await publishGatewayEvent(app, 'MEMBER_REMOVE', { beaconId, transmitterId: targetId }, { transmitterIds: [targetId, ...audience] });
     await publishSessionRefresh(app, [targetId, ...audience]);
@@ -641,8 +650,8 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
 
-    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_GLYPHS)) {
-      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_GLYPHS clearance' });
+    if (!canCreateExpressions(actorContext.effectivePermissions)) {
+      return reply.status(403).send({ error: 'Transmitter lacks CREATE_EXPRESSIONS clearance', code: 'MISSING_PERMISSIONS' });
     }
 
     const { name, url } = request.body as { name: string; url: string };
@@ -690,8 +699,11 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
 
-    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_GLYPHS)) {
-      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_GLYPHS clearance' });
+    // Your own with Create Expressions; anyone's with Manage Expressions.
+    const [glyph] = await db.select({ uploaderId: beaconEmojis.uploaderId }).from(beaconEmojis).where(and(eq(beaconEmojis.id, emojiId), eq(beaconEmojis.beaconId, beaconId))).limit(1);
+    if (!glyph) return reply.status(404).send({ error: 'Glyph not found' });
+    if (!canEditExpression(actorContext.effectivePermissions, glyph.uploaderId === token.transmitterId)) {
+      return reply.status(403).send({ error: 'Only its creator, or someone with Manage Expressions, can change it', code: 'MISSING_PERMISSIONS' });
     }
 
     const { name } = request.body as { name: string };
@@ -727,8 +739,11 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
 
-    if (!hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_GLYPHS)) {
-      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_GLYPHS clearance' });
+    // Your own with Create Expressions; anyone's with Manage Expressions.
+    const [glyph] = await db.select({ uploaderId: beaconEmojis.uploaderId }).from(beaconEmojis).where(and(eq(beaconEmojis.id, emojiId), eq(beaconEmojis.beaconId, beaconId))).limit(1);
+    if (!glyph) return reply.status(404).send({ error: 'Glyph not found' });
+    if (!canEditExpression(actorContext.effectivePermissions, glyph.uploaderId === token.transmitterId)) {
+      return reply.status(403).send({ error: 'Only its creator, or someone with Manage Expressions, can change it', code: 'MISSING_PERMISSIONS' });
     }
 
     await db

@@ -1,18 +1,37 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import dotenv from 'dotenv';
-import { randomUUID } from 'node:crypto';
-import { GATEWAY_OPCODES, PRESENCE_STATES, PresenceState } from '@subspace/constants';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  GATEWAY_OPCODES,
+  PRESENCE_STATES,
+  PresenceState,
+  PERMISSIONS,
+  hasPermission,
+  ACTIVITY_VISIBILITY,
+  sanitizeActivity,
+  sameActivity,
+  type Activity,
+  type ActivityVisibility,
+} from '@subspace/constants';
 import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import {
   createDatabaseClient,
   resolvePresencePeers,
+  resolveFriendIds,
+  resolveBotIntents,
   resolveTransmitterBeaconIds,
   authorizeVoiceRelay,
+  computeRelayPermissions,
+  appBots,
+  transmitters,
   authorizeCall,
   transmissions,
   eq,
   and,
   statsKey,
+  regionBlocked,
+  loadRegionRanges,
+  REGION_BLOCKED_HEADERS,
 } from '@subspace/database';
 import { Redis } from 'ioredis';
 
@@ -29,7 +48,11 @@ const CHANNELS = {
   voice: 'gateway:voice:events',
   dispatch: 'gateway:transmission:events',
   session: 'gateway:session:events',
+  activity: 'gateway:activity:events',
 } as const;
+
+/** Activity updates a session may share: one every ACTIVITY_INTERVAL_MS, the latest kept for the next slot. */
+const ACTIVITY_INTERVAL_MS = 2000;
 
 /** Redis hash mirroring every session's masked presence, so the API can read it (e.g. member lists). */
 const PRESENCE_HASH_KEY = 'presence';
@@ -50,12 +73,28 @@ export interface Session {
   isMuted?: boolean;
   isDeafened?: boolean;
   isSpeaking?: boolean;
+  isClipping?: boolean;
+  isPriority?: boolean;
   /** When this session joined voice (ms), for the voice-time badges. */
   voiceSince?: number | null;
   /** Transmitters allowed to observe this session's presence, and whose presence it may observe. */
   peers: Set<string>;
   /** Beacons this transmitter belongs to; scopes voice-state visibility. */
   beaconIds: Set<string>;
+  /** Accepted affiliates: who sees an activity shared with friends only. */
+  friends: Set<string>;
+  /** Activity Privacy from their account, reloaded on RELATIONSHIPS_REFRESH. */
+  activityVisibility: ActivityVisibility;
+  /** What this session reports they are doing (desktop app), kept only while connected. */
+  activity: Activity | null;
+  activityAt?: number;
+  activityTimer?: ReturnType<typeof setTimeout> | null;
+  /** A bot's connection, and the privileged intents it has (its developer's choice, within the instance's developer policy). */
+  isBot?: boolean;
+  messageContent?: boolean;
+  activityIntent?: boolean;
+  /** When this session last changed its presence (op 3), for the rate limit. */
+  presenceTimes?: number[];
 }
 
 /**
@@ -65,12 +104,22 @@ export interface Session {
 export interface GatewayResolver {
   getPresencePeers(transmitterId: string): Promise<string[]>;
   getBeaconIds(transmitterId: string): Promise<string[]>;
+  /** Accepted affiliates (defaults to none). */
+  getFriendIds?(transmitterId: string): Promise<string[]>;
+  /** Their Activity Privacy setting (defaults to 'off'). */
+  getActivityVisibility?(transmitterId: string): Promise<ActivityVisibility>;
   /** Returns the relay's beacon id when the transmitter may join its voice room. */
   authorizeVoice(transmitterId: string, relayId: string): Promise<string | null>;
+  /** Whether they hold Priority Speaker in that comm-link. */
+  canPrioritySpeak(transmitterId: string, relayId: string): Promise<boolean>;
   /** Everyone in the conversation when the transmitter may join its call, otherwise null. */
   authorizeCall(transmitterId: string, channelType: string, channelId: string): Promise<string[] | null>;
   /** Record how a call ended on its "started a call" transmission. */
   finishCall(messageId: string, content: string): Promise<void>;
+  /** The bot behind a bot token (`Bot <token>` in IDENTIFY) and the intents it gets, or null. */
+  resolveBot(token: string): Promise<{ transmitterId: string; username: string; messageContent: boolean; activity: boolean } | null>;
+  /** A connected bot's intents again, after its developer or the developer policy changed (defaults to unchanged). */
+  getBotIntents?(botUserId: string): Promise<{ messageContent: boolean; activity: boolean }>;
 }
 
 export function createDatabaseResolver(databaseUrl = process.env.DATABASE_URL): GatewayResolver {
@@ -80,8 +129,10 @@ export function createDatabaseResolver(databaseUrl = process.env.DATABASE_URL): 
       getPresencePeers: async () => [],
       getBeaconIds: async () => [],
       authorizeVoice: async () => null,
+      canPrioritySpeak: async () => false,
       authorizeCall: async () => null,
       finishCall: async () => {},
+      resolveBot: async () => null,
     };
   }
   const { db } = createDatabaseClient(databaseUrl);
@@ -93,8 +144,27 @@ export function createDatabaseResolver(databaseUrl = process.env.DATABASE_URL): 
   return {
     getPresencePeers: (id) => safe(() => resolvePresencePeers(db, id), []),
     getBeaconIds: (id) => safe(() => resolveTransmitterBeaconIds(db, id), []),
+    getFriendIds: (id) => safe(() => resolveFriendIds(db, id), []),
+    getActivityVisibility: (id) =>
+      safe(async () => {
+        const [row] = await db.select({ v: transmitters.activityVisibility }).from(transmitters).where(eq(transmitters.id, id)).limit(1);
+        return (ACTIVITY_VISIBILITY as readonly string[]).includes(row?.v ?? '') ? (row!.v as ActivityVisibility) : 'off';
+      }, 'off' as ActivityVisibility),
     authorizeVoice: (id, relayId) => safe(() => authorizeVoiceRelay(db, id, relayId), null),
+    canPrioritySpeak: (id, relayId) => safe(async () => hasPermission(await computeRelayPermissions(db, id, relayId), PERMISSIONS.PRIORITY_SPEAKER), false),
     authorizeCall: (id, type, channelId) => safe(() => authorizeCall(db, id, type, channelId), null),
+    resolveBot: (token) =>
+      safe(async () => {
+        const hash = createHash('sha256').update(token).digest('hex');
+        const [row] = await db
+          .select({ transmitterId: appBots.userId, username: transmitters.username })
+          .from(appBots)
+          .innerJoin(transmitters, eq(transmitters.id, appBots.userId))
+          .where(eq(appBots.tokenHash, hash))
+          .limit(1);
+        return row ? { ...row, ...(await resolveBotIntents(db, row.transmitterId)) } : null;
+      }, null),
+    getBotIntents: (id) => safe(() => resolveBotIntents(db, id), { messageContent: false, activity: false }),
     finishCall: (messageId, content) =>
       safe(async () => {
         await db.update(transmissions).set({ content }).where(and(eq(transmissions.id, messageId), eq(transmissions.type, 'system_call')));
@@ -114,6 +184,8 @@ interface VoiceState {
   isMuted: boolean;
   isDeafened: boolean;
   isSpeaking: boolean;
+  isClipping: boolean;
+  isPriority: boolean;
 }
 
 export interface GatewayOptions {
@@ -130,11 +202,28 @@ const maskPresence = (p: PresenceState): PresenceState =>
 export function createGatewayServer(customPort = port, options: GatewayOptions = {}) {
   const instanceId = randomUUID();
   const resolver = options.resolver ?? createDatabaseResolver();
-  const wss = new WebSocketServer({ port: customPort, host });
+  // Clients send small JSON frames; anything bigger is refused before it is buffered.
+  loadRegionRanges();
+  const wss = new WebSocketServer({
+    port: customPort,
+    host,
+    maxPayload: 16 * 1024,
+    // BLOCK_EU: nobody in the EU, the EEA or the UK connects. Behind nginx on the same host the
+    // client address is in X-Forwarded-For (set by nginx, never passed through from the client).
+    verifyClient: (info, done) => {
+      const remote = info.req.socket.remoteAddress ?? '';
+      const forwarded = String(info.req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+      const ip = forwarded && /^(127\.|::1$|::ffff:127\.)/.test(remote) ? forwarded : remote;
+      if (regionBlocked(ip)) done(false, 401, 'Subspace Frequency is not available in your region', { ...REGION_BLOCKED_HEADERS });
+      else done(true);
+    },
+  });
   const sessions = new Map<WebSocket, Session>();
   const voiceStates = new Map<string, VoiceState>();
   /** Last known presence (already masked) for every transmitter seen on the cluster. */
   const knownPresence = new Map<string, PresenceState>();
+  /** Shared activities on the cluster, and who may see each ('friends' or every presence peer). */
+  const knownActivity = new Map<string, { activity: Activity; audience: 'everyone' | 'friends' }>();
 
   let redisPub: Redis | null = null;
 
@@ -177,6 +266,27 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     }
   }
 
+  type ActivityEvent = { transmitter_id: string; activity: Activity | null; audience: 'everyone' | 'friends' };
+
+  /** Whether this session may see that transmitter's shared activity. Their own other devices always do. */
+  const seesActivity = (sess: Session, transmitterId: string, audience: 'everyone' | 'friends') =>
+    sess.transmitterId === transmitterId ||
+    ((!sess.isBot || !!sess.activityIntent) && sess.peers.has(transmitterId) && (audience === 'everyone' || sess.friends.has(transmitterId)));
+
+  function deliverActivity(event: ActivityEvent) {
+    const previous = knownActivity.get(event.transmitter_id);
+    if (event.activity) knownActivity.set(event.transmitter_id, { activity: event.activity, audience: event.audience });
+    else knownActivity.delete(event.transmitter_id);
+    for (const [ws, sess] of authedSessions()) {
+      if (event.activity && seesActivity(sess, event.transmitter_id, event.audience)) {
+        dispatch(ws, 'USER_ACTIVITY_UPDATE', { transmitter_id: event.transmitter_id, activity: event.activity });
+      } else if (previous && seesActivity(sess, event.transmitter_id, previous.audience)) {
+        // Cleared, or narrowed to friends: whoever saw it before stops seeing it.
+        dispatch(ws, 'USER_ACTIVITY_UPDATE', { transmitter_id: event.transmitter_id, activity: null });
+      }
+    }
+  }
+
   type VoiceEvent = {
     transmitter_id: string;
     username: string;
@@ -188,6 +298,8 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     is_muted: boolean;
     is_deafened: boolean;
     is_speaking: boolean;
+    is_clipping?: boolean;
+    is_priority?: boolean;
   };
 
   /** Who may see a voice state: the relay's beacon members, or the call's conversation members. */
@@ -216,6 +328,8 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
             isMuted: event.is_muted,
             isDeafened: event.is_deafened,
             isSpeaking: event.is_speaking,
+            isClipping: !!event.is_clipping,
+            isPriority: !!event.is_priority,
           }
         : null;
     if (next) voiceStates.set(event.transmitter_id, next);
@@ -257,6 +371,43 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     }
   }
 
+  /**
+   * What a bot sees of an event: without the Message Content intent, message text, embeds and
+   * attachments only where it is mentioned or wrote the message itself (Discord's rule).
+   */
+  /**
+   * What a bot without the Message Content intent may see of a transmission event: everything
+   * about it but what was said, unless it mentions the bot, is the bot's own, or is in a Direct
+   * Link or mesh with it (Discord exempts DMs too). Replies' snippets, forwarded text and link
+   * previews arriving later are what was said as well.
+   */
+  function forBot(sess: Session, payload: any) {
+    if (sess.messageContent || !payload || typeof payload !== 'object') return payload;
+    const inDm = (p: any) => p?.channelType === 'link' || p?.channelType === 'mesh' || !!p?.p2pLinkId || !!p?.meshId;
+    // Link previews filled in after sending (TRANSMISSION_EMBEDS_UPDATE).
+    if (Array.isArray(payload.embeds) && payload.transmissionId && !payload.transmission) {
+      return inDm(payload) ? payload : { ...payload, embeds: [] };
+    }
+    const t = payload.transmission;
+    if (!t || typeof t !== 'object') return payload;
+    const mentioned = Array.isArray(t.mentions) && t.mentions.includes(sess.transmitterId);
+    const own = t.author?.id === sess.transmitterId || t.transmitterId === sess.transmitterId;
+    if (mentioned || own || inDm(payload) || inDm(t)) return payload;
+    return {
+      ...payload,
+      transmission: {
+        ...t,
+        content: '',
+        embeds: [],
+        attachments: [],
+        stickers: [],
+        poll: null,
+        ...(t.forwarded ? { forwarded: { ...t.forwarded, content: '', attachments: [], stickers: [] } } : {}),
+        ...(t.replyTo && typeof t.replyTo === 'object' ? { replyTo: { ...t.replyTo, content: '' } } : {}),
+      },
+    };
+  }
+
   function deliverDispatch(event: { type: string; audience?: string[]; voice_relay_id?: string; sender_id?: string }) {
     if (!Array.isArray(event.audience) || event.audience.length === 0) return; // fail closed
     let audience = new Set(event.audience);
@@ -266,9 +417,11 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       if (voiceStates.get(event.sender_id ?? '')?.relayId !== event.voice_relay_id) return;
       audience = new Set([...audience].filter((id) => voiceStates.get(id)?.relayId === event.voice_relay_id));
     }
-    const { audience: _omit, ...payload } = event;
+    const { audience: _omit, payloadType, ...rest } = event as typeof event & { payloadType?: unknown };
+    // The payload's own `type` (an interaction's 2), which the event name had to make room for.
+    const payload = payloadType !== undefined ? { ...rest, type: payloadType } : rest;
     for (const [ws, sess] of authedSessions()) {
-      if (audience.has(sess.transmitterId!)) dispatch(ws, event.type, payload);
+      if (audience.has(sess.transmitterId!)) dispatch(ws, event.type, sess.isBot ? forBot(sess, payload) : payload);
     }
   }
 
@@ -278,6 +431,12 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
     return [...sess.peers]
       .filter((id) => knownPresence.has(id))
       .map((id) => ({ transmitter_id: id, presence: knownPresence.get(id)! }));
+  }
+
+  function activitySnapshot(sess: Session) {
+    return [...knownActivity]
+      .filter(([id, entry]) => seesActivity(sess, id, entry.audience))
+      .map(([id, entry]) => ({ transmitter_id: id, activity: entry.activity }));
   }
 
   function voiceSnapshot(sess: Session) {
@@ -294,28 +453,81 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
         is_muted: v.isMuted,
         is_deafened: v.isDeafened,
         is_speaking: v.isSpeaking,
+        is_clipping: v.isClipping,
+        is_priority: v.isPriority,
       }));
   }
 
   async function loadRelationships(sess: Session) {
-    const [peers, beaconIds] = await Promise.all([
+    const [peers, beaconIds, friends, visibility] = await Promise.all([
       resolver.getPresencePeers(sess.transmitterId!),
       resolver.getBeaconIds(sess.transmitterId!),
+      resolver.getFriendIds?.(sess.transmitterId!) ?? Promise.resolve([]),
+      // Bots have no privacy settings: what they are "playing" is for everyone.
+      sess.isBot ? Promise.resolve('everyone' as const) : (resolver.getActivityVisibility?.(sess.transmitterId!) ?? Promise.resolve('off' as const)),
     ]);
     sess.peers = new Set(peers);
     sess.beaconIds = new Set(beaconIds);
+    sess.friends = new Set(friends);
+    sess.activityVisibility = visibility;
+    if (sess.isBot && resolver.getBotIntents) {
+      const intents = await resolver.getBotIntents(sess.transmitterId!);
+      sess.messageContent = intents.messageContent;
+      sess.activityIntent = intents.activity;
+    }
   }
 
   async function refreshSessions(transmitterIds: string[]) {
     const targets = new Set(transmitterIds);
     for (const [ws, sess] of authedSessions()) {
       if (!targets.has(sess.transmitterId!)) continue;
+      const before = sess.activityVisibility;
       await loadRelationships(sess);
       dispatch(ws, 'RELATIONSHIPS_REFRESH', {
         presences: presenceSnapshot(sess),
         voice_states: voiceSnapshot(sess),
+        activities: activitySnapshot(sess),
       });
+      // Activity Privacy changed: share again under the new setting (or stop sharing).
+      if (sess.activity && before !== sess.activityVisibility) shareActivity(sess);
     }
+  }
+
+  /**
+   * Share what this session reports, as their Activity Privacy allows: nothing when it is off or
+   * they are invisible. The newest report across their sessions wins; it is never written anywhere.
+   */
+  function shareActivity(sess: Session) {
+    const visibility = sess.activityVisibility;
+    const hidden = visibility === 'off' || sess.presence === PRESENCE_STATES.INVISIBLE;
+    const activity = hidden ? null : sess.activity;
+    const audience = visibility === 'friends' ? 'friends' : 'everyone';
+    const known = knownActivity.get(sess.transmitterId!);
+    if (!activity && !known) return;
+    if (activity && known && known.audience === audience && sameActivity(known.activity, activity)) return;
+    const event: ActivityEvent = { transmitter_id: sess.transmitterId!, activity, audience };
+    deliverActivity(event);
+    publish(CHANNELS.activity, event);
+  }
+
+  /**
+   * At most one shared update per ACTIVITY_INTERVAL_MS per session; the last one always goes out.
+   * Stopping is never held back.
+   */
+  function scheduleActivity(sess: Session) {
+    if (!sess.activity && sess.activityTimer) {
+      clearTimeout(sess.activityTimer);
+      sess.activityTimer = null;
+    }
+    if (sess.activityTimer) return;
+    const wait = Math.max(0, (sess.activityAt ?? 0) + ACTIVITY_INTERVAL_MS - Date.now());
+    const run = () => {
+      sess.activityTimer = null;
+      sess.activityAt = Date.now();
+      shareActivity(sess);
+    };
+    if (wait === 0 || !sess.activity) run();
+    else sess.activityTimer = setTimeout(run, wait);
   }
 
   /** A device was signed out (or the account disabled/deleted): tell its sockets, then close them. */
@@ -371,6 +583,8 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       is_muted: !!sess.isMuted,
       is_deafened: !!sess.isDeafened,
       is_speaking: !!sess.isSpeaking,
+      is_clipping: !!sess.isClipping,
+      is_priority: !!sess.isPriority,
       timestamp: new Date().toISOString(),
     };
     // Which comm-link or stage each transmitter is in, for the API (activities and stages check
@@ -416,6 +630,7 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
             // Events we published were already delivered locally.
             if (event.origin === instanceId) return;
             if (channel === CHANNELS.presence) deliverPresence(event);
+            else if (channel === CHANNELS.activity) deliverActivity({ ...event, activity: event.activity ? sanitizeActivity(event.activity) : null });
             else if (channel === CHANNELS.voice) deliverVoice(event);
             else if (channel === CHANNELS.dispatch) deliverDispatch(event);
             else if (channel === CHANNELS.session && event.type === 'SESSION_REVOKE') revokeSockets(event);
@@ -441,6 +656,9 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       isAlive: true,
       peers: new Set(),
       beaconIds: new Set(),
+      friends: new Set(),
+      activityVisibility: 'off',
+      activity: null,
     });
 
     send(ws, { op: GATEWAY_OPCODES.HELLO, d: { heartbeat_interval: 30000 } });
@@ -480,9 +698,24 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
           ws.close(4002, 'Malformed IDENTIFY payload');
           return;
         }
-        const decoded = verifyAccessToken(token, JWT_SECRET);
+        // Bots identify with `Bot <token>`; people with their access token.
+        let decoded: { transmitterId: string; username: string; sid?: string } | null;
+        if (token.startsWith('Bot ')) {
+          const bot = await resolver.resolveBot(token.slice(4).trim());
+          decoded = bot ? { transmitterId: bot.transmitterId, username: bot.username } : null;
+          session.isBot = !!bot;
+          session.messageContent = !!bot?.messageContent;
+          session.activityIntent = !!bot?.activity;
+        } else {
+          decoded = verifyAccessToken(token, JWT_SECRET);
+        }
         if (!decoded) {
           ws.close(4003, 'Invalid or expired authentication ticket');
+          return;
+        }
+        // A device signed out (Logged-in Devices, password change) cannot connect on a token it still holds.
+        if (decoded.sid && redisReady() && !(await redisPub!.hexists(`sessions:${decoded.transmitterId}`, decoded.sid).catch(() => 1))) {
+          ws.close(4003, 'Session has been signed out');
           return;
         }
 
@@ -503,6 +736,8 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
           presence: session.presence,
           presences: presenceSnapshot(session),
           voice_states: voiceSnapshot(session),
+          activities: activitySnapshot(session),
+          activity_visibility: session.activityVisibility,
           session_id: `subspace_sess_${randomUUID()}`,
         });
 
@@ -515,8 +750,10 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
         return;
       }
 
+      // Bots do not join voice.
+      if (payload.op === GATEWAY_OPCODES.VOICE_STATE_UPDATE && session.isBot) return;
       if (payload.op === GATEWAY_OPCODES.VOICE_STATE_UPDATE) {
-        const { relay_id, call_type, call_id, is_muted, is_deafened, is_speaking } = payload.d || {};
+        const { relay_id, call_type, call_id, is_muted, is_deafened, is_speaking, is_clipping, is_priority } = payload.d || {};
         let beaconId: string | null = null;
         let call: Session['voiceCall'] = null;
         if (relay_id) {
@@ -540,6 +777,9 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
         session.isMuted = !!is_muted;
         session.isDeafened = !!is_deafened;
         session.isSpeaking = !!is_speaking;
+        session.isClipping = !!is_clipping;
+        // Priority Speaker only for those who hold it in this comm-link.
+        session.isPriority = !!is_priority && !!relay_id && (await resolver.canPrioritySpeak(session.transmitterId!, relay_id));
         trackVoiceTime(session, !!(session.voiceRelayId || session.voiceCall));
         broadcastVoiceStateUpdate(session, session.voiceRelayId ?? null, beaconId);
         return;
@@ -548,9 +788,26 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       if (payload.op === GATEWAY_OPCODES.PRESENCE_UPDATE) {
         const requestedPresence = payload.d?.presence as PresenceState;
         if (!Object.values(PRESENCE_STATES).includes(requestedPresence)) return;
+        // Each change is broadcast to everyone who sees them: at most 5 every 20 seconds.
+        const now = Date.now();
+        session.presenceTimes = (session.presenceTimes ?? []).filter((t) => now - t < 20_000);
+        if (session.presenceTimes.length >= 5) return;
+        session.presenceTimes.push(now);
+        const wasInvisible = session.presence === PRESENCE_STATES.INVISIBLE;
         session.presence = requestedPresence;
         dispatch(ws, 'PRESENCE_CONFIRMATION', { presence: requestedPresence });
         broadcastPresenceUpdate(session.transmitterId!, requestedPresence);
+        // Going invisible hides the activity too; coming back shares it again.
+        if (session.activity && wasInvisible !== (requestedPresence === PRESENCE_STATES.INVISIBLE)) shareActivity(session);
+        return;
+      }
+
+      if (payload.op === GATEWAY_OPCODES.ACTIVITY_UPDATE) {
+        const raw = payload.d?.activity;
+        const activity = raw === null ? null : sanitizeActivity(raw);
+        if (raw !== null && !activity) return;
+        session.activity = activity;
+        scheduleActivity(session);
       }
     });
 
@@ -560,9 +817,16 @@ export function createGatewayServer(customPort = port, options: GatewayOptions =
       clearTimeout(authTimeout);
       if (!session?.transmitterId || !session.isAuthenticated) return;
 
+      if (session.activityTimer) clearTimeout(session.activityTimer);
+      if (session.activity) {
+        // Their activity ends with the session that reported it.
+        session.activity = null;
+        const other = [...sessions.values()].find((s) => s.isAuthenticated && s.transmitterId === session.transmitterId && s.activity);
+        shareActivity(other ?? session);
+      }
       trackVoiceTime(session, false);
       if (session.voiceRelayId || session.voiceCall) {
-        session.isMuted = session.isDeafened = session.isSpeaking = false;
+        session.isMuted = session.isDeafened = session.isSpeaking = session.isClipping = session.isPriority = false;
         session.voiceCall = null;
         broadcastVoiceStateUpdate(session, null, null);
       }

@@ -109,3 +109,46 @@ test.describe('End-to-end encrypted direct links', () => {
     await theirs.context().close();
   });
 });
+
+test.describe('End-to-end encrypted group DMs', () => {
+  test('a mesh turns on encryption, every member reads along, and the server holds only ciphertext', async ({ page, me, browser }) => {
+    test.setTimeout(120_000);
+    const b = await register('meshb', 'Mesh Bravo');
+    const c = await register('meshc', 'Mesh Charlie');
+    await me.api.befriend(b);
+    await me.api.befriend(c);
+    const { mesh } = await me.api.post('/meshes', { name: 'Night Shift', memberIds: [b.transmitter.id, c.transmitter.id] });
+    const path = `/channels/@me/${mesh.id}`;
+
+    // Everyone opens Subspace once, so each browser has an encryption device.
+    const pb = await openAs(browser, b, path);
+    const pc = await openAs(browser, c, path);
+    await signIn(page, me, path);
+    for (const u of [me, b, c]) await expect.poll(async () => (await me.api.get(`/e2ee/users/${u.transmitter.id}/devices`)).devices.length, { timeout: 15_000 }).toBeGreaterThan(0);
+
+    await page.getByRole('button', { name: 'Turn On Encryption' }).click();
+    await page.getByRole('dialog', { name: 'Turn on end-to-end encryption?' }).getByRole('button', { name: 'Turn On' }).click();
+    await expect(page.getByRole('log')).toContainText('turned on end-to-end encryption');
+    for (const p of [pb, pc]) await expect(p.getByRole('button', { name: 'End-to-End Encrypted' })).toBeVisible();
+
+    const box = page.getByRole('textbox', { name: /^Transmit to / });
+    await box.fill('rendezvous at hangar nine');
+    await box.press('Enter');
+    for (const p of [pb, pc]) await expect(p.getByRole('log').getByRole('article').filter({ hasText: 'rendezvous at hangar nine' })).toBeVisible({ timeout: 15_000 });
+    const reply = pc.getByRole('textbox', { name: /^Transmit to / });
+    await reply.fill('charlie copies');
+    await reply.press('Enter');
+    for (const p of [page, pb]) await expect(p.getByRole('log').getByRole('article').filter({ hasText: 'charlie copies' })).toBeVisible({ timeout: 15_000 });
+
+    const { transmissions } = await me.api.get(`/channels/mesh/${mesh.id}/transmissions`);
+    expect(JSON.stringify(transmissions)).not.toContain('hangar nine');
+    expect(JSON.stringify(transmissions)).not.toContain('charlie copies');
+    await expect(me.api.post(`/channels/mesh/${mesh.id}/transmissions`, { content: 'plaintext' })).rejects.toThrow(/ENCRYPTION_REQUIRED/);
+
+    // Verify a member's safety numbers from the group.
+    await page.getByRole('button', { name: 'End-to-End Encrypted' }).click();
+    await page.getByRole('list', { name: 'Members to verify' }).getByRole('button', { name: 'Mesh Bravo' }).click();
+    await expect(page.getByLabel('Your safety number')).toHaveText(/^(\d{5} ){11}\d{5}$/);
+    for (const p of [pb, pc]) await p.context().close();
+  });
+});

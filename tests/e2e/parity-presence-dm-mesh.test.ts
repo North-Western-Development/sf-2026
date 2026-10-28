@@ -26,9 +26,9 @@ describe('Parity: presence (dnd), custom status, DM open rules, mesh affiliation
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const userAId = 'e1000000-0000-0000-0000-000000000001';
-  const userBId = 'e1000000-0000-0000-0000-000000000002';
-  const userCId = 'e1000000-0000-0000-0000-000000000003';
+  const userAId = '956588563077529601';
+  const userBId = '956588563077529602';
+  const userCId = '956588563077529603';
   let tokenA: string, tokenB: string, tokenC: string;
 
   beforeAll(async () => {
@@ -98,6 +98,15 @@ describe('Parity: presence (dnd), custom status, DM open rules, mesh affiliation
     });
     expect(clearRes.statusCode).toBe(200);
     expect(clearRes.json().customStatus).toBeNull();
+  });
+
+  it('accepts a status that never clears (expiresAt null), and refuses a malformed expiry', async () => {
+    if (!(app as any).db) return;
+    const send = (customStatus: unknown) =>
+      app.inject({ method: 'PATCH', url: '/api/v1/users/@me/status', headers: { authorization: `Bearer ${tokenA}` }, payload: { customStatus } });
+    expect((await send({ text: 'Forever', expiresAt: null })).statusCode).toBe(200);
+    expect((await send({ text: 'Soon', expiresAt: new Date(Date.now() + 3600_000).toISOString() })).statusCode).toBe(200);
+    expect((await send({ text: 'Bad', expiresAt: 'tomorrow' })).statusCode).toBe(400);
   });
 
   it('masks dnd/invisible presence correctly through the gateway (invisible -> offline for peers)', async () => {

@@ -11,6 +11,8 @@ import {
   affiliations,
   pointToPointLinks,
   signalBlacklist,
+  archivalThreads,
+  threadMembers,
 } from './schema.js';
 
 /**
@@ -132,6 +134,29 @@ export async function resolveRelayAudience(db: Db, relayId: string): Promise<str
   return [...audience];
 }
 
+/** Whether someone may see a thread: anyone who sees its relay, or for a private one, its members and Manage Threads. */
+export async function canSeeThread(db: Db, transmitterId: string, thread: { id: string; relayId: string; isPrivate: boolean }): Promise<boolean> {
+  const perms = await computeRelayPermissions(db, transmitterId, thread.relayId);
+  if (!hasPermission(perms, PERMISSIONS.VIEW_RELAY)) return false;
+  if (!thread.isPrivate || hasPermission(perms, PERMISSIONS.MANAGE_THREADS)) return true;
+  const [row] = await db.select().from(threadMembers).where(and(eq(threadMembers.threadId, thread.id), eq(threadMembers.transmitterId, transmitterId))).limit(1);
+  return !!row;
+}
+
+/** Who hears about a thread: its relay's audience, narrowed to members and Manage Threads when private. */
+export async function resolveThreadAudience(db: Db, threadId: string): Promise<string[]> {
+  const [thread] = await db.select().from(archivalThreads).where(eq(archivalThreads.id, threadId)).limit(1);
+  if (!thread) return [];
+  const everyone = await resolveRelayAudience(db, thread.relayId);
+  if (!thread.isPrivate) return everyone;
+  const members = new Set((await db.select().from(threadMembers).where(eq(threadMembers.threadId, threadId))).map((m: any) => m.transmitterId));
+  const out: string[] = [];
+  for (const id of everyone) {
+    if (members.has(id) || hasPermission(await computeRelayPermissions(db, id, thread.relayId), PERMISSIONS.MANAGE_THREADS)) out.push(id);
+  }
+  return out;
+}
+
 /**
  * Transmitter ids belonging to a beacon, optionally filtered by a permission bit.
  * The owner is always included.
@@ -196,6 +221,23 @@ export async function resolveTransmitterBeaconIds(db: Db, transmitterId: string)
  * Every transmitter who has a legitimate reason to observe this transmitter's presence:
  * beacon co-members, accepted affiliations, mesh co-members, and point-to-point link partners.
  */
+/** Accepted affiliates (friends) of a transmitter: Activity Privacy's "Friends only". */
+export async function resolveFriendIds(db: Db, transmitterId: string): Promise<string[]> {
+  const rows: Array<{ transmitterId: string; targetId: string }> = await db
+    .select({ transmitterId: affiliations.transmitterId, targetId: affiliations.targetId })
+    .from(affiliations)
+    .where(
+      and(
+        eq(affiliations.status, 'accepted'),
+        or(eq(affiliations.transmitterId, transmitterId), eq(affiliations.targetId, transmitterId))
+      )
+    );
+  const friends = new Set<string>();
+  for (const r of rows) friends.add(r.transmitterId === transmitterId ? r.targetId : r.transmitterId);
+  friends.delete(transmitterId);
+  return [...friends];
+}
+
 export async function resolvePresencePeers(db: Db, transmitterId: string): Promise<string[]> {
   const peers = new Set<string>();
 

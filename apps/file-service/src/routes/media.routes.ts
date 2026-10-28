@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
-import { eq, and, mediaUploads } from '@subspace/database';
+import { eq, and, mediaUploads, newSnowflake } from '@subspace/database';
 import { verifyAccessToken, TokenPayload, getJwtSecret } from '@subspace/crypto';
 import {
   MEDIA_PURPOSES,
@@ -67,7 +66,7 @@ export const mediaRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         });
       }
 
-      const mediaId = randomUUID();
+      const mediaId = newSnowflake();
       const ext = MEDIA_MIME_EXTENSIONS[mimeType] || 'bin';
       const storageKey = `${purpose}/${mediaId}.${ext}`;
       const publicUrl = `${mediaPublicBase}/${storageKey}`;
@@ -84,7 +83,7 @@ export const mediaRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       });
 
       const expiresInSeconds = 900;
-      const uploadUrl = await s3.getPresignedUploadUrl(storageKey, mimeType, expiresInSeconds, mediaBucket);
+      const uploadUrl = await s3.getPresignedUploadUrl(storageKey, mimeType, expiresInSeconds, mediaBucket, Math.floor(sizeBytes));
 
       return reply.status(201).send({
         uploadUrl,

@@ -1,7 +1,8 @@
-import { test, expect, register, signIn } from './fixtures';
+import { test, expect, register, signIn, openAs } from './fixtures';
+import { MEDIA_ARGS } from '../support/fake-voice';
 
 test.use({
-  launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--auto-select-desktop-capture-source=Entire screen'] },
+  launchOptions: { args: [...MEDIA_ARGS, '--auto-select-desktop-capture-source=Entire screen'] },
   permissions: ['microphone'],
 });
 
@@ -38,4 +39,30 @@ test('with Clips on, a Holo-Cast can be clipped and the clip shows in the galler
   await gallery.getByRole('button', { name: /^Delete / }).click();
   await page.getByRole('dialog', { name: 'Delete Clip' }).getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByText('No clips yet')).toBeVisible();
+});
+
+test('a clip mixes in whoever joins after the Holo-Cast starts, and they are warned', async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  const me = await register('clipmix', 'Mix Pilot');
+  const late = await register('latecomer', 'Late Comer');
+  const { beacon, relays } = await me.api.createBeacon('Mix Room');
+  const comm = relays.find((r) => r.type === 'comm_link')!;
+  await late.api.join(beacon.id, (await me.api.createInvite(beacon.id)).code);
+  await signIn(page, me, `/channels/${beacon.id}/${comm.id}`);
+  await page.evaluate(() => localStorage.setItem('subspace_clip_prefs', JSON.stringify({ enabled: true, length: 30 })));
+  await page.reload();
+
+  await page.getByRole('button', { name: /^Join / }).click();
+  const controls = page.getByRole('main');
+  await expect(controls.getByRole('button', { name: 'Disconnect' })).toBeVisible({ timeout: 20_000 });
+  await controls.getByRole('button', { name: /^Start Holo/ }).click();
+  const mix = page.getByTestId('clip-control');
+  await expect(mix).toHaveAttribute('data-voices', '1', { timeout: 15_000 });
+
+  const theirs = await openAs(browser, late, `/channels/${beacon.id}/${comm.id}`);
+  await theirs.context().grantPermissions(['microphone']);
+  await theirs.getByRole('button', { name: /^Join / }).click();
+  await expect(theirs.getByText('Mix Pilot has Clips on.', { exact: false })).toBeVisible({ timeout: 20_000 });
+  // Their voice joins the mix without restarting the recording.
+  await expect(mix).toHaveAttribute('data-voices', '2', { timeout: 20_000 });
 });

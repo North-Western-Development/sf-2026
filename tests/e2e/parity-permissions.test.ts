@@ -10,9 +10,9 @@ describe('Parity Section 1: Relay Permission Overwrites E2E Suite', () => {
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const ownerId = 'a0000000-0000-0000-0000-000000000001';
-  const memberId = 'a0000000-0000-0000-0000-000000000002';
-  const outsiderId = 'a0000000-0000-0000-0000-000000000003';
+  const ownerId = '509129644855132161';
+  const memberId = '509129644855132162';
+  const outsiderId = '509129644855132163';
 
   let ownerToken: string;
   let memberToken: string;
@@ -292,7 +292,7 @@ describe('Parity Section 1: Relay Permission Overwrites E2E Suite', () => {
     if (!(app as any).db) return;
     const res = await app.inject({
       method: 'GET',
-      url: `/api/v1/beacons/${beaconId}/relays/00000000-0000-0000-0000-000000000000/overwrites`,
+      url: `/api/v1/beacons/${beaconId}/relays/100000000000000000/overwrites`,
       headers: { authorization: `Bearer ${ownerToken}` },
     });
     expect(res.statusCode).toBe(404);

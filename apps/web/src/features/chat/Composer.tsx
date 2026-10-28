@@ -1,7 +1,8 @@
 import { Emoji } from '../../lib/emoji';
+import { ScheduleButton } from '../schedule/ScheduleUI';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { clsx } from 'clsx';
-import { AtSign, Blocks, CirclePlus, Cloud, MessagesSquare, SendHorizontal, Smile, Sticker, X, FileUp, Hash } from 'lucide-react';
+import { AtSign, Blocks, CirclePlus, Cloud, MessagesSquare, SendHorizontal, Smile, Sticker, X, FileUp, Hash, Vote } from 'lucide-react';
 import { useA11yPrefs } from '../../lib/a11yPrefs';
 import { Tooltip, useContextMenu } from '@subspace/ui';
 import { useStore, getState } from '../../data/store';
@@ -11,6 +12,7 @@ import { parseChannelKey, type ChannelKey, type UserRef } from '../../lib/types'
 import { resolveName } from '../../lib/normalize';
 import { useUi, toast, openModal } from '../../app/ui';
 import { uploadToVault } from '../../lib/uploads';
+import { VoiceRecorderButton } from './VoiceMessages';
 import { sealFile } from '../../lib/e2ee/client';
 import { isEncryptedChannel } from '../../data/e2ee';
 
@@ -22,7 +24,8 @@ import { OnboardingGate, useNeedsOnboarding } from '../onboarding/OnboardingGate
 import { RichInput, type RichInputHandle } from '../common/RichInput';
 import { matchCommands, parseCommand, type Command, type CommandContext } from './commands';
 import { startThread, threadPath } from './ThreadParts';
-import { createThread } from './threads';
+import { createThread, useThreads } from './threads';
+import { findAppCommand, matchAppCommands, missingRequired, parseOptions, runAppCommand, useAppCommands, type AppCommand } from './appCommands';
 import { useNavigate } from 'react-router';
 
 const MAX_LENGTH = 2000;
@@ -109,9 +112,14 @@ export function Composer({
   const reply = useUi((s) => s.replyingTo[key]);
   const replyMsg = useStore((s) => (reply ? s.messages[key]?.byId[reply.messageId] : undefined));
   const perms = useStore((s) => (type === 'relay' ? relayPermissions(s, id) : null));
-  const canSend = perms === null || can(perms, PERMISSIONS.SEND_TRANSMISSIONS);
+  const canSend = perms === null || can(perms, type === 'thread' ? PERMISSIONS.SEND_IN_THREADS : PERMISSIONS.SEND_TRANSMISSIONS);
   const canAttach = perms === null || can(perms, PERMISSIONS.ATTACH_FILES);
+  const encryptedHere = useStore((s) => (type === 'link' && !!s.links[id]?.encryptedAt) || (type === 'mesh' && !!s.meshes[id]?.encryptedAt));
+  // Polls and voice messages: their own permissions in a beacon; not in encrypted conversations.
+  const canPoll = !encryptedHere && (perms === null || can(perms, PERMISSIONS.CREATE_POLLS));
+  const canVoiceMessage = !encryptedHere && (perms === null || can(perms, PERMISSIONS.SEND_VOICE_MESSAGES));
   const canEveryone = perms === null ? false : can(perms, PERMISSIONS.MENTION_EVERYONE);
+  const canAnyClearance = perms !== null && can(perms, PERMISSIONS.MENTION_CLEARANCES);
   const needsOnboarding = useNeedsOnboarding(type === 'relay' ? beaconId : undefined);
   const timedOutUntil = useStore((s) => (type === 'relay' && beaconId ? myTimeout(s, beaconId) : null));
   const verifying = useStore((s) => (type === 'relay' && beaconId ? verificationPending(s, beaconId) : null));
@@ -135,6 +143,17 @@ export function Composer({
     setAttachmentIds([]);
     tokens.current.clear();
     area.current?.focus();
+  }, [key]);
+
+  // A draft left for this channel while it is open (replying to someone's status from their profile).
+  useEffect(() => {
+    const onDraft = (e: Event) => {
+      if ((e as CustomEvent<{ key: string }>).detail?.key !== key) return;
+      setText(sessionStorage.getItem(`draft:${key}`) ?? '');
+      area.current?.focus();
+    };
+    window.addEventListener('subspace:draft', onDraft);
+    return () => window.removeEventListener('subspace:draft', onDraft);
   }, [key]);
 
   useEffect(() => {
@@ -176,7 +195,7 @@ export function Composer({
         });
       const roles: Suggestion[] = beaconId
         ? (s.clearances[beaconId] ?? [])
-            .filter((c) => c.position > 0 && c.name.toLowerCase().includes(q))
+            .filter((c) => c.position > 0 && (c.mentionable || canAnyClearance) && c.name.toLowerCase().includes(q))
             .slice(0, 5)
             .map((c) => ({ kind: 'role', id: c.id, label: `@${c.name}`, color: c.color, insert: `@${c.name}`, token: `<@&${c.id}>` }))
         : [];
@@ -213,7 +232,7 @@ export function Composer({
       return [...g, ...u];
     }
     return [];
-  }, [trigger, type, id, beaconId, glyphs, canEveryone]);
+  }, [trigger, type, id, beaconId, glyphs, canEveryone, canAnyClearance]);
 
   useEffect(() => setActive(0), [trigger?.query, trigger?.char]);
 
@@ -253,8 +272,15 @@ export function Composer({
     },
     toast,
   };
-  const commandList = matchCommands(text, commandCtx);
-  const chooseCommand = (c: Command) => {
+  // Bots' slash commands, beside the built-ins.
+  const threadParent = useThreads((s) => (type === 'thread' ? s.byId[id]?.relayId : undefined));
+  const appCommands = useAppCommands(type === 'relay' || type === 'thread' ? beaconId : undefined, type === 'relay' ? id : threadParent);
+  const commandList: Array<{ kind: 'builtin'; c: Command } | { kind: 'app'; c: AppCommand }> = [
+    ...matchCommands(text, commandCtx).map((c) => ({ kind: 'builtin' as const, c })),
+    ...matchAppCommands(text, appCommands).map((c) => ({ kind: 'app' as const, c })),
+  ];
+  const typedApp = !commandList.length && !parseCommand(text, commandCtx) ? findAppCommand(text, appCommands) : null;
+  const chooseCommand = ({ c }: { c: Command | AppCommand }) => {
     const next = `/${c.name} `;
     setText(next);
     caretAfterRender(next, next.length);
@@ -271,6 +297,20 @@ export function Composer({
     if (cmd) {
       setText('');
       await cmd.command.run(cmd.arg, commandCtx);
+      return;
+    }
+    // A bot's command becomes an interaction; its answer arrives as an event.
+    const appCmd = !attachmentIds.length && (type === 'relay' || type === 'thread') ? findAppCommand(text, appCommands) : null;
+    if (appCmd) {
+      const options = parseOptions(appCmd.command, encodeMentions(appCmd.rest, tokens.current));
+      const missing = missingRequired(appCmd.command, options);
+      if (missing.length) {
+        toast(`/${appCmd.command.name} needs ${missing.map((o) => o.name).join(', ')}.`, 'error');
+        return;
+      }
+      setText('');
+      tokens.current.clear();
+      await runAppCommand(type as 'relay' | 'thread', id, appCmd.command, options);
       return;
     }
     const content = encodeMentions(text, tokens.current).trim();
@@ -381,25 +421,62 @@ export function Composer({
     <div className="relative px-4 pb-6">
       {commandList.length > 0 && (
         <div role="listbox" aria-label="Commands" className="absolute inset-x-4 bottom-full mb-2 max-h-80 overflow-y-auto rounded-lg bg-overlay p-2 shadow-pop">
-          <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Built-in Apps</p>
-          {commandList.map((c, i) => (
+          {commandList.map(({ kind, c }, i) => (
+            <div key={`${kind}:${'id' in c ? c.id : c.name}`}>
+            {(i === 0 || commandList[i - 1].kind !== kind || (kind === 'app' && (commandList[i - 1].c as AppCommand).appId !== (c as AppCommand).appId)) && (
+              <p className={clsx('flex items-center gap-1.5 px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle', i > 0 && 'pt-2')}>
+                {kind === 'app' && (c as AppCommand).app.iconUrl && <img src={(c as AppCommand).app.iconUrl!} alt="" className="h-4 w-4 rounded-full" />}
+                {kind === 'builtin' ? 'Built-in Apps' : (c as AppCommand).app.name}
+              </p>
+            )}
             <button
-              key={c.name}
               role="option"
               aria-selected={i === active}
               type="button"
               onMouseEnter={() => setActive(i)}
               onMouseDown={(e) => {
                 e.preventDefault();
-                chooseCommand(c);
+                chooseCommand({ c });
               }}
               className={clsx('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm', i === active ? 'bg-active' : '')}
             >
               <span className="font-semibold text-fg">/{c.name}</span>
-              {c.arg && <span className="rounded bg-raised px-1 text-xs text-fg-muted">{c.arg}</span>}
+              {'arg' in c && c.arg && <span className="rounded bg-raised px-1 text-xs text-fg-muted">{c.arg}</span>}
+              {'options' in c &&
+                c.options.map((o) => (
+                  <span key={o.name} className="rounded bg-raised px-1 text-xs text-fg-muted">
+                    {o.name}
+                    {o.required ? '' : '?'}
+                  </span>
+                ))}
               <span className="min-w-0 flex-1 truncate text-fg-subtle">{c.description}</span>
             </button>
+            </div>
           ))}
+        </div>
+      )}
+      {typedApp && typedApp.command.options.length > 0 && (
+        <div aria-label="Command options" className="absolute inset-x-4 bottom-full mb-2 rounded-lg bg-overlay p-3 text-sm shadow-pop">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+            /{typedApp.command.name} · {typedApp.command.app.name}
+          </p>
+          <ul className="space-y-0.5">
+            {typedApp.command.options.map((o) => {
+              const given = parseOptions(typedApp.command, typedApp.rest)[o.name];
+              return (
+                <li key={o.name} className="flex gap-2">
+                  <code className={clsx('rounded px-1', given ? 'bg-active text-fg' : 'bg-raised text-fg-muted')}>
+                    {o.name}:{o.choices?.length ? o.choices.map((ch) => ch.value).join('|') : o.type}
+                  </code>
+                  <span className="min-w-0 flex-1 truncate text-fg-subtle">
+                    {o.description}
+                    {o.required && <span className="text-danger"> · required</span>}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {typedApp.command.options.length > 1 && <p className="mt-1 text-xs text-fg-subtle">Type option:value for each, e.g. {typedApp.command.options[0].name}:…</p>}
         </div>
       )}
       {suggestions.length > 0 && trigger && (
@@ -519,6 +596,7 @@ export function Composer({
                   onClick: () => openModal({ kind: 'drivePicker', onPick: (f) => setAttachmentIds((a) => [...a, { id: f.id, name: f.filename }]) }),
                 }]),
                 ...(threadRelay ? [{ label: 'Create Thread', icon: <MessagesSquare className="h-4 w-4" />, onClick: () => startThread(threadRelay, navigate) }] : []),
+                ...(canPoll ? [{ label: 'Create Poll', icon: <Vote className="h-4 w-4" />, onClick: () => openModal({ kind: 'createPoll', channelKey: key }) }] : []),
                 { label: 'Use Apps', icon: <Blocks className="h-4 w-4" />, onClick: () => showCommands() },
               ])
             }
@@ -577,6 +655,18 @@ export function Composer({
               <Smile className="h-5 w-5" />
             </button>
           </Tooltip>
+          {canVoiceMessage && !text.trim() && !attachmentIds.length && <VoiceRecorderButton channelKey={key} />}
+          {/* Text only: files are uploaded now, so they could not wait for later. */}
+          {text.trim() && !attachmentIds.length && !text.trim().startsWith('/') && (
+            <ScheduleButton
+              channelKey={key}
+              text={encodeMentions(text, tokens.current)}
+              onScheduled={() => {
+                setText('');
+                tokens.current.clear();
+              }}
+            />
+          )}
           {sendButton && (
             <Tooltip content="Send">
               <button type="button" aria-label="Send" onClick={() => void submit()} disabled={!text.trim() && !attachmentIds.length} className="flex h-7 w-7 items-center justify-center text-fg-muted hover:text-fg disabled:opacity-40">
@@ -586,6 +676,8 @@ export function Composer({
           )}
         </div>
       </div>
+
+      {type === 'relay' && <SlowmodeNotice channelKey={key} relayId={id} />}
 
       {text.length > MAX_LENGTH - 200 && (
         <span className={clsx('absolute bottom-1 right-6 text-xs tabular-nums', over ? 'text-danger' : 'text-fg-subtle')}>
@@ -609,5 +701,25 @@ export function Composer({
         />
       )}
     </div>
+  );
+}
+
+/** Under the box in a slowmode relay: that it is on, and how long until I can send again. */
+function SlowmodeNotice({ channelKey: key, relayId }: { channelKey: string; relayId: string }) {
+  const seconds = useStore((s) => s.relays[relayId]?.slowmodeSeconds ?? 0);
+  const bypass = useStore((s) => can(relayPermissions(s, relayId), PERMISSIONS.BYPASS_SLOWMODE));
+  const until = useUi((u) => u.slowmodeUntil[key] ?? 0);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (until <= Date.now()) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [until]);
+  if (!seconds) return null;
+  const left = Math.ceil((until - now) / 1000);
+  return (
+    <span role="status" aria-label="Slowmode" className="absolute bottom-1 left-6 text-xs text-fg-subtle">
+      {bypass ? 'Slowmode is on (you are exempt)' : left > 0 ? `Slowmode: you can send again in ${left}s` : `Slowmode is on: one transmission every ${seconds >= 60 ? `${Math.round(seconds / 60)}m` : `${seconds}s`}`}
+    </span>
   );
 }

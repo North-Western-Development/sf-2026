@@ -32,8 +32,18 @@ MinIO and LiveKit are optional. `scripts/native/infra.mjs` starts them when it f
 ## Everyday use
 
 ```bash
-pnpm dev:native     # builds shared packages, syncs the schema, starts every service and the web app
+pnpm dev:native     # builds shared packages, applies migrations, starts every service and the web app
 ```
+
+### Changing the schema
+
+The schema lives in `packages/database/src/schema*.ts`, and every change ships as a SQL migration:
+
+```bash
+pnpm --filter @subspace/database db:generate   # writes packages/database/drizzle/NNNN_*.sql
+```
+
+Review the SQL and commit it with the schema change. `pnpm dev:native`, `pnpm test:native` and the server's release step apply pending migrations. `pnpm test:native` fails if the schema changed without a migration, and generates the missing one for you to review.
 
 Open http://localhost:5173. Vite proxies `/api`, `/gateway`, `/rtc` and storage to the local services exactly like the production edge does, so the app runs on one origin in development too.
 

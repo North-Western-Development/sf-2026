@@ -15,6 +15,7 @@ import {
   resolveRelayActorContext,
   assertCanModerateTarget,
 } from '../../middleware/hierarchy.js';
+import { stripForbiddenGlyphs } from '../../lib/glyph-access.js';
 import { publishGatewayEvent, audienceForTransmission } from '../../lib/events.js';
 import { loadChannel } from '../../lib/channels.js';
 import { parseMentions } from '../../lib/mentions.js';
@@ -97,7 +98,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       authorId: token.transmitterId,
       content: content.trim(),
       permissions: actorContext.effectivePermissions,
-      mentionCount: content.match(/<@[!&]?[0-9a-f-]{36}>/g)?.length ?? 0,
+      mentionCount: content.match(/<@[!&]?[1-9][0-9]{0,18}>/g)?.length ?? 0,
     });
     if (verdict) return reply.status(403).send({ error: verdict.message, code: 'AUTOMOD_BLOCKED', rule: verdict.ruleName });
 
@@ -268,7 +269,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
     }
 
     const body = request.body as any;
-    const { content } = body || {};
+    let { content } = body || {};
 
     // Encrypted transmissions are edited by replacing their ciphertext.
     if (existing.encryptedPayload) {
@@ -324,10 +325,14 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
       editorPerms = actorCtx?.effectivePermissions ?? null;
     }
 
+    // Glyphs the editor may not use here become plain :name: text.
+    content = await stripForbiddenGlyphs(db, content, existing.transmitterId, { beaconId: channel?.beaconId ?? null, perms: editorPerms });
+
     const parsed = await parseMentions(db, content.trim(), {
       beaconId: channel?.beaconId || null,
       validUserIds,
       authorHasMentionEveryone: mentionEveryoneAllowed,
+      authorHasMentionClearances: editorPerms !== null && hasPermission(editorPerms, PERMISSIONS.MENTION_CLEARANCES),
     });
 
     // AutoMod checks edits too, as on Discord.

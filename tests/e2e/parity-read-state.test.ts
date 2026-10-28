@@ -8,8 +8,8 @@ describe('Parity: read state, unread mentions, notification settings', () => {
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const ownerId = 'd1000000-0000-0000-0000-000000000001';
-  const memberId = 'd1000000-0000-0000-0000-000000000002';
+  const ownerId = '195675598592016385';
+  const memberId = '195675598592016386';
   let ownerToken: string, memberToken: string;
   let beaconId: string, relayId: string;
 

@@ -4,13 +4,14 @@ import { ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import { AVATAR_DECORATIONS, PROFILE_EFFECTS } from '@subspace/constants';
 import { Button, Input, Modal } from '@subspace/ui';
 import { setState } from '../../../data/store';
-import { http } from '../../../lib/http';
+import { http, optional } from '../../../lib/http';
 import { toast } from '../../../app/ui';
 import type { SelfUser } from '../../../lib/types';
 import { Avatar } from '../../common/Avatar';
 import { DECORATION_LABELS, EFFECT_LABELS, AvatarDecoration, ProfileEffect } from '../../common/Decorations';
 import { RowButton, SettingsRow } from '../SettingsLayout';
 import { CurrentPassword, usePasswordField, withPassword } from './passwordField';
+import { SMS_CONSENT } from '../../auth/LegalPages';
 
 const footer = '-mx-6 -mb-4 mt-6 flex justify-end gap-3 bg-raised px-6 py-4';
 
@@ -84,10 +85,16 @@ function PhoneDialog({ onClose }: { onClose: () => void }) {
     );
 
   return (
-    <Modal isOpen onClose={onClose} title="Enter a phone number" description="You will get a text with a verification code. Standard rates may apply." maxWidth="md">
+    <Modal isOpen onClose={onClose} title="Enter a phone number" description="You will get a text with a verification code." maxWidth="md">
       <form onSubmit={send} className="space-y-4">
         <Input label="Phone Number" type="tel" autoComplete="tel" placeholder="+1 555 010 0199" value={phone} onChange={(e) => setPhone(e.target.value)} autoFocus required />
         <CurrentPassword value={pw.password} onChange={pw.onChange} error={pw.error} />
+        {/* Carriers require consent shown where the number is collected (see /sms). */}
+        <p data-testid="sms-consent" className="text-xs text-fg-muted">
+          {SMS_CONSENT}{' '}
+          <a href="/sms" target="_blank" rel="noreferrer" className="text-brand-sky hover:underline">SMS Terms</a> ·{' '}
+          <a href="/privacy" target="_blank" rel="noreferrer" className="text-brand-sky hover:underline">Privacy Policy</a>
+        </p>
         <div className={footer}>
           <Button variant="link" className="text-fg" onClick={onClose}>
             Cancel
@@ -136,22 +143,27 @@ function RemovePhoneDialog({ onClose }: { onClose: () => void }) {
 
 export function PhoneRow({ me }: { me: SelfUser }) {
   const [dialog, setDialog] = useState<null | 'add' | 'remove'>(null);
+  // Off when the server cannot send texts (no Twilio).
+  const [available, setAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    void optional(http.get<{ available: boolean }>('/users/@me/phone/config'), { available: false }).then((r) => setAvailable(r.available));
+  }, []);
   return (
     <>
       <SettingsRow
         label="Phone Number"
-        value={me.phone || <span className="text-fg-subtle">Not added</span>}
+        value={me.phone || <span className="text-fg-subtle">{available === false ? 'Phone verification is not available on this server' : 'Not added'}</span>}
         action={
           me.phone ? (
             <div className="flex gap-2">
-              <RowButton onClick={() => setDialog('add')}>Edit</RowButton>
+              {available && <RowButton onClick={() => setDialog('add')}>Edit</RowButton>}
               <RowButton danger onClick={() => setDialog('remove')}>
                 Remove
               </RowButton>
             </div>
-          ) : (
+          ) : available ? (
             <RowButton onClick={() => setDialog('add')}>Add</RowButton>
-          )
+          ) : null
         }
       />
       {dialog === 'add' && <PhoneDialog onClose={() => setDialog(null)} />}

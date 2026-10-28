@@ -1,5 +1,7 @@
 // Real Subspace Frequency API Service Client
 
+import { isRegionBlockedResponse, markRegionBlocked } from '../lib/regionBlock';
+
 const API_BASE = '/api/v1';
 
 export interface TransmitterProfile {
@@ -279,6 +281,7 @@ class SubspaceApiClient {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (res.status === 401 && data.code === 'REGION_BLOCKED') markRegionBlocked();
       const err = new Error(data.error || data.message || 'Request failed') as Error & {
         code?: string;
         status?: number;
@@ -405,6 +408,11 @@ class SubspaceApiClient {
     });
 
     let res = await fetch(url, { ...options, headers: build() });
+    // Refused region (BLOCK_EU): keep the session, show the block page.
+    if (await isRegionBlockedResponse(res)) {
+      markRegionBlocked();
+      throw new AuthRequiredError();
+    }
     if (res.status === 401) {
       if (await this.refreshSession()) {
         res = await fetch(url, { ...options, headers: build() });
@@ -751,7 +759,9 @@ class SubspaceApiClient {
     livekitUrl: string;
     roomName: string;
     canSpeak: boolean;
-    canHoloCast: boolean;
+    canVideo: boolean;
+    canShareScreen: boolean;
+    forceRelay?: boolean;
   }> {
     const res = await this.fetchAuth(`${API_BASE}/relays/${relayId}/comm-link/token`, {
       method: 'POST',

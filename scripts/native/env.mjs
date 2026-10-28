@@ -52,6 +52,11 @@ export function loadNativeEnv({ test = false } = {}) {
     // presence from test runs never mix with development data.
     env.REDIS_URL = env.TEST_REDIS_URL || env.REDIS_URL.replace(/\/\d+$/, '') + '/1';
     env.NODE_ENV = 'test';
+    // Phone verification without Twilio: texts land in the dev:sms outbox, limits are loose
+    // (every test signs up from 127.0.0.1), and there is no VPN lookup.
+    env.SMS_DEV_OUTBOX = 'true';
+    env.PHONE_VPN_CHECK = 'off';
+    for (const k of ['PHONE_VERIFY_PER_USER', 'PHONE_VERIFY_PER_IP', 'PHONE_CODES_PER_USER', 'PHONE_CODES_PER_NUMBER', 'PHONE_CODES_PER_IP', 'EMAIL_VERIFY_PER_USER', 'EMAIL_VERIFY_PER_IP', 'EMAIL_CODES_PER_USER', 'EMAIL_CODES_PER_ADDRESS', 'EMAIL_CODES_PER_IP']) env[k] = '1000/1m';
   }
   return env;
 }

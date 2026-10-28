@@ -5,22 +5,57 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1788717567388,
-      "tag": "0000_fearless_lester",
+      "when": 1793064149572,
+      "tag": "0000_baseline",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1788718880891,
-      "tag": "0001_many_millenium_guard",
+      "when": 1793089559128,
+      "tag": "0001_staff_ranks_badges",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1788742866110,
-      "tag": "0002_striped_stick",
+      "when": 1793141288394,
+      "tag": "0002_activity_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793168586555,
+      "tag": "0003_developer_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793171026384,
+      "tag": "0004_changelog_seen",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793172150087,
+      "tag": "0005_news_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793174927103,
+      "tag": "0006_inbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793175436546,
+      "tag": "0007_custom_activities",
       "breakpoints": true
     }
   ]

@@ -65,7 +65,7 @@ describe('@subspace/crypto Suite', () => {
   it('signs and verifies JWT access tokens', () => {
     const secret = 'jwt_test_secret_2026';
     const payload: TokenPayload = {
-      transmitterId: 'f0000000-0000-0000-0000-000000000001',
+      transmitterId: '713694467282698241',
       username: 'navigator_chekov',
       staffRank: 2,
     };

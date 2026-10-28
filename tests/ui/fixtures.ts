@@ -108,6 +108,16 @@ export async function promoteToStaff(session: Session, rank = 3) {
 }
 
 /** Replace the pending phone code with a known one (the real one is only texted). */
+/** Make an account look older than it is (What's New only shows existing users what changed). */
+export async function backdateAccount(session: Session, createdAt: string) {
+  await (await testDb()).query('UPDATE transmitters SET created_at = $1 WHERE id = $2', [createdAt, session.transmitter.id]);
+}
+
+/** Give a developer application an icon (as if uploaded), straight in the test database. */
+export async function setApplicationIcon(applicationId: string, iconUrl: string) {
+  await (await testDb()).query('UPDATE oauth_apps SET icon_url = $1 WHERE id = $2', [iconUrl, applicationId]);
+}
+
 export async function setPhoneCode(session: Session, code: string) {
   const { createHash } = await import('node:crypto');
   await (await testDb()).query('UPDATE transmitters SET phone_code_hash = $1 WHERE id = $2', [createHash('sha256').update(code).digest('hex'), session.transmitter.id]);
@@ -158,12 +168,31 @@ export async function openAs(browser: Browser, session: Session, path?: string) 
   return page;
 }
 
-type Fixtures = { me: Session; consoleErrors: string[] };
+type Fixtures = { me: Session; consoleErrors: string[]; quietCookieNotice: void };
+
+/** The cookie notice covers the bottom of the window; tests dismiss it unless they test it. */
+const dismissCookieNotice = () => {
+  if (!sessionStorage.getItem('ui-test-cookie-notice')) localStorage.setItem('subspace:cookie-notice', '1');
+};
 
 export const test = base.extend<Fixtures>({
   me: async ({}, use) => {
     await use(await register('me'));
   },
+  quietCookieNotice: [
+    async ({ browser, context }, use) => {
+      await context.addInitScript(dismissCookieNotice);
+      const original = browser.newContext.bind(browser);
+      browser.newContext = async (options) => {
+        const ctx = await original(options);
+        await ctx.addInitScript(dismissCookieNotice);
+        return ctx;
+      };
+      await use();
+      browser.newContext = original;
+    },
+    { auto: true },
+  ],
   // Fails any test whose page logs an uncaught error or a React warning.
   consoleErrors: [
     async ({ page }, use) => {

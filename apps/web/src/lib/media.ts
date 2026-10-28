@@ -1,6 +1,6 @@
 import { http } from './http';
 
-export type MediaPurpose = 'avatar' | 'banner' | 'beacon_icon' | 'beacon_banner' | 'glyph' | 'mesh_icon' | 'sticker' | 'sound';
+export type MediaPurpose = 'avatar' | 'banner' | 'beacon_icon' | 'beacon_banner' | 'glyph' | 'mesh_icon' | 'sticker' | 'sound' | 'badge' | 'app_icon';
 
 export const MEDIA_LIMITS: Record<MediaPurpose, number> = {
   avatar: 8 * 1024 ** 2,
@@ -11,6 +11,8 @@ export const MEDIA_LIMITS: Record<MediaPurpose, number> = {
   mesh_icon: 8 * 1024 ** 2,
   sticker: 512 * 1024,
   sound: 512 * 1024,
+  badge: 256 * 1024,
+  app_icon: 4 * 1024 ** 2,
 };
 
 export const MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];

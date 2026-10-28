@@ -9,8 +9,8 @@ describe('Gateway Real-Time Transmission Events Fanout E2E Suite', () => {
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const testUser1Id = '77777777-7777-7777-7777-777777777777';
-  const testUser2Id = '99999999-9999-9999-9999-999999999999';
+  const testUser1Id = '141483468158498679';
+  const testUser2Id = '924764459060926873';
   let user1Token: string;
   let user2Token: string;
 

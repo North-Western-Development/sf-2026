@@ -11,9 +11,9 @@ describe('Beacon moderation', () => {
   const SECRET = getJwtSecret();
   let app: FastifyInstance;
   let db: any;
-  const owner = { id: 'fb000000-0000-4000-8000-000000000001', username: 'mod_owner' };
-  const pilot = { id: 'fb000000-0000-4000-8000-000000000002', username: 'mod_pilot' };
-  const late = { id: 'fb000000-0000-4000-8000-000000000003', username: 'mod_late' };
+  const owner = { id: '933847824514940929', username: 'mod_owner' };
+  const pilot = { id: '933847824514940930', username: 'mod_pilot' };
+  const late = { id: '933847824514940931', username: 'mod_late' };
   const users = [owner, pilot, late];
   const auth = (u: { id: string; username: string }) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: 0 }, SECRET)}` });
   const call = (method: string, url: string, u: { id: string; username: string }, payload?: unknown, headers: Record<string, string> = {}) =>
@@ -155,7 +155,7 @@ describe('Beacon moderation', () => {
     if (!db) return;
     expect((await call('PATCH', `/beacons/${beaconId}`, owner, { invitesPausedUntil: new Date(Date.now() + 3 * 86_400_000).toISOString() })).statusCode).toBe(400);
     await call('PATCH', `/beacons/${beaconId}`, owner, { invitesPausedUntil: new Date(Date.now() + 3600_000).toISOString(), dmsPausedUntil: new Date(Date.now() + 3600_000).toISOString() });
-    const outsider = { id: 'fb000000-0000-4000-8000-000000000009', username: 'mod_out' };
+    const outsider = { id: '933847824514940937', username: 'mod_out' };
     await db.delete(transmitters).where(eq(transmitters.id, outsider.id));
     await db.insert(transmitters).values({ id: outsider.id, username: outsider.username, email: 'mod_out@subspace.test', passwordHash: 'x', displayName: 'out' });
     expect((await call('POST', `/beacons/${beaconId}/join`, outsider)).json().code).toBe('INVITES_PAUSED');

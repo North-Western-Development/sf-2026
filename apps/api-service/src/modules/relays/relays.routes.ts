@@ -4,12 +4,13 @@ import {
   and,
   asc,
   relays,
+  relayOverwrites,
   beacons,
   transmitterRelayPreferences,
   computeRelayPermissions,
   resolveRelayAudience,
 } from '@subspace/database';
-import { PERMISSIONS, hasPermission } from '@subspace/constants';
+import { PERMISSIONS, hasPermission, SLOWMODE_CHOICES } from '@subspace/constants';
 import { extractAuthToken, resolveBeaconActorContext } from '../../middleware/hierarchy.js';
 import { publishGatewayEvent } from '../../lib/events.js';
 
@@ -86,7 +87,7 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 
   /**
    * POST /api/v1/beacons/:beaconId/relays
-   * Create a new Relay in a Beacon (requires MANAGE_RELAYS or owner)
+   * Create a new Relay in a Beacon (requires CREATE_RELAYS or MANAGE_RELAYS, or owner)
    */
   app.post('/', async (request, reply) => {
     const token = extractAuthToken(request);
@@ -100,8 +101,8 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
       return reply.status(403).send({ error: 'Transmitter is not a member of this Beacon' });
     }
 
-    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_RELAYS)) {
-      return reply.status(403).send({ error: 'Transmitter lacks MANAGE_RELAYS clearance' });
+    if (!actorContext.isOwner && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.CREATE_RELAYS) && !hasPermission(actorContext.effectivePermissions, PERMISSIONS.MANAGE_RELAYS)) {
+      return reply.status(403).send({ error: 'Transmitter lacks CREATE_RELAYS clearance' });
     }
 
     const body = request.body as any;
@@ -122,6 +123,8 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         parentId: parentId || null,
         isUnhideable: Boolean(isUnhideable),
         permissionsSynced: permissionsSynced === undefined ? true : Boolean(permissionsSynced),
+        // Announcement relays are text relays whose posts can be published to their followers.
+        isAnnouncement: (type || 'text') === 'text' && body?.isAnnouncement === true,
       })
       .returning();
 
@@ -170,8 +173,29 @@ export const relayRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     if (body.topic !== undefined) updates.topic = body.topic;
     if (body.position !== undefined) updates.position = Number(body.position);
     if (body.isUnhideable !== undefined) updates.isUnhideable = Boolean(body.isUnhideable);
-    if (body.parentId !== undefined) updates.parentId = body.parentId;
+    if (body.slowmodeSeconds !== undefined) {
+      if (!(SLOWMODE_CHOICES as readonly number[]).includes(Number(body.slowmodeSeconds))) return reply.status(400).send({ error: 'Pick one of the slowmode choices', code: 'INVALID_SLOWMODE' });
+      updates.slowmodeSeconds = Number(body.slowmodeSeconds);
+    }
+    if (body.parentId !== undefined) {
+      // Only into a band of the same beacon (or out of any band, with null).
+      if (body.parentId !== null) {
+        const [band] = await db.select().from(relays).where(eq(relays.id, body.parentId)).limit(1);
+        if (!band || band.beaconId !== existingRelay.beaconId || band.type !== 'category' || existingRelay.type === 'category') {
+          return reply.status(400).send({ error: 'Move it into a band of this beacon', code: 'INVALID_PARENT' });
+        }
+      }
+      updates.parentId = body.parentId;
+    }
     if (body.permissionsSynced !== undefined) updates.permissionsSynced = Boolean(body.permissionsSynced);
+    // Synced with its band: the band's overwrites apply, so its own are dropped (as Discord does).
+    if (updates.permissionsSynced === true && (updates.parentId ?? existingRelay.parentId)) {
+      await db.delete(relayOverwrites).where(eq(relayOverwrites.relayId, relayId));
+    }
+    if (body.isAnnouncement !== undefined) {
+      if (existingRelay.type !== 'text') return reply.status(400).send({ error: 'Only text relays can be announcement relays', code: 'NOT_A_TEXT_RELAY' });
+      updates.isAnnouncement = body.isAnnouncement === true;
+    }
     if (body.isE2ee !== undefined) {
       if (existingRelay.type !== 'comm_link') return reply.status(400).send({ error: 'Only Comm-Links carry voice and video', code: 'NOT_A_COMM_LINK' });
       updates.isE2ee = body.isE2ee === true;

@@ -24,10 +24,10 @@ const RULE_BODY = {
     mentionLimit: { type: 'integer', minimum: 1, maximum: 50 },
     blockMessage: { type: 'boolean' },
     customMessage: { type: ['string', 'null'], maxLength: 150 },
-    alertChannelId: { type: ['string', 'null'], format: 'uuid' },
+    alertChannelId: { type: ['string', 'null'], pattern: '^[1-9][0-9]{0,18}$' },
     timeoutSeconds: { type: 'integer', enum: TIMEOUTS },
-    exemptClearanceIds: { type: 'array', maxItems: 20, items: { type: 'string', format: 'uuid' } },
-    exemptRelayIds: { type: 'array', maxItems: 50, items: { type: 'string', format: 'uuid' } },
+    exemptClearanceIds: { type: 'array', maxItems: 20, items: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
+    exemptRelayIds: { type: 'array', maxItems: 50, items: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' } },
     enabled: { type: 'boolean' },
   },
 };

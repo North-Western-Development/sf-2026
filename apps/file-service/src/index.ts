@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import { TERMINOLOGY } from '@subspace/constants';
 
 import helmet from '@fastify/helmet';
-import { createDatabaseClient } from '@subspace/database';
+import { createDatabaseClient, loadRegionRanges, logRequest, regionBlocked, REGION_BLOCKED, REGION_BLOCKED_HEADERS } from '@subspace/database';
 import { requireSecret } from '@subspace/crypto';
 import { SubspaceS3Storage } from './s3.js';
 import { vaultRoutes } from './routes/vault.routes.js';
@@ -30,7 +30,12 @@ const mediaPublicBase = process.env.MEDIA_PUBLIC_BASE || '/subspace-media';
 
 export async function buildFileApp() {
   const app = Fastify({
-    logger: process.env.NODE_ENV !== 'test',
+    // A refused (BLOCK_EU) visitor's address is never logged in full.
+    logger: process.env.NODE_ENV !== 'test' && { serializers: { req: logRequest as any } },
+    // Behind nginx: take the client address from X-Forwarded-For, but only when the hop that
+    // sent it is a trusted proxy (TRUST_PROXY; loopback by default, as on a single host).
+    // Rate limits and phone verification depend on it.
+    trustProxy: process.env.TRUST_PROXY || 'loopback',
   });
 
   // Every registered route, so the endpoint-coverage security test can sweep them all.
@@ -58,6 +63,13 @@ export async function buildFileApp() {
     await redis?.quit().catch(() => {});
   });
 
+  // BLOCK_EU: nobody in the EU, the EEA or the UK reaches any route.
+  loadRegionRanges();
+  app.addHook('onRequest', async (request, reply) => {
+    // Nothing about the visitor is kept, and the browser drops this site's cookies.
+    if (regionBlocked(request.ip)) return reply.status(401).headers(REGION_BLOCKED_HEADERS).send(REGION_BLOCKED);
+  });
+
   app.addHook('onRequest', async (request, reply) => {
     const config = request.routeOptions.config as { public?: boolean } | undefined;
     if (!request.routeOptions.url || config?.public) return;
@@ -69,9 +81,17 @@ export async function buildFileApp() {
     }
   });
 
+  // Auth is bearer tokens, not cookies; still, only the instance's own origin in production.
   await app.register(cors, {
-    origin: true,
+    origin: process.env.NODE_ENV === 'production' && process.env.PUBLIC_ORIGIN ? process.env.PUBLIC_ORIGIN.split(',').map((o) => o.trim()) : true,
     credentials: true,
+  });
+
+  // A malformed or out-of-range id in a path reaches Postgres as invalid input: that is a 404, not a 500.
+  app.setErrorHandler((err: any, _request, reply) => {
+    if (['22P02', '22003'].includes(err?.code ?? err?.cause?.code)) return reply.status(404).send({ error: 'Not found' });
+    // Anything else: Fastify's own handling.
+    throw err;
   });
 
   await app.register(helmet, {

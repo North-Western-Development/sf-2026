@@ -8,11 +8,11 @@ describe('Parity Section 9: Profiles E2E Suite', () => {
   const JWT_SECRET = process.env.JWT_SECRET || 'subspace_jwt_super_secret_key_2026';
   let app: FastifyInstance;
 
-  const everyoneId = 'e0000000-0000-0000-0000-000000000001';
-  const friendsOnlyId = 'e0000000-0000-0000-0000-000000000002';
-  const friendId = 'e0000000-0000-0000-0000-000000000003';
-  const strangerId = 'e0000000-0000-0000-0000-000000000004';
-  const blockedId = 'e0000000-0000-0000-0000-000000000005';
+  const everyoneId = '852781502797185025';
+  const friendsOnlyId = '852781502797185026';
+  const friendId = '852781502797185027';
+  const strangerId = '852781502797185028';
+  const blockedId = '852781502797185029';
 
   const STRANGER_PASSWORD = 'StrangerPassword1';
   let everyoneToken: string, friendsOnlyToken: string, friendToken: string, strangerToken: string, blockedToken: string;
@@ -188,7 +188,7 @@ describe('Parity Section 9: Profiles E2E Suite', () => {
     if (!(app as any).db) return;
     const res = await app.inject({
       method: 'GET',
-      url: '/api/v1/users/00000000-0000-0000-0000-000000000000/profile',
+      url: '/api/v1/users/100000000000000000/profile',
       headers: { authorization: `Bearer ${everyoneToken}` },
     });
     expect(res.statusCode).toBe(404);

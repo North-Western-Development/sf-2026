@@ -10,9 +10,9 @@ describe('Comm-Link Audio, Video & Holo-Cast E2E Suite', () => {
   const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'subspace_secret_key_frequency';
   let app: FastifyInstance;
 
-  const pilotId = '12121212-1212-1212-1212-121212121212'; // Has CONNECT_AUDIO, SPEAK_AUDIO, BROADCAST_HOLO_CAST
-  const listenerId = '34343434-3434-3434-3434-343434343434'; // Has CONNECT_AUDIO only
-  const mutedId = '56565656-5656-5656-5656-565656565656'; // No voice permissions (Text only)
+  const pilotId = '885266406948344338'; // Has CONNECT_AUDIO, SPEAK_AUDIO, BROADCAST_HOLO_CAST
+  const listenerId = '768547397850772532'; // Has CONNECT_AUDIO only
+  const mutedId = '651828388753200726'; // No voice permissions (Text only)
 
   let pilotToken: string;
   let listenerToken: string;
@@ -153,7 +153,7 @@ describe('Comm-Link Audio, Video & Holo-Cast E2E Suite', () => {
     const pilotBody = JSON.parse(pilotRes.payload);
     expect(pilotBody.token).toBeDefined();
     expect(pilotBody.canSpeak).toBe(true);
-    expect(pilotBody.canHoloCast).toBe(true);
+    expect(pilotBody.canShareScreen).toBe(true);
 
     // Verify JWT payload signature and grants
     const decodedPilot: any = jwt.verify(pilotBody.token, LIVEKIT_API_SECRET);
@@ -172,7 +172,7 @@ describe('Comm-Link Audio, Video & Holo-Cast E2E Suite', () => {
     expect(listenerRes.statusCode).toBe(200);
     const listenerBody = JSON.parse(listenerRes.payload);
     expect(listenerBody.canSpeak).toBe(false);
-    expect(listenerBody.canHoloCast).toBe(false);
+    expect(listenerBody.canShareScreen).toBe(false);
 
     const decodedListener: any = jwt.verify(listenerBody.token, LIVEKIT_API_SECRET);
     expect(decodedListener.sub).toBe(listenerId);

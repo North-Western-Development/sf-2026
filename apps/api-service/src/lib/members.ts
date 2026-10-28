@@ -1,4 +1,5 @@
 import { eq, and, inArray, beacons, beaconMembers, clearances, transmitters } from '@subspace/database';
+import { BOT_VERIFIED } from './transmissions.js';
 
 /**
  * Member rows in the shape returned by GET /beacons/:id/members, used for both the list
@@ -20,6 +21,8 @@ export async function buildMembers(db: any, redis: any, beaconId: string, onlyId
       clearanceIds: beaconMembers.clearanceIds,
       joinedAt: beaconMembers.joinedAt,
       timeoutUntil: beaconMembers.timeoutUntil,
+      serverMuted: beaconMembers.serverMuted,
+      serverDeafened: beaconMembers.serverDeafened,
       memberAvatarUrl: beaconMembers.avatarUrl,
       memberBannerUrl: beaconMembers.bannerUrl,
       memberBio: beaconMembers.bio,
@@ -38,6 +41,8 @@ export async function buildMembers(db: any, redis: any, beaconId: string, onlyId
       staffRank: transmitters.staffRank,
       tagBeaconId: transmitters.tagBeaconId,
       avatarDecoration: transmitters.avatarDecoration,
+      botKind: transmitters.botKind,
+      botVerified: BOT_VERIFIED,
     })
     .from(beaconMembers)
     .innerJoin(transmitters, eq(beaconMembers.transmitterId, transmitters.id))
@@ -77,6 +82,8 @@ export async function buildMembers(db: any, redis: any, beaconId: string, onlyId
         staffRank: m.staffRank,
         tagBeaconId: m.tagBeaconId,
         avatarDecoration: m.avatarDecoration,
+        botKind: m.botKind ?? null,
+        ...(m.botVerified ? { botVerified: true } : {}),
       },
       // Flat fields kept for existing clients.
       username: m.username,
@@ -94,6 +101,8 @@ export async function buildMembers(db: any, redis: any, beaconId: string, onlyId
       joinedAt: m.joinedAt,
       // Only while it lasts.
       timeoutUntil: m.timeoutUntil && new Date(m.timeoutUntil).getTime() > Date.now() ? m.timeoutUntil : null,
+      serverMuted: m.serverMuted,
+      serverDeafened: m.serverDeafened,
       presence: presence.get(m.transmitterId) || 'offline',
       customStatus: m.customStatus,
       hasCompletedOnboarding: m.hasCompletedOnboarding,

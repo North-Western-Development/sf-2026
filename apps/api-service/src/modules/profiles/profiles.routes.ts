@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import {
   eq,
   and,
+  sql,
   or,
   inArray,
   transmitters,
@@ -16,6 +17,10 @@ import {
   resolveTransmitterBeaconIds,
   highestPerFamily,
   accountConnections,
+  appBots,
+  appCommands,
+  oauthApps,
+  isNull,
 } from '@subspace/database';
 import {
   isValidUsername,
@@ -25,9 +30,12 @@ import {
   PROFILE_VISIBILITY_LEVELS,
   AVATAR_DECORATIONS,
   PROFILE_EFFECTS,
+  ACTIVITY_VISIBILITY,
+  appRoleAtLeast,
 } from '@subspace/constants';
+import { appRole } from '../../lib/app-access.js';
 import { extractAuthToken } from '../../middleware/hierarchy.js';
-import { publishGatewayEvent } from '../../lib/events.js';
+import { publishGatewayEvent, publishSessionRefresh } from '../../lib/events.js';
 import { validateMediaUrl } from '../../lib/media.js';
 import { serializePublicTransmitter, serializeTransmitter } from '../../lib/serialize.js';
 import { confirmPassword } from '../../lib/confirm-password.js';
@@ -36,6 +44,8 @@ import { refreshCommendations } from '../../lib/commendations.js';
 const MAX_BIO_LENGTH = 190;
 const MAX_PRONOUNS_LENGTH = 40;
 const MAX_CUSTOM_STATUS_LENGTH = 128;
+/** Longest private note about someone (NOTE_MAX_LENGTH, default 1024 characters). */
+const MAX_NOTE_LENGTH = Math.max(1, Math.floor(Number(process.env.NOTE_MAX_LENGTH)) || 1024);
 
 /** Allocates a fresh discriminator for a username change; kept local to avoid a circular import. */
 async function allocateDiscriminator(db: any, username: string): Promise<string | null> {
@@ -167,11 +177,19 @@ export async function applyProfileUpdate(
   if (body.customStatus !== undefined) {
     const status = body.customStatus;
     if (status !== null) {
-      if (typeof status !== 'object' || typeof status.text !== 'string' || status.text.length > MAX_CUSTOM_STATUS_LENGTH) {
+      if (typeof status !== 'object' || typeof status.text !== 'string' || [...status.text].length > MAX_CUSTOM_STATUS_LENGTH) {
         return { status: 400, body: { error: `customStatus.text is required and must be <= ${MAX_CUSTOM_STATUS_LENGTH} characters` } };
       }
+      if (status.emoji !== undefined && status.emoji !== null && (typeof status.emoji !== 'string' || status.emoji.length > 64)) {
+        return { status: 400, body: { error: 'customStatus.emoji must be an emoji' } };
+      }
+      if (status.expiresAt !== undefined && status.expiresAt !== null && Number.isNaN(Date.parse(status.expiresAt))) {
+        return { status: 400, body: { error: 'customStatus.expiresAt must be a date' } };
+      }
     }
-    updates.customStatus = status;
+    // Only the known fields are kept: nothing else rides along to everyone who sees the status.
+    updates.customStatus =
+      status === null ? null : { text: status.text.trim(), ...(status.emoji ? { emoji: status.emoji } : {}), ...(status.expiresAt ? { expiresAt: new Date(status.expiresAt).toISOString() } : {}) };
   }
 
   if (body.avatarDecoration !== undefined) {
@@ -195,6 +213,13 @@ export async function applyProfileUpdate(
     updates.profileVisibility = body.profileVisibility;
   }
 
+  if (body.activityVisibility !== undefined) {
+    if (!(ACTIVITY_VISIBILITY as readonly string[]).includes(body.activityVisibility)) {
+      return { status: 400, body: { error: 'activityVisibility must be one of off, everyone, friends' } };
+    }
+    updates.activityVisibility = body.activityVisibility;
+  }
+
   // Privacy › "Allow DMs from other members in beacons I join"; Discord offers to apply it to
   // every beacon you are already in too.
   if (body.defaultAllowDms !== undefined) {
@@ -211,8 +236,37 @@ export async function applyProfileUpdate(
   const peers = await resolvePresencePeers(db, transmitterId);
   await publishGatewayEvent(app, 'USER_UPDATE', { user: serializePublicTransmitter(updatedUser) }, { transmitterIds: peers.filter((id: string) => id !== transmitterId) });
   await publishGatewayEvent(app, 'USER_UPDATE', { user: serializeTransmitter(updatedUser) }, { transmitterIds: [transmitterId] });
+  // The gateway rereads Activity Privacy and shares (or stops sharing) what they are playing.
+  if (updates.activityVisibility !== undefined) await publishSessionRefresh(app, [transmitterId]);
 
   return { status: 200, body: { message: 'Profile updated successfully', transmitter: serializeTransmitter(updatedUser) } };
+}
+
+/**
+ * A bot's application for its profile card: its global slash commands, and whether the viewer may
+ * add it to a beacon (anyone, if its developer made it public; otherwise only its developers).
+ */
+async function botApplication(db: any, botUserId: string, viewer: string) {
+  const [row] = await db
+    .select({ app: oauthApps, isPublic: appBots.isPublic })
+    .from(appBots)
+    .innerJoin(oauthApps, eq(oauthApps.id, appBots.appId))
+    .where(eq(appBots.userId, botUserId))
+    .limit(1);
+  if (!row) return null;
+  const commands = await db
+    .select({ name: appCommands.name, description: appCommands.description })
+    .from(appCommands)
+    .where(and(eq(appCommands.appId, row.app.id), isNull(appCommands.beaconId)))
+    .orderBy(appCommands.name);
+  return {
+    id: row.app.id,
+    name: row.app.name,
+    description: row.app.description,
+    isPublic: row.isPublic,
+    canAdd: row.isPublic || appRoleAtLeast(await appRole(db, row.app, viewer), 'developer'),
+    commands,
+  };
 }
 
 export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -229,6 +283,37 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
     const result = await applyProfileUpdate(app, db, token.transmitterId, request.body || {});
     return reply.status(result.status).send(result.body);
   });
+
+  /**
+   * PUT /api/v1/users/@me/changelog  { platform, seen }
+   * What's New: the newest changelog entry they have seen on this platform. Only this platform's
+   * mark changes, so the web and desktop apps never overwrite each other.
+   */
+  app.put(
+    '/@me/changelog',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['platform', 'seen'],
+          properties: { platform: { type: 'string', enum: ['web', 'desktop', 'mobile'] }, seen: { type: 'string', pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}[a-z]?$' } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const token = extractAuthToken(request);
+      if (!token) return reply.status(401).send({ error: 'Authentication required' });
+      if (!db) return reply.status(503).send({ error: 'Database service unavailable' });
+      const { platform, seen } = request.body as { platform: 'web' | 'desktop' | 'mobile'; seen: string };
+      const [row] = await db
+        .update(transmitters)
+        .set({ changelogSeen: sql`${transmitters.changelogSeen} || jsonb_build_object(${platform}::text, ${seen}::text)` })
+        .where(eq(transmitters.id, token.transmitterId))
+        .returning({ changelogSeen: transmitters.changelogSeen });
+      return reply.send({ changelogSeen: row?.changelogSeen ?? {} });
+    }
+  );
 
   /**
    * GET /api/v1/users/:id/profile?beaconId=
@@ -326,6 +411,7 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         name: commendations.name,
         iconUrl: commendations.iconUrl,
         description: commendations.description,
+        criteriaType: commendations.criteriaType,
         displayOrder: transmitterCommendations.displayOrder,
       })
       .from(transmitterCommendations)
@@ -369,9 +455,12 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
         tagBeaconId: target.tagBeaconId,
         avatarDecoration: target.avatarDecoration ?? null,
         profileEffect: target.profileEffect ?? null,
+        ...(target.botKind ? { botKind: target.botKind } : {}),
+        ...(target.botKind === 'bot' && target.handVerifiedAt ? { botVerified: true } : {}),
       },
+      application: target.botKind === 'bot' ? await botApplication(db, target.id, token.transmitterId) : null,
       member,
-      commendations: highestPerFamily(visibleCommendations).map(({ displayOrder, ...c }: any) => c),
+      commendations: highestPerFamily(visibleCommendations).map(({ displayOrder, criteriaType, ...c }: any) => c),
       mutualBeacons: mutualBeaconRows.map((b: any) => ({ id: b.id, name: b.name, iconUrl: b.iconUrl })),
       mutualFriends: [],
       connections: (
@@ -379,6 +468,7 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       ).map((c: any) => ({ provider: c.provider, name: c.name, url: c.url })),
       relationship,
       note,
+      noteMaxLength: MAX_NOTE_LENGTH,
     });
   });
 
@@ -397,7 +487,7 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       .where(and(eq(transmitterNotes.ownerId, token.transmitterId), eq(transmitterNotes.targetId, targetId)))
       .limit(1);
 
-    return reply.send({ note: noteRow?.note ?? null });
+    return reply.send({ note: noteRow?.note ?? null, maxLength: MAX_NOTE_LENGTH });
   });
 
   /**
@@ -411,7 +501,7 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
           type: 'object',
           additionalProperties: false,
           required: ['note'],
-          properties: { note: { type: 'string', maxLength: 256 } },
+          properties: { note: { type: 'string', maxLength: MAX_NOTE_LENGTH } },
         },
       },
     },
@@ -422,6 +512,12 @@ export const profileRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
 
       const { id: targetId } = request.params as { id: string };
       const { note } = request.body as { note: string };
+      // Notes are about people (yourself included): not bots or webhooks, not accounts that do not exist.
+      const [target] = /^[1-9][0-9]{0,18}$/.test(targetId)
+        ? await db.select({ botKind: transmitters.botKind, deletedAt: transmitters.deletedAt }).from(transmitters).where(eq(transmitters.id, targetId)).limit(1)
+        : [];
+      if (!target || target.deletedAt) return reply.status(404).send({ error: 'Transmitter not found' });
+      if (target.botKind) return reply.status(400).send({ error: 'Notes are for people, not bots', code: 'NOTE_NOT_ALLOWED' });
 
       if (!note || note.trim().length === 0) {
         await db

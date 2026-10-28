@@ -14,6 +14,8 @@ import { Avatar } from '../common/Avatar';
 import { memberMenu } from '../members/memberMenu';
 import { PixelStar } from '../auth/PixelStar';
 import { MobileNavButton } from '../../app/mobile';
+import { ACTIVITY_VERBS } from '../activity/activity';
+import { useActivityOf } from '../activity/ActivityViews';
 
 type Tab = 'online' | 'all' | 'pending' | 'blocked' | 'add';
 
@@ -22,6 +24,7 @@ function Row({ rel }: { rel: Relationship }) {
   const { openContextMenu } = useContextMenu();
   const presence = useStore((s) => s.presence[rel.user.id]);
   const status = presence?.status ?? 'offline';
+  const activity = useActivityOf(rel.type === 'friend' ? rel.user.id : undefined);
   const sub =
     rel.type === 'incoming'
       ? `Incoming ${term('affiliationRequest')}`
@@ -29,7 +32,7 @@ function Row({ rel }: { rel: Relationship }) {
         ? `Outgoing ${term('affiliationRequest')}`
         : rel.type === 'blocked'
           ? 'Blocked'
-          : presence?.customStatus?.text || PRESENCE_LABELS[status === 'invisible' ? 'offline' : status]?.label;
+          : presence?.customStatus?.text || (activity ? `${ACTIVITY_VERBS[activity.type]} ${activity.name}` : null) || PRESENCE_LABELS[status === 'invisible' ? 'offline' : status]?.label;
 
   const message = async () => {
     try {

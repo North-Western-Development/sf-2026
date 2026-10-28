@@ -28,6 +28,8 @@ Generate secrets with `openssl rand -hex 32`. In production a missing required s
 | `WEBAUTHN_ORIGINS` | `PUBLIC_ORIGIN` | Comma-separated origins allowed to use passkeys and to appear in email links. |
 | `RP_ID` | origin hostname | Passkey relying-party id. Set it to the bare domain to share passkeys across subdomains. |
 | `MEDIA_PROXY_SECRET` | from `JWT_SECRET` | Signs link-preview image proxy URLs. |
+| `BLOCK_EU` | `false` | `true` refuses the EU, the EEA and the UK (where the GDPR applies): their network addresses get a 401 from the API, file service and gateway (the web app shows a block page), and their email domains and phone numbers cannot be used. Set it for the api, gateway and file services. |
+| `BLOCK_EU_RANGES` | `/etc/subspace/eu-ranges.csv` | Address ranges for `BLOCK_EU`, as `first,last,country` lines. `deploy/server/eu-ranges.sh` writes it from DB-IP's free country database; without the file only emails and phone numbers are checked. |
 
 ## Email
 

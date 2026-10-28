@@ -27,6 +27,7 @@ import {
   Sticker,
   Trash2,
   Users,
+  Webhook,
   X,
 } from 'lucide-react';
 import { Button, Input } from '@subspace/ui';
@@ -38,9 +39,10 @@ import { beaconPermissions, can, PERMISSIONS } from '../../data/permissions';
 import { http, optional } from '../../lib/http';
 import { pickImage, uploadMedia } from '../../lib/media';
 import { toBeacon, toClearance, toRelay, userTag } from '../../lib/normalize';
+import { SLOWMODE_CHOICES } from '@subspace/constants';
 import { PERMISSION_GROUPS } from '../../lib/permissionMeta';
 import { term } from '../../lib/strings';
-import type { Clearance, Member } from '../../lib/types';
+import type { Clearance, Member, Relay } from '../../lib/types';
 import { closeModal, confirmAction, toast } from '../../app/ui';
 import { SettingsLayout, SettingsHeader, SettingsTitle, Field, Switch, SaveBar, useWideSettingsPage } from './SettingsLayout';
 import { RelayIcon } from '../sidebar/BeaconSidebar';
@@ -57,6 +59,7 @@ import { TagTab } from './beacon/TagTab';
 import { StickersTab, SoundboardTab } from './beacon/ExpressionTabs';
 import { InsightsTab } from './beacon/InsightsTab';
 import { WidgetTab } from './beacon/WidgetTab';
+import { IntegrationsTab } from './beacon/IntegrationsTab';
 import { TemplateTab } from './beacon/TemplateTab';
 
 // Stable fallbacks: a fresh {} / [] inside a selector would re-render forever.
@@ -202,6 +205,7 @@ function ClearancesTab({ beaconId }: { beaconId: string }) {
         name: draft.name,
         color: draft.color,
         hoist: draft.hoist,
+        mentionable: !!draft.mentionable,
         permissions: draft.permissions,
         allowDelegation: draft.allowDelegation,
       });
@@ -313,6 +317,12 @@ function ClearancesTab({ beaconId }: { beaconId: string }) {
                   {current.position > 0 && (
                     <>
                       <Switch label="Display members separately from online members" checked={draft.hoist} onChange={(v) => setDraft({ ...draft, hoist: v })} />
+                      <Switch
+                        label="Allow anyone to @mention this clearance"
+                        description="Members with Mention All Clearances can always mention it."
+                        checked={!!draft.mentionable}
+                        onChange={(v) => setDraft({ ...draft, mentionable: v })}
+                      />
                       <Switch label="Allow members to assign this clearance to others below them" checked={!!draft.allowDelegation} onChange={(v) => setDraft({ ...draft, allowDelegation: v })} />
                     </>
                   )}
@@ -369,22 +379,57 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
   const relay = useStore((s) => s.relays[relayId]);
   const clearances = useStore(useShallow((s) => [...(s.clearances[beaconId] ?? [])].sort((a, b) => b.position - a.position)));
   const members = useStore((s) => s.members[beaconId] ?? EMPTY_MEMBERS);
-  const [d, setD] = useState({ name: relay?.name ?? '', topic: relay?.topic ?? '', isUnhideable: !!relay?.isUnhideable, isE2ee: !!relay?.isE2ee });
+  const [d, setD] = useState({ name: relay?.name ?? '', topic: relay?.topic ?? '', isUnhideable: !!relay?.isUnhideable, isE2ee: !!relay?.isE2ee, slowmode: relay?.slowmodeSeconds ?? 0, isAnnouncement: !!relay?.isAnnouncement });
   const [overwrites, setOverwrites] = useState<Overwrite[] | null>(null);
+  /** In a band and following its permissions (Discord's "synced with category"). */
+  const [synced, setSynced] = useState(false);
+  const band = useStore((s) => (relay?.parentId && relay.type !== 'category' ? s.relays[relay.parentId] : undefined));
   const [target, setTarget] = useState<string | null>(null);
   const [sub, setSub] = useState<'overview' | 'permissions'>('overview');
+  const isBand = relay?.type === 'category';
+  const noun = isBand ? term('band') : term('relay');
+  const bands = useStore(useShallow((s) => (s.relayIdsByBeacon[beaconId] ?? []).map((id) => s.relays[id]).filter((r): r is Relay => r?.type === 'category')));
+  /** A band picked in Overview, waiting for "sync permissions?". */
+  const [moving, setMoving] = useState<string | null>(null);
+  const move = async (parentId: string | null, sync: boolean) => {
+    try {
+      const res = await http.patch<{ relay: any }>(`/beacons/${beaconId}/relays/${relayId}`, { parentId, permissionsSynced: sync });
+      setState((s) => ({ relays: { ...s.relays, [relayId]: { ...s.relays[relayId], ...toRelay(res.relay) } } }));
+      setMoving(null);
+      await loadOverwrites();
+      toast(parentId ? `Moved to ${bands.find((b) => b.id === parentId)?.name}` : `Moved out of the ${term('band').toLowerCase()}`, 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
 
   useEffect(() => {
-    if (relay) setD({ name: relay.name, topic: relay.topic ?? '', isUnhideable: relay.isUnhideable, isE2ee: !!relay.isE2ee });
+    if (relay) setD({ name: relay.name, topic: relay.topic ?? '', isUnhideable: relay.isUnhideable, isE2ee: !!relay.isE2ee, slowmode: relay.slowmodeSeconds ?? 0, isAnnouncement: !!relay.isAnnouncement });
   }, [relay?.id]);
-  useEffect(() => {
-    void optional(http.get<{ overwrites: Overwrite[] }>(`/beacons/${beaconId}/relays/${relayId}/overwrites`), { overwrites: [] })
-      .then((r) => setOverwrites(r.overwrites))
+  const loadOverwrites = () =>
+    optional(http.get<{ overwrites: Overwrite[]; synced?: boolean }>(`/beacons/${beaconId}/relays/${relayId}/overwrites`), { overwrites: [], synced: false })
+      .then((r) => {
+        setOverwrites(r.overwrites);
+        setSynced(!!r.synced);
+      })
       .catch(() => setOverwrites([]));
+  useEffect(() => {
+    void loadOverwrites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [beaconId, relayId]);
+  const syncNow = async () => {
+    try {
+      await http.post(`/beacons/${beaconId}/relays/${relayId}/overwrites/sync`);
+      await loadOverwrites();
+      setTarget(null);
+      toast(`Synced with ${band?.name ?? term('band')}`, 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
 
   if (!relay) return null;
-  const dirty = d.name !== relay.name || d.topic !== (relay.topic ?? '') || d.isUnhideable !== relay.isUnhideable || d.isE2ee !== !!relay.isE2ee;
+  const dirty = d.name !== relay.name || d.topic !== (relay.topic ?? '') || d.isUnhideable !== relay.isUnhideable || d.isE2ee !== !!relay.isE2ee || d.slowmode !== (relay.slowmodeSeconds ?? 0) || d.isAnnouncement !== !!relay.isAnnouncement;
   const save = async () => {
     try {
       const res = await http.patch<{ relay: any }>(`/beacons/${beaconId}/relays/${relayId}`, {
@@ -392,9 +437,10 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
         topic: d.topic || null,
         isUnhideable: d.isUnhideable,
         ...(relay.type === 'comm_link' ? { isE2ee: d.isE2ee } : {}),
+        ...(relay.type === 'text' ? { slowmodeSeconds: d.slowmode, isAnnouncement: d.isAnnouncement } : {}),
       });
       setState((s) => ({ relays: { ...s.relays, [relayId]: { ...s.relays[relayId], ...toRelay(res.relay) } } }));
-      toast('Relay saved', 'success');
+      toast(`${noun} saved`, 'success');
     } catch (err) {
       toast((err as Error).message, 'error');
     }
@@ -410,6 +456,8 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
     if (state === 'deny') deny |= bit;
     const next = { ...cur, allow: String(allow), deny: String(deny) } as Overwrite;
     setOverwrites((list) => [...(list ?? []).filter((o) => o.targetId !== target), next]);
+    // A synced relay gets its own copy of the band's permissions first (the server does it).
+    setSynced(false);
     await http
       .put(`/beacons/${beaconId}/relays/${relayId}/overwrites/${target}`, { targetType: next.targetType, allow: next.allow, deny: next.deny })
       .catch((err) => toast((err as Error).message, 'error'));
@@ -427,7 +475,7 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
       </button>
       <SettingsTitle>
         <span className="flex items-center gap-2">
-          <RelayIcon type={relay.type} className="h-5 w-5" /> {relay.name}
+          <RelayIcon type={relay.type} announcement={relay.isAnnouncement} className="h-5 w-5" /> {relay.name}
         </span>
       </SettingsTitle>
       <nav className="mb-5 flex gap-5 border-b border-line">
@@ -439,15 +487,75 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
       </nav>
       {sub === 'overview' ? (
         <>
-          <Field label={`${term('relay')} Name`}>
-            <Input aria-label={`${term('relay')} Name`} value={d.name} maxLength={100} onChange={(e) => setD({ ...d, name: e.target.value })} />
+          <Field label={`${noun} Name`}>
+            <Input aria-label={`${noun} Name`} value={d.name} maxLength={100} onChange={(e) => setD({ ...d, name: e.target.value })} />
           </Field>
+          {!isBand && (
           <div className="mt-4">
             <Field label={`${term('relay')} Topic`} hint="Supports markdown. Shown in the relay header.">
               <textarea value={d.topic} maxLength={1024} rows={3} onChange={(e) => setD({ ...d, topic: e.target.value })} className="w-full resize-none rounded-md border border-line bg-void px-3 py-2 text-sm text-fg outline-none focus:border-brand" />
             </Field>
           </div>
-          <Switch label="Core Priority Relay (unhideable)" description="Members cannot hide this relay from their relay list." checked={d.isUnhideable} onChange={(v) => setD({ ...d, isUnhideable: v })} />
+          )}
+          {!isBand && (
+            <div className="mt-4">
+              <Field label={term('band')} hint={`Which ${term('band').toLowerCase()} this ${term('relay').toLowerCase()} sits in.`}>
+                <select
+                  aria-label={term('band')}
+                  value={moving ?? relay.parentId ?? ''}
+                  onChange={(e) => (e.target.value ? setMoving(e.target.value) : void move(null, false))}
+                  className="h-9 w-full rounded-md border border-line bg-void px-2 text-sm text-fg"
+                >
+                  <option value="">No {term('band').toLowerCase()}</option>
+                  {bands.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {moving && moving !== relay.parentId && (
+                <div role="alertdialog" aria-label="Sync permissions" className="mt-2 rounded-md bg-raised p-3 text-sm">
+                  <p className="text-fg">
+                    Sync permissions with <span className="font-semibold">{bands.find((b) => b.id === moving)?.name}</span>? Its permissions replace this {term('relay').toLowerCase()}'s.
+                  </p>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button size="sm" variant="link" className="text-fg" onClick={() => setMoving(null)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => void move(moving, false)}>
+                      Keep Current Permissions
+                    </Button>
+                    <Button size="sm" onClick={() => void move(moving, true)}>
+                      Sync Permissions
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {relay.type === 'text' && (
+            <div className="mt-4">
+              <Field label="Slowmode" hint="How long members wait between transmissions. Bypass Slowmode skips it.">
+                <select aria-label="Slowmode" value={d.slowmode} onChange={(e) => setD({ ...d, slowmode: Number(e.target.value) })} className="h-9 w-full rounded-md border border-line bg-void px-2 text-sm text-fg">
+                  {SLOWMODE_CHOICES.map((sec) => (
+                    <option key={sec} value={sec}>
+                      {sec === 0 ? 'Off' : sec < 60 ? `${sec}s` : sec < 3600 ? `${sec / 60}m` : `${sec / 3600}h`}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          )}
+          {relay.type === 'text' && (
+            <Switch
+              label="Announcement Relay"
+              description={`Post updates that ${term('beacon', true).toLowerCase()} can follow: each transmission you publish is copied into the relays that follow this one.`}
+              checked={d.isAnnouncement}
+              onChange={(v) => setD({ ...d, isAnnouncement: v })}
+            />
+          )}
+          {!isBand && <Switch label="Core Priority Relay (unhideable)" description="Members cannot hide this relay from their relay list." checked={d.isUnhideable} onChange={(v) => setD({ ...d, isUnhideable: v })} />}
           {relay.type === 'comm_link' && (
             <Switch
               label="End-to-end encrypt voice and video"
@@ -461,8 +569,8 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
               variant="danger"
               onClick={() =>
                 confirmAction({
-                  title: `Delete ${term('relay')}`,
-                  body: `Delete #${relay.name}? This cannot be undone.`,
+                  title: `Delete ${noun}`,
+                  body: isBand ? `Delete ${relay.name}? Relays inside it will move out of the band.` : `Delete #${relay.name}? This cannot be undone.`,
                   confirmLabel: 'Delete',
                   danger: true,
                   onConfirm: async () => {
@@ -474,12 +582,38 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
                 })
               }
             >
-              Delete {term('relay')}
+              Delete {noun}
             </Button>
           </div>
-          <SaveBar visible={dirty} onReset={() => setD({ name: relay.name, topic: relay.topic ?? '', isUnhideable: relay.isUnhideable, isE2ee: !!relay.isE2ee })} onSave={() => void save()} />
+          <SaveBar visible={dirty} onReset={() => setD({ name: relay.name, topic: relay.topic ?? '', isUnhideable: relay.isUnhideable, isE2ee: !!relay.isE2ee, slowmode: relay.slowmodeSeconds ?? 0, isAnnouncement: !!relay.isAnnouncement })} onSave={() => void save()} />
         </>
       ) : (
+        <>
+        {isBand && (
+          <p className="mb-4 rounded-md bg-raised px-3 py-2.5 text-sm text-fg-muted">
+            {term('relay', true)} in this {term('band').toLowerCase()} that are synced with it use these permissions.
+          </p>
+        )}
+        {band && (
+          <div role="status" className="mb-4 flex items-center gap-3 rounded-md bg-raised px-3 py-2.5 text-sm">
+            <span className="min-w-0 flex-1 text-fg-muted">
+              {synced ? (
+                <>
+                  Permissions synced with <span className="font-semibold text-fg">{band.name}</span>. Changing one here gives this {term('relay').toLowerCase()} its own.
+                </>
+              ) : (
+                <>
+                  Permissions not synced with <span className="font-semibold text-fg">{band.name}</span>.
+                </>
+              )}
+            </span>
+            {!synced && (
+              <Button size="sm" variant="secondary" onClick={() => void syncNow()}>
+                Sync Now
+              </Button>
+            )}
+          </div>
+        )}
         <div className="flex gap-6">
           <div className="w-52 shrink-0">
             <p className="mb-2 text-xs font-bold uppercase text-fg-muted">{term('clearance', true)} / Transmitters</p>
@@ -514,7 +648,7 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
           </div>
           <div className="min-w-0 flex-1">
             {!target ? (
-              <p className="text-sm text-fg-muted">Select a clearance or transmitter to override permissions in this relay. ✓ allows, ✕ denies, / inherits.</p>
+              <p className="text-sm text-fg-muted">{`Select a clearance or transmitter to override permissions in this ${noun.toLowerCase()}`}. ✓ allows, ✕ denies, / inherits.</p>
             ) : (
               PERMISSION_GROUPS.flatMap((g) => g.items)
                 .filter((p) => p.relay)
@@ -550,6 +684,7 @@ function RelayTab({ beaconId, relayId, onBack }: { beaconId: string; relayId: st
             )}
           </div>
         </div>
+        </>
       )}
     </>
   );
@@ -798,6 +933,8 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
 
   const manageBeacon = can(perms, PERMISSIONS.MANAGE_BEACON);
   const manageRelays = can(perms, PERMISSIONS.MANAGE_RELAYS);
+  // Adding expressions (Create Expressions) or managing anyone's (Manage Expressions).
+  const expressions = can(perms, PERMISSIONS.MANAGE_GLYPHS) || can(perms, PERMISSIONS.CREATE_EXPRESSIONS);
 
   return (
     <SettingsLayout
@@ -830,8 +967,8 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
         {
           heading: 'Expression',
           items: [
-            ...(can(perms, PERMISSIONS.MANAGE_GLYPHS) ? [{ id: 'glyphs', icon: <Smile />, label: term('glyph', true) }] : []),
-            ...(can(perms, PERMISSIONS.MANAGE_GLYPHS)
+            ...(expressions ? [{ id: 'glyphs', icon: <Smile />, label: term('glyph', true) }] : []),
+            ...(expressions
               ? [
                   { id: 'stickers', icon: <Sticker />, label: 'Stickers' },
                   { id: 'soundboard', icon: <AudioLines />, label: 'Soundboard' },
@@ -857,6 +994,12 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           ],
         },
         {
+          heading: 'Apps',
+          items: [
+            ...(can(perms, PERMISSIONS.MANAGE_WEBHOOKS) || manageBeacon || can(perms, PERMISSIONS.KICK_MEMBERS) ? [{ id: 'integrations', icon: <Webhook />, label: 'Integrations' }] : []),
+          ],
+        },
+        {
           heading: 'Moderation',
           items: [
             ...(manageBeacon ? [{ id: 'safety', icon: <ShieldAlert />, label: 'Safety Setup' }, { id: 'automod', icon: <Bot />, label: 'AutoMod' }] : []),
@@ -867,9 +1010,9 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
           heading: 'Community',
           items: [
             ...(manageBeacon ? [{ id: 'onboarding', icon: <Flag />, label: 'Onboarding' }] : []),
+            ...(can(perms, PERMISSIONS.VIEW_INSIGHTS) ? [{ id: 'insights', icon: <BarChart3 />, label: `${term('beacon')} Insights` }] : []),
             ...(manageBeacon
               ? [
-                  { id: 'insights', icon: <BarChart3 />, label: `${term('beacon')} Insights` },
                   { id: 'widget', icon: <LayoutGrid />, label: 'Widget' },
                   { id: 'template', icon: <Copy />, label: `${term('beacon')} Template` },
                 ]
@@ -925,6 +1068,7 @@ export function BeaconSettings({ beaconId, tab: initialTab }: { beaconId: string
       {tab === 'soundboard' && <SoundboardTab beaconId={beaconId} />}
       {tab === 'insights' && <InsightsTab beaconId={beaconId} />}
       {tab === 'widget' && <WidgetTab beaconId={beaconId} />}
+      {tab === 'integrations' && <IntegrationsTab beaconId={beaconId} />}
       {tab === 'template' && <TemplateTab beaconId={beaconId} />}
       {tab === 'automod' && <AutoModTab beaconId={beaconId} />}
       {tab === 'safety' && <SafetyTab beaconId={beaconId} onOpenAutoMod={() => setTab('automod')} />}

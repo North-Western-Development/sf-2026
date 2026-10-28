@@ -1,3 +1,4 @@
+import type { ChangelogEntry } from '../features/changelog/changelog';
 import { create } from 'zustand';
 
 export type ModalState =
@@ -27,6 +28,9 @@ export type ModalState =
   | { kind: 'createEvent'; beaconId: string; eventId?: string }
   | { kind: 'drivePicker'; onPick: (file: { id: string; filename: string }) => void }
   | { kind: 'console' }
+  | { kind: 'whatsNew'; entries?: ChangelogEntry[] }
+  | { kind: 'followRelay'; relayId: string }
+  | { kind: 'createPoll'; channelKey: string }
   | { kind: 'report'; targetType: 'transmission' | 'transmitter' | 'beacon'; targetId: string; context?: Record<string, unknown> };
 
 export interface PopoutState {
@@ -40,7 +44,7 @@ export interface PopoutState {
 export interface Toast {
   id: number;
   message: string;
-  tone: 'info' | 'error' | 'success';
+  tone: 'info' | 'error' | 'success' | 'warning';
 }
 
 export type DialogState = Extract<ModalState, { kind: 'confirm' } | { kind: 'prompt' } | { kind: 'leaving' }>;
@@ -55,6 +59,8 @@ interface UiState {
   openClusters: Record<string, boolean>;
   toasts: Toast[];
   replyingTo: Record<string, { messageId: string; ping: boolean } | undefined>;
+  /** When slowmode lets me send in a channel again (ms since epoch). */
+  slowmodeUntil: Record<string, number | undefined>;
   editing: { key: string; messageId: string } | null;
   /** Open search panel: scope is a beacon id or 'dms'. */
   search: SearchState | null;
@@ -88,6 +94,7 @@ export const useUi = create<UiState>()(() => ({
   openClusters: persisted.openClusters ?? {},
   toasts: [],
   replyingTo: {},
+  slowmodeUntil: {},
   editing: null,
   search: null,
   jumpTarget: null,

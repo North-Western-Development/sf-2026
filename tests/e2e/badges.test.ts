@@ -11,9 +11,9 @@ describe('Badges (commendations)', () => {
   let db: any;
   const DAY = 86_400_000;
   // A two-year-old account with activity, a staff member, and a brand-new account.
-  const veteran = { id: 'f9000000-0000-4000-8000-000000000001', username: 'badge_veteran', staffRank: 0, createdAt: new Date(Date.now() - 740 * DAY) };
-  const staff = { id: 'f9000000-0000-4000-8000-000000000002', username: 'badge_staff', staffRank: 2, createdAt: new Date() };
-  const viewer = { id: 'f9000000-0000-4000-8000-000000000003', username: 'badge_viewer', staffRank: 0, createdAt: new Date() };
+  const veteran = { id: '726233703954251777', username: 'badge_veteran', staffRank: 0, createdAt: new Date(Date.now() - 740 * DAY) };
+  const staff = { id: '726233703954251778', username: 'badge_staff', staffRank: 2, createdAt: new Date() };
+  const viewer = { id: '726233703954251779', username: 'badge_viewer', staffRank: 0, createdAt: new Date() };
   const users = [veteran, staff, viewer];
   const as = (u: (typeof users)[number]) => ({ authorization: `Bearer ${signAccessToken({ transmitterId: u.id, username: u.username, staffRank: u.staffRank }, SECRET)}` });
   const codes = async (u: (typeof users)[number], by = viewer) =>

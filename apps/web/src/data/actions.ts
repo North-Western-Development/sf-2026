@@ -1,4 +1,5 @@
 import { loadEvents, loadRelayPrefs } from './community';
+import { isHeld, release } from '../features/inbox/inboxData';
 import { http, optional, ApiError } from '../lib/http';
 import {
   toBeacon,
@@ -40,7 +41,8 @@ import { api } from '../services/api';
 import { encryptFor, isEncryptedChannel, openEncrypted, rememberSent } from './e2ee';
 import { ensureDevice, forgetDevice } from '../lib/e2ee/client';
 import { registerPushToken, unregisterPushToken } from '../lib/native';
-import { toast } from '../app/ui';
+import { toast, useUi } from '../app/ui';
+import { relayPermissions, can, PERMISSIONS } from './permissions';
 import { gateway } from '../services/gateway';
 
 type Raw = Record<string, any>;
@@ -285,6 +287,10 @@ export interface SendOptions {
   stickers?: Array<{ id: string; name: string; url: string }>;
   /** Encrypted links: files sealed on this device, described inside the ciphertext. */
   encryptedAttachments?: Array<{ url: string; key: string; filename: string; mimeType: string; size: number }>;
+  /** A poll to post (Create Polls). */
+  poll?: { question: string; answers: Array<{ text: string; emoji?: string }>; durationHours: number; allowMultiselect: boolean };
+  /** A recorded voice message: one audio attachment (Send Voice Messages). */
+  voiceMessage?: { durationMs: number; waveform: string };
 }
 
 export async function sendMessage(key: ChannelKey, content: string, opts: SendOptions = {}): Promise<void> {
@@ -348,8 +354,16 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
     const sent = { ...toTransmission(raw), ...parseChannelFields(key), nonce };
     upsertMessages(key, [sent]);
     openEncrypted(key, [sent]);
+    startSlowmode(key);
     await ackChannel(key);
   } catch (err) {
+    if (err instanceof ApiError && err.code === 'SLOWMODE') {
+      removeMessage(key, optimistic.id);
+      const retry = Number((err.body as { retryAfter?: number } | undefined)?.retryAfter) || 1;
+      useUi.setState((s) => ({ slowmodeUntil: { ...s.slowmodeUntil, [key]: Date.now() + retry * 1000 } }));
+      toast(err.message, 'error');
+      return;
+    }
     // AutoMod stops it for good: say why, and do not offer to resend it.
     if (err instanceof ApiError && (err.code === 'AUTOMOD_BLOCKED' || err.code === 'TRANSMISSION_REQUEST_PENDING')) {
       removeMessage(key, optimistic.id);
@@ -359,6 +373,16 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
     patchMessage(key, optimistic.id, { pending: false, failed: true });
     if (isEncryptedChannel(key)) toast(`Could not encrypt the transmission: ${(err as Error).message}`, 'error');
   }
+}
+
+/** After sending in a slowmode relay (without Bypass Slowmode), the box counts down. */
+function startSlowmode(key: ChannelKey) {
+  const { type, id } = parseChannelKey(key);
+  if (type !== 'relay') return;
+  const s = getState();
+  const seconds = s.relays[id]?.slowmodeSeconds ?? 0;
+  if (!seconds || can(relayPermissions(s, id), PERMISSIONS.BYPASS_SLOWMODE)) return;
+  useUi.setState((u) => ({ slowmodeUntil: { ...u.slowmodeUntil, [key]: Date.now() + seconds * 1000 } }));
 }
 
 async function legacySend(key: ChannelKey, content: string): Promise<{ transmission: Raw }> {
@@ -458,7 +482,13 @@ export const loadPins = async (key: ChannelKey): Promise<Transmission[]> => {
 const ackTimers = new Map<ChannelKey, ReturnType<typeof setTimeout>>();
 
 /** Mark a channel read up to its newest message (debounced). */
-export function ackChannel(key: ChannelKey): Promise<void> {
+/**
+ * Read up to the newest transmission. `auto` (scrolling, focus, arrivals while viewing) skips a
+ * channel marked unread by hand; reading it on purpose (Mark as Read, sending) releases it.
+ */
+export function ackChannel(key: ChannelKey, opts: { auto?: boolean } = {}): Promise<void> {
+  if (opts.auto && isHeld(key)) return Promise.resolve();
+  if (!opts.auto) release(key);
   const s = getState();
   const act = s.activity[key];
   const ch = s.messages[key];
