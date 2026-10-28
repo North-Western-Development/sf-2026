@@ -15,7 +15,7 @@ HOST="${HOST:-deploy@74.208.95.245}"
 KEY="${SSH_KEY:-$HOME/.ssh/subspace_deploy}"
 DOMAIN="${DOMAIN:-subspace.click}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-VERSION="$(node -p "require('$ROOT/apps/mobile/app.json').expo.version")"
+VERSION="$(cd "$ROOT/apps/mobile" && node -p "require('./app.json').expo.version")"
 FILES=("$@")
 if [ ${#FILES[@]} -eq 0 ]; then
   for ext in apk ipa; do
