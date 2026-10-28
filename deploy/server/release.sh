@@ -113,11 +113,18 @@ if [ ! -f /etc/subspace/.nginx-logs-anonymized ]; then
 fi
 systemctl enable subspace-api subspace-gateway subspace-files subspace-badges >/dev/null
 systemctl restart subspace-api subspace-gateway subspace-files subspace-badges
-# The app's nginx routes ship with each release; the previous ones come back if nginx refuses them.
+# The app's nginx routes and shared snippets (security headers, proxy settings) ship with each
+# release; the previous ones come back if nginx refuses them.
 install -d -m 755 /var/www/subspace-downloads
-cp /etc/nginx/snippets/subspace-app.conf /etc/nginx/snippets/subspace-app.conf.prev
+# (Carriage returns stripped: a file saved on Windows must not name a snippet "x.conf\r".)
+NGINX_SNIPPETS="subspace-app.conf $(tr -d '\r' <"$REL/deploy/server/nginx/snippets.conf" | sed -n 's/^### //p')"
+for s in $NGINX_SNIPPETS; do [ -f "/etc/nginx/snippets/$s" ] && cp "/etc/nginx/snippets/$s" "/etc/nginx/snippets/$s.prev"; done
+awk -v dir=/etc/nginx/snippets '{sub(/\r$/, "")} /^### /{f=dir"/"$2; next} f{print > f}' "$REL/deploy/server/nginx/snippets.conf"
 cp "$REL/deploy/server/nginx/subspace-app.conf" /etc/nginx/snippets/subspace-app.conf
-nginx -t 2>/dev/null || { echo "nginx refused the new routes; keeping the previous ones"; mv /etc/nginx/snippets/subspace-app.conf.prev /etc/nginx/snippets/subspace-app.conf; }
+nginx -t 2>/dev/null || {
+  echo "nginx refused the new routes; keeping the previous ones"
+  for s in $NGINX_SNIPPETS; do [ -f "/etc/nginx/snippets/$s.prev" ] && mv "/etc/nginx/snippets/$s.prev" "/etc/nginx/snippets/$s"; done
+}
 nginx -t && systemctl reload nginx
 
 # Keep the three newest releases.
