@@ -79,6 +79,20 @@ export function MessageList({
     }
   }, [messages]);
 
+  // The list getting shorter (the on-screen keyboard opening, the window resizing) keeps the
+  // newest transmissions in view when they were.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    let height = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      if (el.clientHeight < height && atBottom.current) el.scrollTop = el.scrollHeight;
+      height = el.clientHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [key]);
+
   // Own messages always scroll into view.
   const lastId = messages.at(-1)?.id;
   useEffect(() => {

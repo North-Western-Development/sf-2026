@@ -8,12 +8,14 @@ import { WidgetPage } from './features/invite/WidgetPage';
 import { CookieNotice } from './features/auth/CookieNotice';
 import { applyA11yPrefs } from './lib/a11yPrefs';
 import { applyTheme } from './lib/theme';
+import { trackVisualViewport } from './lib/viewport';
 import { toast } from './app/ui';
 import './index.css';
 
 // Theme and accessibility preferences apply before the first paint.
 applyTheme();
 applyA11yPrefs();
+trackVisualViewport();
 
 const widgetId = /^\/widget\/([1-9][0-9]{0,18})\/?$/i.exec(window.location.pathname)?.[1];
 

@@ -24,6 +24,29 @@ test.describe('Phone layout', () => {
     await expect(relaysNav).not.toBeInViewport();
   });
 
+  test('the on-screen keyboard shrinks the app like Discord: the header stays and the newest transmission stays above the composer', async ({ page }) => {
+    const me = await register('keys', 'Keyboard Pilot');
+    const { beacon, relays } = await me.api.createBeacon('Typing Beacon');
+    const general = relays.find((r) => r.type === 'text')!;
+    for (let i = 0; i < 30; i++) await me.api.send(general.id, `line ${i}`);
+    await signIn(page, me, `/channels/${beacon.id}/${general.id}`, { shell: false });
+    const log = page.getByRole('log');
+    const newest = log.getByRole('article').filter({ hasText: 'line 29' });
+    await expect(newest).toBeInViewport();
+    const composer = page.getByRole('textbox', { name: /^Transmit to #/ });
+    await composer.click();
+
+    // The keyboard takes the bottom ~40% (the browser shrinks the layout: interactive-widget=resizes-content).
+    await page.setViewportSize({ width: 390, height: 500 });
+    await expect(composer).toBeInViewport();
+    await expect(newest).toBeInViewport();
+    const header = page.getByRole('banner').or(page.locator('header')).first();
+    await expect(header).toBeInViewport();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    // Its bottom edge sits on the keyboard.
+    expect((await composer.boundingBox())!.y + (await composer.boundingBox())!.height).toBeLessThanOrEqual(500);
+  });
+
   test('settings show the section list, then a page with a back button', async ({ page }) => {
     const me = await register('phoneset', 'Phone Settings');
     await signIn(page, me, '/channels/@me', { shell: false });
