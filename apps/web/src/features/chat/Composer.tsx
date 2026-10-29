@@ -27,6 +27,8 @@ import { startThread, threadPath } from './ThreadParts';
 import { createThread, useThreads } from './threads';
 import { findAppCommand, matchAppCommands, missingRequired, parseOptions, runAppCommand, useAppCommands, type AppCommand } from './appCommands';
 import { useNavigate } from 'react-router';
+import { useIsMobile } from '../../app/mobile';
+import { AttachSheet } from './AttachSheet';
 
 const MAX_LENGTH = 2000;
 
@@ -89,6 +91,10 @@ export function Composer({
   const [active, setActive] = useState(0);
   const [emojiAnchor, setEmojiAnchor] = useState<DOMRect | null>(null);
   const [pickerTab, setPickerTab] = useState<'gifs' | 'stickers' | 'emoji'>('emoji');
+  // On a phone the + opens a sheet where the keyboard was (AttachSheet) instead of a menu.
+  const mobile = useIsMobile();
+  const [sheet, setSheet] = useState(false);
+  useEffect(() => setSheet(false), [key]);
   const sendButton = useA11yPrefs((p) => p.sendButton);
   /** A sticker or GIF goes out on its own, as Discord sends them, replying if a reply is open. */
   const sendNow = (content: string, extra: SendOptions = {}) => {
@@ -575,6 +581,8 @@ export function Composer({
 
       <div
         className={clsx('flex items-start gap-1 bg-raised px-3', reply || attachmentIds.length || uploading ? 'rounded-b-lg' : 'rounded-lg')}
+        // Typing again brings the keyboard back in the sheet's place.
+        onFocusCapture={(e) => sheet && !(e.target as HTMLElement).closest('[aria-label="Add attachment"]') && setSheet(false)}
         onDragOver={(e) => canAttach && e.dataTransfer.types.includes('Files') && e.preventDefault()}
         onDrop={(e) => {
           if (!canAttach || !e.dataTransfer.files.length) return;
@@ -586,8 +594,15 @@ export function Composer({
           <button
             type="button"
             aria-label="Add attachment"
+            aria-expanded={mobile ? sheet : undefined}
             disabled={!canAttach}
-            onClick={(e) =>
+            onClick={(e) => {
+              if (mobile) {
+                // The sheet takes the keyboard's place.
+                if (!sheet) (document.activeElement as HTMLElement | null)?.blur?.();
+                setSheet(!sheet);
+                return;
+              }
               openContextMenu({ clientX: e.clientX, clientY: e.clientY - 8 }, [
                 { label: 'Upload a File', icon: <FileUp className="h-4 w-4" />, onClick: () => fileInput.current?.click() },
                 ...(encrypted ? [] : [{
@@ -598,11 +613,11 @@ export function Composer({
                 ...(threadRelay ? [{ label: 'Create Thread', icon: <MessagesSquare className="h-4 w-4" />, onClick: () => startThread(threadRelay, navigate) }] : []),
                 ...(canPoll ? [{ label: 'Create Poll', icon: <Vote className="h-4 w-4" />, onClick: () => openModal({ kind: 'createPoll', channelKey: key }) }] : []),
                 { label: 'Use Apps', icon: <Blocks className="h-4 w-4" />, onClick: () => showCommands() },
-              ])
-            }
+              ]);
+            }}
             className="mt-2.5 flex h-6 w-6 items-center justify-center rounded-full text-fg-muted hover:text-fg disabled:opacity-40"
           >
-            <CirclePlus className="h-6 w-6" />
+            {sheet ? <X className="h-6 w-6" /> : <CirclePlus className="h-6 w-6" />}
           </button>
         </Tooltip>
         <input
@@ -676,6 +691,30 @@ export function Composer({
           )}
         </div>
       </div>
+
+      {sheet && (
+        <AttachSheet
+          onFiles={(files) => {
+            setSheet(false);
+            void upload(files);
+          }}
+          onPoll={canPoll ? () => (setSheet(false), openModal({ kind: 'createPoll', channelKey: key })) : undefined}
+          onDrive={
+            encrypted
+              ? undefined
+              : () => (setSheet(false), openModal({ kind: 'drivePicker', onPick: (f) => setAttachmentIds((a) => [...a, { id: f.id, name: f.filename }]) }))
+          }
+          onThread={threadRelay ? () => (setSheet(false), startThread(threadRelay, navigate)) : undefined}
+          commands={[
+            ...matchCommands('/', commandCtx).map((c) => ({ kind: 'builtin' as const, c })),
+            ...matchAppCommands('/', appCommands).map((c) => ({ kind: 'app' as const, c })),
+          ]}
+          onCommand={(c) => {
+            setSheet(false);
+            chooseCommand({ c });
+          }}
+        />
+      )}
 
       {type === 'relay' && <SlowmodeNotice channelKey={key} relayId={id} />}
 

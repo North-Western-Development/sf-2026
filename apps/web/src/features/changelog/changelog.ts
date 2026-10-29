@@ -23,6 +23,35 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-10-28f',
+    title: 'Made for thumbs',
+    platforms: ['mobile'],
+    added: [
+      {
+        title: 'Swipe to reply',
+        body: 'Swipe a transmission to the left to reply to it.',
+      },
+      {
+        title: 'Swipe for your beacons',
+        body: 'Swipe right anywhere in a conversation to pull out your beacons and relays, and left to put them away. The keyboard steps aside while they are out.',
+      },
+      {
+        title: 'A new + menu',
+        body: 'The + by the message box opens where the keyboard was: the camera, your gallery, and Photos, Poll, Apps and Files along the bottom. Apps lists every slash command you can use, with a search.',
+      },
+      {
+        title: 'Polls, full screen',
+        body: 'Creating a poll now takes the whole screen, with Post at the top.',
+      },
+    ],
+    improved: [
+      {
+        title: 'Back where you left off',
+        body: 'Opening the app takes you to the conversation you last had open.',
+      },
+    ],
+  },
+  {
     id: '2026-10-28e',
     title: 'Safer encrypted conversations',
     added: [

@@ -1,12 +1,14 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { Check, Plus, Trash2, Vote } from 'lucide-react';
+import { Check, Plus, Trash2, Vote, X } from 'lucide-react';
 import { Button, Input, Modal } from '@subspace/ui';
 import { http } from '../../lib/http';
 import { closeModal, toast } from '../../app/ui';
 import { parseChannelKey, type ChannelKey, type Poll, type Transmission } from '../../lib/types';
 import { patchMessage, useStore } from '../../data/store';
 import { sendMessage } from '../../data/actions';
+import { useIsMobile } from '../../app/mobile';
 
 const DURATIONS: Array<[number, string]> = [
   [1, '1 hour'],
@@ -25,6 +27,7 @@ export function CreatePollModal({ channelKey }: { channelKey: ChannelKey }) {
   const [hours, setHours] = useState(24);
   const [multi, setMulti] = useState(false);
   const [busy, setBusy] = useState(false);
+  const mobile = useIsMobile();
   const filled = answers.map((a) => a.trim()).filter(Boolean);
   const post = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +39,83 @@ export function CreatePollModal({ channelKey }: { channelKey: ChannelKey }) {
       setBusy(false);
     }
   };
+  const valid = !!question.trim() && filled.length >= 1;
+  if (mobile) {
+    // Full screen on a phone, as on Discord's app: Close, the title, and Post across the top.
+    return createPortal(
+      <form role="dialog" aria-modal="true" aria-label="Create a Poll" onSubmit={post} className="fixed inset-0 z-[1000] flex flex-col bg-void pt-[env(safe-area-inset-top)]">
+        <header className="flex h-14 shrink-0 items-center px-2">
+          <button type="button" aria-label="Close" onClick={closeModal} className="flex h-10 w-10 items-center justify-center text-fg-muted active:text-fg">
+            <X className="h-6 w-6" />
+          </button>
+          <h2 className="flex-1 text-center text-lg font-semibold text-fg">Create Poll</h2>
+          <button type="submit" disabled={!valid || busy} className="h-10 px-3 font-semibold text-brand-sky disabled:text-fg-disabled">
+            Post
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+          <div className="space-y-6 px-4 pt-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-fg-muted">Question</span>
+              <input
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                maxLength={300}
+                placeholder="What question do you want to ask?"
+                autoFocus
+                required
+                className="h-12 w-full rounded-xl border border-line bg-raised px-4 text-[16px] text-fg outline-none placeholder:text-fg-subtle focus:border-brand"
+              />
+            </label>
+            <fieldset>
+              <legend className="mb-2 text-sm font-semibold text-fg-muted">Answers</legend>
+              <div className="space-y-1">
+                {answers.map((a, i) => (
+                  <div key={i} className="flex items-center gap-3 py-1">
+                    <input
+                      aria-label={`Answer ${i + 1}`}
+                      value={a}
+                      maxLength={55}
+                      placeholder="Type your answer"
+                      onChange={(e) => setAnswers(answers.map((x, j) => (j === i ? e.target.value : x)))}
+                      className="h-11 min-w-0 flex-1 rounded-lg bg-transparent px-2 text-[16px] text-fg outline-none placeholder:text-fg-subtle focus:bg-raised"
+                    />
+                    {answers.length > 1 && (
+                      <button type="button" aria-label={`Remove answer ${i + 1}`} onClick={() => setAnswers(answers.filter((_, j) => j !== i))} className="p-2 text-fg-muted active:text-danger">
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {answers.length < 10 && (
+                <button type="button" onClick={() => setAnswers([...answers, ''])} className="mt-2 flex h-12 w-full items-center gap-3 rounded-xl bg-raised px-4 text-left text-fg-muted active:bg-hover">
+                  <Plus className="h-5 w-5" /> Add another answer
+                </button>
+              )}
+            </fieldset>
+          </div>
+          <div className="mt-6 divide-y divide-line border-y border-line bg-raised">
+            <label className="flex h-14 items-center justify-between px-4 text-fg">
+              Duration
+              <select aria-label="Duration" value={hours} onChange={(e) => setHours(Number(e.target.value))} className="bg-transparent text-right text-fg-muted outline-none">
+                {DURATIONS.map(([h, label]) => (
+                  <option key={h} value={h}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex h-14 items-center justify-between px-4 text-fg">
+              Allow Multiple Answers
+              <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} className="h-5 w-5" />
+            </label>
+          </div>
+        </div>
+      </form>,
+      document.body
+    );
+  }
   return (
     <Modal isOpen onClose={closeModal} title="Create a Poll" maxWidth="md">
       <form onSubmit={post} className="space-y-4">
@@ -78,7 +158,7 @@ export function CreatePollModal({ channelKey }: { channelKey: ChannelKey }) {
           <Button variant="link" className="text-fg" onClick={closeModal}>
             Cancel
           </Button>
-          <Button type="submit" isLoading={busy} disabled={!question.trim() || filled.length < 1}>
+          <Button type="submit" isLoading={busy} disabled={!valid}>
             Post
           </Button>
         </div>

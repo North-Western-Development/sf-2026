@@ -134,6 +134,23 @@ export function promptText(opts: Omit<Extract<ModalState, { kind: 'prompt' }>, '
 
 export const closeDialog = () => useUi.setState({ dialog: null });
 
+/** The last conversation or page open, so the mobile app opens where it was left (AppShell). */
+export function rememberPath(path: string) {
+  try {
+    localStorage.setItem('subspace_last_path', path);
+  } catch {
+    /* ignore */
+  }
+}
+export function lastPath(): string | null {
+  try {
+    const path = localStorage.getItem('subspace_last_path');
+    return path && /^\/(channels|discover)(\/|$)/.test(path) ? path : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Last visited relay per beacon, so returning to a beacon restores its channel. */
 export function rememberRelay(beaconId: string, relayId: string) {
   try {

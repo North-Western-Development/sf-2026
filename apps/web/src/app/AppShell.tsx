@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { startScheduler } from '../features/schedule/scheduled';
-import { BrowserRouter, Navigate, Outlet, Route, Routes, useNavigate, useParams } from 'react-router';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
 import { useStore } from '../data/store';
 import { bootstrap, loadBeacon } from '../data/actions';
 import { setBridgeNavigator, startBridge } from '../data/bridge';
@@ -25,7 +25,9 @@ import { NoticeBar } from './NoticeBar';
 import { IncomingCall } from '../features/voice/DmCall';
 import { PixelStar } from '../features/auth/PixelStar';
 import { clsx } from 'clsx';
-import { lastRelay, useUi } from './ui';
+import { lastPath, lastRelay, rememberPath, useUi } from './ui';
+import { useSwipe } from './gestures';
+import { nativeShell } from '../lib/native';
 import { useIsMobile } from './mobile';
 import { useGlobalShortcuts } from './shortcuts';
 import { preloadEmojiSheet } from '../lib/emoji';
@@ -89,14 +91,46 @@ function Layout({ sidebar }: { sidebar: React.ReactNode }) {
   const mobile = useIsMobile();
   const navOpen = useUi((s) => s.mobileNav);
   const closeNav = () => useUi.setState({ mobileNav: false });
+  useRememberPath();
+  // As on Discord's app, the keyboard is never up while the drawer is out.
+  useEffect(() => {
+    if (mobile && navOpen) (document.activeElement as HTMLElement | null)?.blur?.();
+  }, [mobile, navOpen]);
+  // Swipe right over the conversation to pull the drawer out; swipe left to push it back. It follows the finger.
+  const root = useRef<HTMLDivElement>(null);
+  const drawer = useRef<HTMLDivElement>(null);
+  const DRAWER = 312;
+  const SNAP = 72;
+  useSwipe(root, {
+    start: (dir, target) => {
+      if (!mobile || !drawer.current) return false;
+      const open = useUi.getState().mobileNav;
+      if (open ? dir !== 'left' : dir !== 'right' || !target.closest('main')) return false;
+      drawer.current.style.transition = 'none';
+      return true;
+    },
+    move: (dx) => {
+      const open = useUi.getState().mobileNav;
+      const x = open ? Math.min(0, dx) : Math.min(0, -DRAWER + dx);
+      if (drawer.current) drawer.current.style.translate = `${Math.max(-DRAWER, x)}px 0`;
+    },
+    end: (dx, cancelled) => {
+      if (drawer.current) drawer.current.style.transition = drawer.current.style.translate = '';
+      if (cancelled) return;
+      const open = useUi.getState().mobileNav;
+      if (!open && dx > SNAP) useUi.setState({ mobileNav: true });
+      else if (open && dx < -SNAP) closeNav();
+    },
+  });
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-void text-fg">
+    <div ref={root} className="flex h-full w-full flex-col overflow-hidden bg-void text-fg">
       <NoticeBar />
       <div className="flex min-h-0 w-full flex-1">
         {/* Rail + sidebar share one column so the user island can span both (Discord layout).
             On small screens the column is a drawer over the content. */}
         {mobile && navOpen && <div className="fixed inset-0 z-[790] bg-black/60" onClick={closeNav} aria-hidden />}
         <div
+          ref={drawer}
           className={clsx(
             'flex w-[312px] shrink-0 flex-col',
             mobile ? 'fixed inset-y-0 left-0 z-[800] bg-void shadow-modal transition-transform duration-200' : 'relative',
@@ -160,12 +194,22 @@ function EmptyBeacon() {
   );
 }
 
+/** Where the mobile app (which always opens the instance's root) starts: the last conversation open, as on Discord's app. */
+function startPath() {
+  return (nativeShell() && lastPath()) || '/channels/@me';
+}
+
+function useRememberPath() {
+  const { pathname } = useLocation();
+  useEffect(() => rememberPath(pathname), [pathname]);
+}
+
 export function AppShell() {
   return (
     <BrowserRouter>
       <Boot>
         <Routes>
-          <Route path="/" element={<Navigate to="/channels/@me" replace />} />
+          <Route path="/" element={<Navigate to={startPath()} replace />} />
           <Route path="/invite/:code" element={<InviteRoute />} />
           <Route path="/template/:code" element={<TemplateRoute />} />
           <Route path="/oauth2/authorize" element={<AuthorizePage />} />

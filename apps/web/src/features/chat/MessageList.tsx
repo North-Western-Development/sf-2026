@@ -8,6 +8,10 @@ import { toast, useUi } from '../../app/ui';
 import type { ChannelKey, Transmission } from '../../lib/types';
 import { formatDayDivider, GROUP_WINDOW_MS, isSameDay } from '../../lib/time';
 import { MessageItem } from './MessageItem';
+import { tick, useSwipe } from '../../app/gestures';
+
+/** How far a transmission is dragged left before letting go replies to it. */
+const REPLY_SWIPE = 64;
 
 function shouldGroup(prev: Transmission | undefined, cur: Transmission): boolean {
   if (!prev || prev.type !== 'default' && prev.type !== 'reply') return false;
@@ -66,6 +70,39 @@ export function MessageList({
   }, [key]);
 
   const messages = useMemo(() => (channel ? channel.ids.map((id) => channel.byId[id]).filter(Boolean) : []), [channel]);
+
+  // Swipe a transmission left to reply to it, as on Discord's app. It follows the finger, with
+  // the reply arrow coming in from the right (index.css, article[data-swipe]).
+  const swiped = useRef<HTMLElement | null>(null);
+  useSwipe(scroller, {
+    start: (dir, target) => {
+      const article = target.closest<HTMLElement>('article[id^="msg-"]');
+      const m = article && useStore.getState().messages[key]?.byId[article.id.slice(4)];
+      if (dir !== 'left' || !article || !m || m.pending || m.ephemeral) return false;
+      swiped.current = article;
+      article.style.transition = 'none';
+      article.dataset.swipe = '';
+      return true;
+    },
+    move: (dx) => {
+      const el = swiped.current;
+      if (!el) return;
+      const x = Math.max(-REPLY_SWIPE - 24, Math.min(0, dx));
+      if (x <= -REPLY_SWIPE && Number(el.style.getPropertyValue('--swipe')) < 1) tick();
+      el.style.transform = `translateX(${x}px)`;
+      el.style.setProperty('--swipe', String(Math.min(1, -x / REPLY_SWIPE)));
+    },
+    end: (dx, cancelled) => {
+      const el = swiped.current;
+      swiped.current = null;
+      if (!el) return;
+      el.style.transition = 'transform 160ms ease-out';
+      el.style.transform = '';
+      el.style.removeProperty('--swipe');
+      el.addEventListener('transitionend', () => delete el.dataset.swipe, { once: true });
+      if (!cancelled && dx <= -REPLY_SWIPE) onReply(el.id.slice(4));
+    },
+  });
 
   // Keep pinned to the bottom on new content; preserve position when older pages prepend.
   useLayoutEffect(() => {

@@ -275,3 +275,19 @@ html[data-reduced-motion="on"] *::after {
   transition-duration: 1ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Swipe a transmission left to reply (MessageList): the reply arrow comes in from the right. */
+article[data-swipe]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -48px;
+  width: 24px;
+  height: 24px;
+  margin-top: -12px;
+  background: var(--color-fg);
+  opacity: var(--swipe, 0);
+  transform: scale(calc(0.6 + var(--swipe, 0) * 0.4));
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 17 4 12 9 7'/%3E%3Cpath d='M20 18v-2a4 4 0 0 0-4-4H4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 17 4 12 9 7'/%3E%3Cpath d='M20 18v-2a4 4 0 0 0-4-4H4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
