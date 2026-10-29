@@ -34,6 +34,9 @@ export async function saveCustomStatus(meId: string, status: CustomStatus | null
   await http.patch('/users/@me/status', { customStatus: status });
   setState((s) => ({
     presence: { ...s.presence, [meId]: { status: s.presence[meId]?.status ?? 'online', customStatus: status } },
+    // The signed-in profile too: views fall back to it when presence has no status, so a cleared
+    // status would otherwise come back from it.
+    me: s.me?.id === meId ? { ...s.me, customStatus: status } : s.me,
   }));
 }
 

@@ -65,6 +65,30 @@ test.describe('User settings', () => {
     await theirs.context().close();
   });
 
+  test('saving an empty status clears it', async ({ page, me }) => {
+    await me.api.patch('/users/@me/status', { customStatus: { text: 'Beaming down', expiresAt: null } });
+    await signIn(page, me);
+    const panel = page.getByRole('button', { name: 'Open your profile' });
+    await expect(panel).toContainText('Beaming down');
+
+    await panel.click();
+    await page.getByRole('dialog', { name: 'Your profile' }).getByRole('button', { name: 'Edit custom status' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Set your status' });
+    await dialog.getByRole('textbox', { name: 'Status', exact: true }).fill('');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).toHaveCount(0);
+
+    // Gone from the user panel and the profile card (which fell back to the status loaded at sign-in).
+    await expect(panel).not.toContainText('Beaming down');
+    await panel.click();
+    await expect(page.getByRole('dialog', { name: 'Your profile' }).getByRole('button', { name: 'Set a custom status' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    // And on the server.
+    expect((await me.api.get('/auth/me')).transmitter.customStatus ?? null).toBeNull();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Open your profile' })).not.toContainText('Beaming down');
+  });
+
   test('changing the password requires the current one and a matching confirmation', async ({ page, me }) => {
     await signIn(page, me);
     await openSettings(page);
