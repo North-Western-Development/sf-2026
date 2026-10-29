@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Lock, Radio, Shield, Users } from "lucide-react";
 import { PixelStar } from "./PixelStar";
 
-/** The documentation site (client downloads, self-hosting, security notes). */
+/** The documentation site (self-hosting, security notes). */
 const DOCS_URL = import.meta.env.VITE_DOCS_URL || "https://docs.subspace.click";
 
 const STARS = [
@@ -130,7 +130,7 @@ export function LandingPage({
             aria-label="Site"
             className="ml-auto hidden items-center gap-6 text-sm font-medium text-fg-muted md:flex"
           >
-            <a href={`${DOCS_URL}/guide/clients`} className="hover:text-fg">
+            <a href="/download" className="hover:text-fg">
               Download
             </a>
             <a href={`${DOCS_URL}/guide/security`} className="hover:text-fg">
@@ -165,7 +165,7 @@ export function LandingPage({
               <button type="button" onClick={onRegister} className={primary}>
                 Open Subspace in your browser
               </button>
-              <a href={`${DOCS_URL}/guide/clients`} className={secondary}>
+              <a href="/download" className={secondary}>
                 Get the apps
               </a>
             </div>
@@ -274,7 +274,7 @@ export function LandingPage({
                 </button>
               </li>
               <li>
-                <a href={`${DOCS_URL}/guide/clients`} className="hover:text-fg">
+                <a href="/download" className="hover:text-fg">
                   Desktop and mobile apps
                 </a>
               </li>

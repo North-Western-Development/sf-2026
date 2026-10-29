@@ -29,6 +29,17 @@ test.describe('Apps and mobile push', () => {
     await expect(page.getByText(/Sideloaded copies cannot receive push notifications/)).toBeVisible();
   });
 
+  test('signed out, the homepage links the public download page', async ({ page }) => {
+    await page.goto('/');
+    for (const name of ['Download', 'Get the apps', 'Desktop and mobile apps']) {
+      await expect(page.getByRole('link', { name, exact: true })).toHaveAttribute('href', '/download');
+    }
+    await page.getByRole('link', { name: 'Get the apps', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Get the Apps' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Download for Android' })).toHaveAttribute('href', '/downloads/mobile/Subspace-Frequency.apk');
+    await expect(page.getByRole('link', { name: 'Download for iPhone and iPad' })).toHaveAttribute('href', '/downloads/mobile/Subspace-Frequency.ipa');
+  });
+
   test('in the app: says why push is unavailable, then registers once the distributor connects', async ({ page, me }) => {
     await asMobileShell(page, null, { status: 'unavailable', reason: 'Install a UnifiedPush app such as ntfy and set its server to https://push.example.test to get notifications while Subspace is closed.' });
     await signIn(page, me);

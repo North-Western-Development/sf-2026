@@ -4,6 +4,7 @@ import { api } from '../../services/api';
 import { gateway } from '../../services/gateway';
 import { AuthScreen } from './AuthScreen';
 import { LandingPage } from './LandingPage';
+import { DownloadPage } from './DownloadPage';
 import { legalPageFor } from './LegalPages';
 import { inAppShell } from '../../lib/native';
 import { AuthHeading, AuthLayout, FormError } from './AuthLayout';
@@ -71,6 +72,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (legal) return legal;
   // BLOCK_EU: the API refuses this visitor's region; everything but the legal pages is this page.
   if (regionBlocked) return <RegionBlockedPage />;
+  // The apps: public too, and linked from the homepage.
+  if (path === '/download') return <DownloadPage />;
 
   if (path === '/' && !inAppShell()) {
     const signedIn = state !== 'signed-out';
