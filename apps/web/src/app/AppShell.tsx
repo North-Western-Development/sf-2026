@@ -13,6 +13,7 @@ import { RequestsView } from '../features/home/RequestsView';
 import { RelayRoute } from '../features/chat/RelayRoute';
 import { DirectRoute } from '../features/chat/DirectRoute';
 import { DiscoverView } from '../features/discover/DiscoverView';
+import { DiscoverSidebar } from '../features/discover/DiscoverSidebar';
 import { InviteRoute } from '../features/invite/InviteRoute';
 import { TemplateRoute } from '../features/invite/TemplateRoute';
 import { AuthorizePage } from '../features/oauth/AuthorizePage';
@@ -94,7 +95,15 @@ function Layout({ sidebar }: { sidebar: React.ReactNode }) {
   useRememberPath();
   // As on Discord's app, the keyboard is never up while the drawer is out.
   useEffect(() => {
-    if (mobile && navOpen) (document.activeElement as HTMLElement | null)?.blur?.();
+    if (!mobile || !navOpen) return;
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    // Nothing behind the drawer may take focus while it is out (a conversation opening, a reply).
+    const guard = (e: FocusEvent) => {
+      const el = e.target as HTMLElement;
+      if (!drawer.current?.contains(el) && el.closest?.('main')) el.blur();
+    };
+    document.addEventListener('focusin', guard);
+    return () => document.removeEventListener('focusin', guard);
   }, [mobile, navOpen]);
   // Swipe right over the conversation to pull the drawer out; swipe left to push it back. It follows the finger.
   const root = useRef<HTMLDivElement>(null);
@@ -107,6 +116,7 @@ function Layout({ sidebar }: { sidebar: React.ReactNode }) {
       const open = useUi.getState().mobileNav;
       if (open ? dir !== 'left' : dir !== 'right' || !target.closest('main')) return false;
       drawer.current.style.transition = 'none';
+      drawer.current.style.boxShadow = 'var(--shadow-modal)';
       return true;
     },
     move: (dx) => {
@@ -115,7 +125,7 @@ function Layout({ sidebar }: { sidebar: React.ReactNode }) {
       if (drawer.current) drawer.current.style.translate = `${Math.max(-DRAWER, x)}px 0`;
     },
     end: (dx, cancelled) => {
-      if (drawer.current) drawer.current.style.transition = drawer.current.style.translate = '';
+      if (drawer.current) drawer.current.style.transition = drawer.current.style.translate = drawer.current.style.boxShadow = '';
       if (cancelled) return;
       const open = useUi.getState().mobileNav;
       if (!open && dx > SNAP) useUi.setState({ mobileNav: true });
@@ -133,8 +143,9 @@ function Layout({ sidebar }: { sidebar: React.ReactNode }) {
           ref={drawer}
           className={clsx(
             'flex w-[312px] shrink-0 flex-col',
-            mobile ? 'fixed inset-y-0 left-0 z-[800] bg-void shadow-modal transition-transform duration-200' : 'relative',
-            mobile && !navOpen && '-translate-x-full'
+            mobile ? 'fixed inset-y-0 left-0 z-[800] bg-void transition-[translate,box-shadow] duration-200' : 'relative',
+            // No shadow while it is put away: it would show as a strip down the left edge.
+            mobile && (navOpen ? 'shadow-modal' : '-translate-x-full shadow-none')
           )}
           aria-hidden={mobile && !navOpen ? true : undefined}
           // Picking a relay, DM or page in the sidebar closes the drawer; picking a beacon keeps it open.
@@ -218,7 +229,7 @@ export function AppShell() {
             <Route path="requests" element={<RequestsView />} />
             <Route path=":dmId" element={<DirectRoute />} />
           </Route>
-          <Route path="/discover" element={<Layout sidebar={<HomeSidebar />} />}>
+          <Route path="/discover" element={<Layout sidebar={<DiscoverSidebar />} />}>
             <Route index element={<DiscoverView />} />
           </Route>
           <Route path="/channels/:beaconId" element={<Layout sidebar={<BeaconSidebar />} />}>

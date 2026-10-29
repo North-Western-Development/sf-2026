@@ -179,6 +179,8 @@ export const beacons = pgTable('beacons', {
   bannerUrl: text('banner_url'),
   ownerId: snowflake('owner_id').references(() => transmitters.id, { onDelete: 'cascade' }).notNull(),
   isDiscoverable: boolean('is_discoverable').default(false).notNull(),
+  /** Where Discover lists it (one of DISCOVERY_CATEGORIES in the API), or nowhere but Home. */
+  discoveryCategory: text('discovery_category'),
   suppressCustomFonts: boolean('suppress_custom_fonts').default(false).notNull(),
   rulesText: text('rules_text'),
   // Engagement (Discord's): system messages go to the system relay.

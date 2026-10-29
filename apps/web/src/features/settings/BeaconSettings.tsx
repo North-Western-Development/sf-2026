@@ -56,6 +56,7 @@ import { AuditLogTab } from './beacon/AuditLogTab';
 import { AutoModTab } from './beacon/AutoModTab';
 import { SafetyTab } from './beacon/SafetyTab';
 import { TagTab } from './beacon/TagTab';
+import { DISCOVERY_CATEGORIES } from '../discover/categories';
 import { StickersTab, SoundboardTab } from './beacon/ExpressionTabs';
 import { InsightsTab } from './beacon/InsightsTab';
 import { WidgetTab } from './beacon/WidgetTab';
@@ -79,6 +80,7 @@ function OverviewTab({ beaconId }: { beaconId: string }) {
       iconUrl: beacon.iconUrl,
       bannerUrl: beacon.bannerUrl,
       isDiscoverable: beacon.isDiscoverable,
+      discoveryCategory: beacon.discoveryCategory ?? null,
       suppressCustomFonts: !!beacon.suppressCustomFonts,
     }),
     [beacon]
@@ -150,6 +152,23 @@ function OverviewTab({ beaconId }: { beaconId: string }) {
         </div>
       </Field>
       <Switch label="Discoverable" description="List this beacon in Discover so anyone can find and join it." checked={d.isDiscoverable} onChange={(v) => setD({ ...d, isDiscoverable: v })} />
+      {d.isDiscoverable && (
+        <Field label="Discover Category">
+          <select
+            aria-label="Discover category"
+            value={d.discoveryCategory ?? ''}
+            onChange={(e) => setD({ ...d, discoveryCategory: e.target.value || null })}
+            className="h-9 w-full max-w-xs rounded-md border border-line bg-void px-2 text-sm text-fg"
+          >
+            <option value="">None (Home only)</option>
+            {DISCOVERY_CATEGORIES.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Switch label="Suppress custom display-name fonts" description="Members' custom fonts render in the default font inside this beacon." checked={d.suppressCustomFonts} onChange={(v) => setD({ ...d, suppressCustomFonts: v })} />
       <SaveBar visible={dirty} saving={saving} onReset={() => setD(initial)} onSave={() => void save()} />
     </>

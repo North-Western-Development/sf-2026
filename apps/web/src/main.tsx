@@ -9,6 +9,7 @@ import { CookieNotice } from './features/auth/CookieNotice';
 import { applyA11yPrefs } from './lib/a11yPrefs';
 import { applyTheme } from './lib/theme';
 import { trackVisualViewport } from './lib/viewport';
+import { startTouchScrollIndicator } from './lib/scrollIndicator';
 import { toast } from './app/ui';
 import './index.css';
 
@@ -16,6 +17,7 @@ import './index.css';
 applyTheme();
 applyA11yPrefs();
 trackVisualViewport();
+startTouchScrollIndicator();
 
 const widgetId = /^\/widget\/([1-9][0-9]{0,18})\/?$/i.exec(window.location.pathname)?.[1];
 

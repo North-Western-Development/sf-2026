@@ -42,35 +42,35 @@ export function AttachSheet({ onFiles, onPoll, onDrive, onThread, commands, onCo
   );
 
   return (
-    <div role="dialog" aria-label={view === 'apps' ? 'Apps & Commands' : 'Attach'} data-no-swipe className="relative -mx-4 -mb-6 mt-3 flex h-[min(46vh,380px)] flex-col rounded-t-2xl bg-raised pb-[env(safe-area-inset-bottom)]">
+    <div role="dialog" aria-label={view === 'apps' ? 'Apps & Commands' : 'Attach'} data-no-swipe className={clsx('-mx-4 -mb-6 mt-3 flex flex-col rounded-t-2xl bg-raised px-3 pb-3', view === 'apps' && 'h-[min(55vh,440px)]')}>
       <div className="mx-auto mb-3 mt-2 h-1 w-10 shrink-0 rounded-full bg-line-strong" aria-hidden />
       {view === 'attach' ? (
-        <div className="grid min-h-0 flex-1 auto-rows-[112px] grid-cols-3 gap-1.5 overflow-y-auto px-3 pb-24">
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-overlay text-fg-muted active:bg-hover">
-            <Camera className="h-8 w-8" aria-hidden />
+        <div className="grid grid-cols-4 gap-2">
+          <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-overlay text-fg-muted active:bg-hover">
+            <Camera className="h-7 w-7" aria-hidden />
             <span className="text-xs font-medium">Camera</span>
             {fileInput('Take a photo', 'image/*', 'environment')}
           </label>
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-overlay text-fg-muted active:bg-hover">
-            <Image className="h-8 w-8" aria-hidden />
+          <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-lg bg-overlay text-fg-muted active:bg-hover">
+            <Image className="h-7 w-7" aria-hidden />
             <span className="text-xs font-medium">Gallery</span>
             {fileInput('Choose from gallery', 'image/*,video/*')}
           </label>
           {onDrive && (
-            <button type="button" onClick={onDrive} className="flex flex-col items-center justify-center gap-1 rounded-lg bg-overlay text-fg-muted active:bg-hover">
-              <Cloud className="h-8 w-8" aria-hidden />
+            <button type="button" onClick={onDrive} className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg bg-overlay text-fg-muted active:bg-hover">
+              <Cloud className="h-7 w-7" aria-hidden />
               <span className="text-xs font-medium">Cloud Drive</span>
             </button>
           )}
           {onThread && (
-            <button type="button" onClick={onThread} className="flex flex-col items-center justify-center gap-1 rounded-lg bg-overlay text-fg-muted active:bg-hover">
-              <MessagesSquare className="h-8 w-8" aria-hidden />
+            <button type="button" onClick={onThread} className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg bg-overlay text-fg-muted active:bg-hover">
+              <MessagesSquare className="h-7 w-7" aria-hidden />
               <span className="text-xs font-medium">Thread</span>
             </button>
           )}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col px-3">
+        <div className="flex min-h-0 flex-1 flex-col">
           <label className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-line bg-void px-3 text-fg-muted">
             <Search className="h-5 w-5 shrink-0" aria-hidden />
             <input
@@ -81,7 +81,7 @@ export function AttachSheet({ onFiles, onPoll, onDrive, onThread, commands, onCo
               className="min-w-0 flex-1 bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-subtle"
             />
           </label>
-          <ul aria-label="Commands" className="mt-2 min-h-0 flex-1 overflow-y-auto pb-24">
+          <ul aria-label="Commands" className="mt-2 min-h-0 flex-1 overflow-y-auto">
             {shown.map(({ kind, c }) => (
               <li key={`${kind}:${'id' in c ? c.id : c.name}`}>
                 <button type="button" onClick={() => onCommand(c)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left active:bg-hover">
@@ -106,7 +106,7 @@ export function AttachSheet({ onFiles, onPoll, onDrive, onThread, commands, onCo
         </div>
       )}
 
-      <nav aria-label="Attach from" className="absolute inset-x-6 bottom-[calc(12px+env(safe-area-inset-bottom))] flex justify-around rounded-2xl bg-overlay px-2 py-2 shadow-pop">
+      <nav aria-label="Attach from" className="mt-3 flex justify-around rounded-2xl bg-overlay px-2 py-2">
         <SheetTab icon={Image} label="Photos" accept="image/*,video/*" onFiles={onFiles} />
         {onPoll && <SheetTab icon={Vote} label="Poll" onClick={onPoll} />}
         <SheetTab icon={Blocks} label="Apps" active={view === 'apps'} onClick={() => setView(view === 'apps' ? 'attach' : 'apps')} />

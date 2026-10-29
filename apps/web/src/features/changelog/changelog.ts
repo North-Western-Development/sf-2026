@@ -23,6 +23,35 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-10-28g',
+    title: 'Discover categories',
+    added: [
+      {
+        title: 'Browse Discover by category',
+        body: 'Discover now has a sidebar of categories: Gaming, Music, Entertainment, Science & Tech, Education, Art & Creativity and Hangouts. Owners of a discoverable beacon pick its category in Beacon Settings › Beacon Profile.',
+      },
+    ],
+    improved: [
+      {
+        title: 'A slimmer scroll bar',
+        body: 'Lists show a thin scroll thumb of one size while you scroll, which fades when you stop.',
+        platforms: ['mobile'],
+      },
+      {
+        title: 'Tidier on a phone',
+        body: 'The Affiliates tabs fit on screen, the + sheet is shorter and no longer scrolls, and names no longer pop up as tooltips when you tap.',
+        platforms: ['mobile'],
+      },
+    ],
+    fixed: [
+      {
+        title: 'The keyboard and the drawer',
+        body: 'Picking a beacon with the drawer out no longer brings the keyboard up behind it, and the closed drawer no longer leaves a line down the left edge.',
+        platforms: ['mobile'],
+      },
+    ],
+  },
+  {
     id: '2026-10-28f',
     title: 'Made for thumbs',
     platforms: ['mobile'],

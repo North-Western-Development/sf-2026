@@ -38,6 +38,10 @@ import { BUILTIN_TEMPLATES, applyTemplate } from '../../lib/templates.js';
 import { audit, diff } from '../../lib/audit.js';
 import { defaultAllowDms } from '../../lib/dm-access.js';
 
+/** Discover's categories (its sidebar on the web). A beacon owner picks one when listing it. */
+export const DISCOVERY_CATEGORIES = ['gaming', 'music', 'entertainment', 'science-tech', 'education', 'creative', 'hangout'] as const;
+const isDiscoveryCategory = (c: unknown): c is (typeof DISCOVERY_CATEGORIES)[number] => typeof c === 'string' && (DISCOVERY_CATEGORIES as readonly string[]).includes(c);
+
 export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   const db = (app as any).db;
 
@@ -186,34 +190,29 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     const query = request.query as any;
     const search = query?.q ? `%${query.q.trim()}%` : null;
 
-    let discoverableBeacons;
-    if (search) {
-      discoverableBeacons = await db
-        .select({
-          id: beacons.id,
-          name: beacons.name,
-          description: beacons.description,
-          iconUrl: beacons.iconUrl,
-          bannerUrl: beacons.bannerUrl,
-          createdAt: beacons.createdAt,
-        })
-        .from(beacons)
-        .where(and(eq(beacons.isDiscoverable, true), ilike(beacons.name, search)))
-        .limit(50);
-    } else {
-      discoverableBeacons = await db
-        .select({
-          id: beacons.id,
-          name: beacons.name,
-          description: beacons.description,
-          iconUrl: beacons.iconUrl,
-          bannerUrl: beacons.bannerUrl,
-          createdAt: beacons.createdAt,
-        })
-        .from(beacons)
-        .where(eq(beacons.isDiscoverable, true))
-        .limit(50);
-    }
+    // ?category= narrows Discover to one of its categories; an unknown one lists nothing.
+    const category = typeof query?.category === 'string' ? query.category : null;
+    if (category !== null && !isDiscoveryCategory(category)) return reply.send({ beacons: [], count: 0 });
+
+    const discoverableBeacons = await db
+      .select({
+        id: beacons.id,
+        name: beacons.name,
+        description: beacons.description,
+        iconUrl: beacons.iconUrl,
+        bannerUrl: beacons.bannerUrl,
+        discoveryCategory: beacons.discoveryCategory,
+        createdAt: beacons.createdAt,
+      })
+      .from(beacons)
+      .where(
+        and(
+          eq(beacons.isDiscoverable, true),
+          search ? ilike(beacons.name, search) : undefined,
+          category ? eq(beacons.discoveryCategory, category) : undefined
+        )
+      )
+      .limit(50);
 
     return reply.send({
       beacons: discoverableBeacons,
@@ -333,6 +332,10 @@ export const beaconRoutes: FastifyPluginAsync = async (app: FastifyInstance) => 
     if (body.iconUrl !== undefined) updates.iconUrl = body.iconUrl;
     if (body.bannerUrl !== undefined) updates.bannerUrl = body.bannerUrl;
     if (body.isDiscoverable !== undefined) updates.isDiscoverable = Boolean(body.isDiscoverable);
+    if (body.discoveryCategory !== undefined) {
+      if (body.discoveryCategory !== null && !isDiscoveryCategory(body.discoveryCategory)) return bad(`discoveryCategory must be one of ${DISCOVERY_CATEGORIES.join(', ')}`);
+      updates.discoveryCategory = body.discoveryCategory;
+    }
     if (body.suppressCustomFonts !== undefined) updates.suppressCustomFonts = Boolean(body.suppressCustomFonts);
     if (body.rulesText !== undefined) updates.rulesText = body.rulesText;
 

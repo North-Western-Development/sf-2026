@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Compass, Search, Users } from 'lucide-react';
 import { Button } from '@subspace/ui';
 import { http } from '../../lib/http';
@@ -10,6 +10,7 @@ import { term } from '../../lib/strings';
 import { toast } from '../../app/ui';
 import { PixelStar } from '../auth/PixelStar';
 import { MobileNavButton } from '../../app/mobile';
+import { categoryOf } from './categories';
 
 type Listing = Beacon & { memberCount?: number; onlineCount?: number };
 
@@ -68,13 +69,16 @@ function Card({ b }: { b: Listing }) {
 export function DiscoverView() {
   const [listings, setListings] = useState<Listing[] | null>(null);
   const [query, setQuery] = useState('');
+  // The sidebar (DiscoverSidebar) picks a category.
+  const category = categoryOf(useSearchParams()[0].get('category'));
 
   useEffect(() => {
+    setListings(null);
     http
-      .get<{ beacons: any[] }>('/beacons/discovery')
+      .get<{ beacons: any[] }>(category ? `/beacons/discovery?category=${category.id}` : '/beacons/discovery')
       .then((r) => setListings(r.beacons.map((b) => ({ ...toBeacon(b), memberCount: b.memberCount, onlineCount: b.onlineCount }))))
       .catch(() => setListings([]));
-  }, []);
+  }, [category]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,7 +103,8 @@ export function DiscoverView() {
 
       <div className="px-6 pb-10 pt-6">
         <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-fg">
-          <Compass className="h-5 w-5 text-online" /> {query ? `Results for “${query}”` : `Featured ${term('beacon', true)}`}
+          {category ? <category.icon className="h-5 w-5 text-online" /> : <Compass className="h-5 w-5 text-online" />}{' '}
+          {query ? `Results for “${query}”` : category ? category.label : `Featured ${term('beacon', true)}`}
         </h2>
         {listings === null ? (
           <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">

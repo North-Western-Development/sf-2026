@@ -80,6 +80,7 @@ export function toBeacon(b: Raw): Beacon {
     bannerUrl: b.bannerUrl ?? null,
     ownerId: b.ownerId,
     isDiscoverable: !!b.isDiscoverable,
+    discoveryCategory: b.discoveryCategory ?? null,
     suppressCustomFonts: !!b.suppressCustomFonts,
     rulesText: b.rulesText ?? null,
     memberCount: b.memberCount,

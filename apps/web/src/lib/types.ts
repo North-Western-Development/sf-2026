@@ -72,6 +72,8 @@ export interface Beacon {
   bannerUrl: string | null;
   ownerId: string;
   isDiscoverable: boolean;
+  /** Where Discover lists it (features/discover/categories.ts). */
+  discoveryCategory?: string | null;
   suppressCustomFonts?: boolean;
   rulesText?: string | null;
   memberCount?: number;

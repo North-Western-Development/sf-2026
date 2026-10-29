@@ -76,6 +76,10 @@ test.describe('Phone gestures and the attach sheet', () => {
     const tabs = sheet.getByRole('navigation', { name: 'Attach from' });
     for (const name of ['Photos', 'Poll', 'Apps', 'Files']) await expect(tabs.getByText(name, { exact: true })).toBeVisible();
     await expect(sheet.getByText('Camera')).toBeVisible();
+    // The tab bar sits at the bottom of the screen; the tiles do not scroll.
+    const bar = (await tabs.boundingBox())!;
+    expect(844 - (bar.y + bar.height)).toBeLessThanOrEqual(16);
+    expect(await sheet.evaluate((el) => [...el.querySelectorAll('*')].some((c) => c.scrollHeight > c.clientHeight + 1 && getComputedStyle(c).overflowY !== 'visible'))).toBe(false);
     // The sheet sits where the keyboard would, under the composer.
     expect((await sheet.boundingBox())!.y).toBeGreaterThan((await composer.boundingBox())!.y);
 
@@ -134,5 +138,60 @@ test.describe('Phone gestures and the attach sheet', () => {
     await expect(browserTab.getByRole('link', { name: 'Subspace Frequency home' })).toBeVisible();
     await expect(browserTab).toHaveURL(/:4173\/$/);
     await browserTab.close();
+  });
+
+  test('picking a beacon in the drawer opens its relay without bringing the keyboard up', async ({ page }) => {
+    const { me } = await openRelay(page, 'nokeys');
+    const other = await me.api.createBeacon('Second Beacon');
+    await page.reload();
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('navigation', { name: 'Beacons' }).getByRole('button', { name: /^Second Beacon/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/channels/${other.beacon.id}/`));
+    // The drawer stays out over the new relay, and nothing behind it has focus.
+    await expect(page.getByRole('navigation', { name: 'Relays' })).toBeInViewport();
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => !!document.activeElement?.closest('main'))).toBe(false);
+  });
+
+  test('the closed drawer leaves no edge, and the composer icons line up', async ({ page }) => {
+    await openRelay(page, 'edges');
+    const edge = await page.evaluate(() => {
+      const drawer = document.querySelector('nav[aria-label="Beacons"]')!.closest('.fixed') as HTMLElement;
+      return getComputedStyle(drawer).boxShadow;
+    });
+    // No shadow (its 1px ring was the strip down the left edge).
+    expect(edge).toMatch(/^(none|(rgba\(0, 0, 0, 0\) 0px 0px 0px 0px(, )?)+)$/);
+    const mid = async (name: string) => {
+      const b = (await page.getByRole('button', { name }).boundingBox())!;
+      return b.y + b.height / 2;
+    };
+    expect(Math.abs((await mid('Record a voice message')) - (await mid('Select emoji')))).toBeLessThan(1);
+  });
+
+  test('scrolling shows one thin thumb of a fixed length instead of the scrollbar', async ({ page }) => {
+    const lines = Array.from({ length: 40 }, (_, i) => `scroll line ${i}`);
+    await openRelay(page, 'thumb', lines);
+    const log = page.getByRole('log');
+    await expect(log).toContainText('scroll line 39');
+    // No native scrollbar takes width.
+    expect(await log.evaluate((el) => el.offsetWidth - el.clientWidth)).toBe(0);
+    const thumb = page.locator('.touch-scroll-thumb');
+    const height = () => thumb.evaluate((el) => el.getBoundingClientRect().height);
+    await log.evaluate((el) => (el.scrollTop = 0));
+    await expect(thumb).toHaveCSS('opacity', '1');
+    const atTop = (await thumb.boundingBox())!.y;
+    const h = await height();
+    await log.evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect.poll(async () => (await thumb.boundingBox())!.y).toBeGreaterThan(atTop + 300);
+    expect(await height()).toBe(h);
+    // It fades once scrolling stops.
+    await expect(thumb).toHaveCSS('opacity', '0');
+  });
+
+  test('the affiliate tabs all fit on a phone', async ({ page }) => {
+    const me = await register('tabsfit', 'Tab Pilot');
+    await signIn(page, me, '/channels/@me', { shell: false });
+    const tabs = page.getByRole('navigation', { name: /filters/ });
+    for (const name of ['Online', 'All', 'Pending', 'Blocked', /^Add/]) await expect(tabs.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
   });
 });

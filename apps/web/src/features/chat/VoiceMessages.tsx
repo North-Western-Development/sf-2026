@@ -107,7 +107,7 @@ export function VoiceRecorderButton({ channelKey }: { channelKey: ChannelKey }) 
   }
   return (
     <Tooltip content="Record a Voice Message">
-      <button type="button" aria-label="Record a voice message" disabled={busy} onClick={() => void start()} className="mt-2.5 flex h-6 w-6 items-center justify-center text-fg-muted hover:text-fg disabled:opacity-40">
+      <button type="button" aria-label="Record a voice message" disabled={busy} onClick={() => void start()} className="flex h-7 w-7 items-center justify-center text-fg-muted hover:text-fg disabled:opacity-40">
         <Mic className="h-5 w-5" />
       </button>
     </Tooltip>

@@ -148,7 +148,9 @@ export function Composer({
     setText(sessionStorage.getItem(`draft:${key}`) ?? '');
     setAttachmentIds([]);
     tokens.current.clear();
-    area.current?.focus();
+    // On a touch screen, opening a conversation never brings the keyboard up (Discord's app
+    // doesn't, and the drawer may still be out after picking a beacon).
+    if (!window.matchMedia?.('(pointer: coarse)').matches) area.current?.focus();
   }, [key]);
 
   // A draft left for this channel while it is open (replying to someone's status from their profile).

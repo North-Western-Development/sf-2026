@@ -189,20 +189,21 @@ export function FriendsView() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-4 border-b border-line px-4 shadow-sm">
+      {/* On a phone the tabs get a row of their own under the title, all of them in view. */}
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-2 shadow-sm md:h-12 md:flex-nowrap md:py-0">
         <MobileNavButton />
         <span className="flex items-center gap-2 font-semibold text-fg">
           <Users className="h-6 w-6 text-fg-subtle" /> {term('affiliate', true)}
         </span>
-        <span className="h-6 w-px bg-line-strong" />
-        <nav className="flex items-center gap-2" aria-label={`${term('affiliate')} filters`}>
+        <span className="hidden h-6 w-px bg-line-strong md:block" />
+        <nav className="-mx-1.5 flex w-[calc(100%+12px)] items-center justify-between overflow-x-auto md:mx-0 md:w-auto md:justify-start md:gap-2" aria-label={`${term('affiliate')} filters`}>
           {(['online', 'all', 'pending', 'blocked'] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
               aria-pressed={tab === t}
               onClick={() => setTab(t)}
-              className={clsx('flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[15px] font-medium', tab === t ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg')}
+              className={clsx('flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[15px] font-medium md:px-2', tab === t ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg')}
             >
               {t === 'online' ? 'Online' : t === 'all' ? 'All' : t === 'pending' ? 'Pending' : 'Blocked'}
               {t === 'pending' && pendingCount > 0 && <span className="rounded-full bg-danger px-1.5 text-[11px] font-bold text-white">{pendingCount}</span>}
@@ -212,7 +213,7 @@ export function FriendsView() {
             type="button"
             aria-pressed={tab === 'add'}
             onClick={() => setTab('add')}
-            className={clsx('rounded-md px-2 py-0.5 text-[15px] font-medium', tab === 'add' ? 'bg-transparent text-online' : 'bg-online text-void hover:brightness-110')}
+            className={clsx('shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[15px] font-medium md:px-2', tab === 'add' ? 'bg-transparent text-online' : 'bg-online text-void hover:brightness-110')}
           >
             Add {term('affiliate')}
           </button>

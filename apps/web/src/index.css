@@ -182,6 +182,26 @@ html[data-theme='amoled'] {
   background: var(--color-halo);
   background-clip: padding-box;
 }
+/* Touch screens draw one fixed-length thumb instead (lib/scrollIndicator.ts). */
+html[data-touch] * {
+  scrollbar-width: none;
+}
+html[data-touch] ::-webkit-scrollbar {
+  display: none;
+}
+.touch-scroll-thumb {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 5000;
+  width: 3px;
+  height: 36px;
+  border-radius: 9999px;
+  background: var(--color-fg-subtle);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms ease-out;
+}
 
 @keyframes fade-in {
   from { opacity: 0; }

@@ -1,0 +1,1 @@
+ALTER TABLE "beacons" ADD COLUMN "discovery_category" text;

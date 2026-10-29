@@ -25,6 +25,8 @@ export function Tooltip({ content, placement = 'top', delay = 250, disabled, chi
   const show = useCallback(
     (el: HTMLElement) => {
       clearTimeout(timer.current);
+      // Touch screens: a tap would leave it stuck on (the tapped control keeps focus); the label is still read out.
+      if (window.matchMedia?.('(hover: none)').matches) return;
       timer.current = setTimeout(() => setAnchor(el.getBoundingClientRect()), delay);
     },
     [delay]
