@@ -37,6 +37,19 @@ test.describe('Authentication', () => {
     await expect(page.getByRole('region', { name: 'Cookie notice' })).toHaveCount(0);
   });
 
+  for (const [app, flag] of [
+    ['desktop', 'window.subspaceDesktop = true;'],
+    ['mobile', "window.subspaceNative = { platform: 'android', push: null, post: function () {} };"],
+  ] as const) {
+    test(`the ${app} app never shows the cookie notice, even on a first visit`, async ({ page }) => {
+      await page.addInitScript(flag);
+      await page.addInitScript(() => localStorage.removeItem('subspace:cookie-notice'));
+      await page.goto('/login');
+      await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Cookie notice' })).toHaveCount(0);
+    });
+  }
+
   test('a refused region (BLOCK_EU) sees the 401 page instead of the app, but can still read the legal pages', async ({ page }) => {
     await page.route('**/api/v1/**', (route) =>
       route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Subspace Frequency is not available in your region', code: 'REGION_BLOCKED' }) })

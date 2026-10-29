@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Cookie } from 'lucide-react';
 import { Button } from '@subspace/ui';
+import { inAppShell } from '../../lib/native';
 
 const KEY = 'subspace:cookie-notice';
 
 /**
  * The cookie notice. Subspace only uses storage the app needs to work (no analytics,
- * advertising or tracking), so this informs rather than asks for consent. Shown until dismissed.
+ * advertising or tracking), so this informs rather than asks for consent. Shown in browsers until
+ * dismissed; never in the desktop or mobile app.
  */
 export function CookieNotice() {
   const [seen, setSeen] = useState(() => {
@@ -16,7 +18,8 @@ export function CookieNotice() {
       return false;
     }
   });
-  if (seen) return null;
+  // Inside the desktop and mobile apps the storage is the app's own, like any installed app's.
+  if (seen || inAppShell()) return null;
   const dismiss = () => {
     try {
       localStorage.setItem(KEY, '1');
