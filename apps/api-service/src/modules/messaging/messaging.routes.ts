@@ -38,6 +38,7 @@ import { queuePush } from '../../lib/push.js';
 import { runAutomod } from '../../lib/automod.js';
 import { attachThreads } from '../threads/threads.routes.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
+import { COMMITMENT_PATTERN } from '../../lib/franking.js';
 
 const MAX_TRANSMISSION_LENGTH = 2000;
 const MAX_DISTINCT_REACTIONS = 20;
@@ -64,18 +65,36 @@ export const MAX_ENCRYPTED_BYTES = 256 * 1024;
 /**
  * Ciphertext for an end-to-end encrypted link (see packages/e2ee): an envelope per recipient
  * device, keyed by device id, and the sender's own sealed copy. The server cannot read it.
+ * `commitment` is the message-franking commitment to the contents (lib/franking.ts): required,
+ * so every encrypted transmission can be verifiably reported.
  */
 export const ENCRYPTED_PAYLOAD = {
   type: 'object',
   additionalProperties: false,
-  required: ['v', 'senderDevice', 'envelopes'],
+  required: ['v', 'senderDevice', 'envelopes', 'commitment'],
   properties: {
     v: { const: 1 },
     senderDevice: { type: 'string', pattern: '^[1-9][0-9]{0,18}$' },
-    envelopes: { type: 'object', maxProperties: 25, additionalProperties: { type: 'object' } },
+    envelopes: { type: 'object', maxProperties: 25, propertyNames: { pattern: '^[1-9][0-9]{0,18}$' }, additionalProperties: { type: 'object' } },
     self: { type: 'string', maxLength: 65536 },
+    commitment: { type: 'string', pattern: COMMITMENT_PATTERN },
   },
 };
+
+const DEVICE_ID = /^[1-9][0-9]{0,18}$/;
+
+/** ENCRYPTED_PAYLOAD for routes that cannot use a body schema (an edit takes either kind). */
+export function isEncryptedPayload(p: any): boolean {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return false;
+  const allowed = new Set(['v', 'senderDevice', 'envelopes', 'self', 'commitment']);
+  if (Object.keys(p).some((k) => !allowed.has(k))) return false;
+  if (p.v !== 1 || typeof p.senderDevice !== 'string' || !DEVICE_ID.test(p.senderDevice)) return false;
+  if (typeof p.commitment !== 'string' || !new RegExp(COMMITMENT_PATTERN).test(p.commitment)) return false;
+  if (p.self !== undefined && (typeof p.self !== 'string' || p.self.length > 65536)) return false;
+  if (!p.envelopes || typeof p.envelopes !== 'object' || Array.isArray(p.envelopes)) return false;
+  const devices = Object.entries(p.envelopes);
+  return devices.length <= 25 && devices.every(([id, e]) => DEVICE_ID.test(id) && !!e && typeof e === 'object' && !Array.isArray(e));
+}
 
 function containerColumn(channelType: string): 'relayId' | 'threadId' | 'p2pLinkId' | 'meshId' {
   switch (channelType) {
@@ -155,11 +174,14 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
 
       const containerFilter = eq((transmissions as any)[containerColumn(channelType)], channelId);
 
+      // Only an anchor in this conversation: one from elsewhere would be returned as part of it.
       async function anchorRow(id: string) {
-        const [row] = await db.select().from(transmissions).where(eq(transmissions.id, id)).limit(1);
+        const [row] = await db.select().from(transmissions).where(and(eq(transmissions.id, id), containerFilter)).limit(1);
         return row || null;
       }
 
+      // Ordered and paged by id: snowflakes are unique and time-ordered, while comparing timestamps
+      // through a millisecond Date skipped (or repeated) transmissions within one millisecond.
       let rows: Array<typeof transmissions.$inferSelect> = [];
       if (query.around) {
         const anchor = await anchorRow(query.around);
@@ -168,14 +190,14 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           const before = await db
             .select()
             .from(transmissions)
-            .where(and(containerFilter, lt(transmissions.createdAt, anchor.createdAt)))
-            .orderBy(desc(transmissions.createdAt))
+            .where(and(containerFilter, lt(transmissions.id, anchor.id)))
+            .orderBy(desc(transmissions.id))
             .limit(half);
           const after = await db
             .select()
             .from(transmissions)
-            .where(and(containerFilter, gt(transmissions.createdAt, anchor.createdAt)))
-            .orderBy(asc(transmissions.createdAt))
+            .where(and(containerFilter, gt(transmissions.id, anchor.id)))
+            .orderBy(asc(transmissions.id))
             .limit(limit - half);
           rows = [...before.reverse(), anchor, ...after];
         }
@@ -185,8 +207,8 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           rows = await db
             .select()
             .from(transmissions)
-            .where(and(containerFilter, lt(transmissions.createdAt, anchor.createdAt)))
-            .orderBy(desc(transmissions.createdAt))
+            .where(and(containerFilter, lt(transmissions.id, anchor.id)))
+            .orderBy(desc(transmissions.id))
             .limit(limit);
           rows = rows.reverse();
         }
@@ -196,8 +218,8 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           rows = await db
             .select()
             .from(transmissions)
-            .where(and(containerFilter, gt(transmissions.createdAt, anchor.createdAt)))
-            .orderBy(asc(transmissions.createdAt))
+            .where(and(containerFilter, gt(transmissions.id, anchor.id)))
+            .orderBy(asc(transmissions.id))
             .limit(limit);
         }
       } else {
@@ -205,7 +227,7 @@ export const messagingRoutes: FastifyPluginAsync = async (app: FastifyInstance) 
           .select()
           .from(transmissions)
           .where(containerFilter)
-          .orderBy(desc(transmissions.createdAt))
+          .orderBy(desc(transmissions.id))
           .limit(limit);
         rows = rows.reverse();
       }

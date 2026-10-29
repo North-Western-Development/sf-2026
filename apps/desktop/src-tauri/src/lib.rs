@@ -5,6 +5,10 @@
 //! pages never get access to native commands (no remote capability is granted). Links to other
 //! sites open in the system browser. Closing the window keeps the app in the tray.
 //!
+//! One request goes the other way: while an end-to-end encrypted conversation is open, the page
+//! asks for the window to be hidden from screenshots and screen capture, by navigating to a
+//! reserved address the shell intercepts (see protection_request). That needs no native command.
+//!
 //! It also reports what the user is playing to that page (see activity.rs): a known game running
 //! on the PC, or Rich Presence from games over a local RPC server, and keeps itself up to date
 //! (updates.rs).
@@ -66,6 +70,18 @@ fn connect_page() -> Url {
 
 fn is_app_page(url: &Url) -> bool {
     url.scheme() == "tauri" || url.host_str() == Some("tauri.localhost")
+}
+
+/// The reserved address for the page's screenshot-protection request; never loaded or opened.
+const PROTECTION_HOST: &str = "subspace-desktop.invalid";
+
+/// The setting a navigation to the reserved address asks for: hide the window from screenshots
+/// and screen capture (on) or not. None for any other address.
+fn protection_request(url: &Url) -> Option<bool> {
+    if url.scheme() != "https" || url.host_str() != Some(PROTECTION_HOST) || url.path() != "/content-protection" {
+        return None;
+    }
+    Some(url.query_pairs().any(|(k, v)| k == "on" && v == "1"))
 }
 
 fn same_origin(a: &Url, b: &Url) -> bool {
@@ -130,7 +146,8 @@ pub fn run() {
                 .min_inner_size(940.0, 560.0)
                 .background_color(tauri::window::Color(3, 3, 5, 255))
                 // Lets the web app know it is the desktop app: it opens the app, not the homepage.
-                .initialization_script("window.subspaceDesktop = true;")
+                // And which shell features it may use (an older shell lacks some).
+                .initialization_script("window.subspaceDesktop = true; window.subspaceDesktopFeatures = ['content-protection'];")
                 // Each page load starts empty: tell it what is being played right away.
                 .on_page_load(move |_window, payload| {
                     if payload.event() == PageLoadEvent::Finished {
@@ -138,6 +155,13 @@ pub fn run() {
                     }
                 })
                 .on_navigation(move |url| {
+                    // The page asking for screenshot protection: apply it, never navigate.
+                    if url.host_str() == Some(PROTECTION_HOST) {
+                        if let (Some(on), Some(window)) = (protection_request(url), main_window(&nav_handle)) {
+                            let _ = window.set_content_protected(on);
+                        }
+                        return false;
+                    }
                     // Stay on the connect page or the chosen instance; anything else goes to the browser.
                     if is_app_page(url) || url.scheme() == "about" {
                         return true;
@@ -211,6 +235,18 @@ mod tests {
         assert!(parse_server("file:///etc/passwd").is_err());
         assert!(parse_server("javascript:alert(1)").is_err());
         assert!(parse_server("not a url").is_err());
+    }
+
+    #[test]
+    fn reads_only_the_reserved_protection_address() {
+        let at = |s: &str| protection_request(&Url::parse(s).unwrap());
+        assert_eq!(at("https://subspace-desktop.invalid/content-protection?on=1"), Some(true));
+        assert_eq!(at("https://subspace-desktop.invalid/content-protection?on=0"), Some(false));
+        assert_eq!(at("https://subspace-desktop.invalid/content-protection"), Some(false));
+        assert_eq!(at("https://subspace-desktop.invalid/other?on=1"), None);
+        assert_eq!(at("http://subspace-desktop.invalid/content-protection?on=1"), None);
+        assert_eq!(at("https://subspace-desktop.invalid.evil.net/content-protection?on=1"), None);
+        assert_eq!(at("https://subspace.example.com/content-protection?on=1"), None);
     }
 
     #[test]

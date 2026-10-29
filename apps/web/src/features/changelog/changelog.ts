@@ -23,6 +23,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-10-28e',
+    title: 'Safer encrypted conversations',
+    added: [
+      {
+        title: 'Screenshot protection',
+        body: 'While an end-to-end encrypted direct link or group DM is open, screenshots and screen recordings of it are blocked. It is lifted during calls, so screen sharing still works.',
+        platforms: ['desktop', 'mobile'],
+      },
+      {
+        title: 'Report encrypted messages',
+        body: 'You can now report a message in an encrypted conversation. You are told first that it, and up to five messages on each side, go to staff in plain text. Every message is checked against what was actually sent, so nobody can fake a report.',
+      },
+    ],
+  },
+  {
     id: '2026-10-28d',
     title: 'Subspace on your phone',
     added: [

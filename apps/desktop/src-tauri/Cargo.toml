@@ -1,6 +1,6 @@
 [package]
 name = "subspace-desktop"
-version = "0.2.0"
+version = "0.3.0"
 description = "Subspace Frequency desktop app"
 edition = "2021"
 publish = false

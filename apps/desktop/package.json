@@ -1,6 +1,6 @@
 {
   "name": "@subspace/desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Subspace Frequency desktop app (Tauri v2): a native shell around a Subspace instance",
   "scripts": {

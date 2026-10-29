@@ -27,7 +27,8 @@ function recipientsOf(key: ChannelKey): string[] {
   return [];
 }
 
-export function encryptFor(key: ChannelKey, plain: Plain): Promise<EncryptedPayload> {
+/** Encrypt for a conversation: the payload to send, and the plaintext as sent (to remember). */
+export function encryptFor(key: ChannelKey, plain: Plain): Promise<{ payload: EncryptedPayload; plain: Plain }> {
   const me = getState().me;
   if (!me) throw new Error('Not signed in');
   const recipients = recipientsOf(key);

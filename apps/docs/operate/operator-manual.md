@@ -26,6 +26,9 @@ The first Root is set in the database ([Deployment](/operate/deployment#_5-first
 
 **Reports.** Members report transmissions, people and beacons from their context menus, with a reason and details. The report keeps a snapshot of the reported content, so deleting it afterwards does not hide it from you. Resolve or dismiss each one.
 
+- **From an encrypted conversation:** the report shows the reported transmission and up to five on each side, each marked Verified, Not verifiable or Not shared. Encrypted attachments open here and are decrypted in your browser. See [Reporting an encrypted message](/guide/security#reporting-an-encrypted-message).
+- **About a beacon, or a transmission in one:** while the report is open, **Read Beacon** shows that beacon's relays read-only, hidden ones included. You never join it: there is no membership, presence or typing, so members cannot see you. Each relay you open is written to the Staff Log.
+
 **Transmitters.** Search accounts by part of a username or display name.
 
 - **Quarantine** keeps them reading but stops them posting, DMing anyone new or joining beacons.
@@ -48,7 +51,7 @@ Everyone accepts the Directives when signing up, and again when they change. Edi
 
 ## What staff can and cannot see
 
-Staff can review reported content and any file in storage; the first-upload notice tells people so. Staff cannot read end-to-end encrypted conversations or encrypted call media. The server only has ciphertext.
+Staff can review reported content and any file in storage; the first-upload notice tells people so. Staff cannot read end-to-end encrypted conversations or encrypted call media: the server only has ciphertext. The exception is what a member chooses to share by reporting it, after being warned.
 
 ## Good practice
 

@@ -15,6 +15,7 @@ import { AppTag } from '../common/AppTag';
 import { GamesTab } from './GamesTab';
 import { DevelopersTab } from './DevelopersTab';
 import { ActivitiesTab } from './ActivitiesTab';
+import { BeaconReader, EncryptedContext } from './ReportReview';
 
 type Tab = 'reports' | 'transmitters' | 'vault' | 'groups' | 'badges' | 'developers' | 'games' | 'activities' | 'staff' | 'ranks' | 'log';
 
@@ -53,6 +54,8 @@ function Empty({ title, body }: { title: string; body: string }) {
 
 function ReportsTab() {
   const [status, setStatus] = useState<'open' | 'all'>('open');
+  /** The report whose beacon is open read-only. */
+  const [reading, setReading] = useState<string | null>(null);
   const [reports, setReports] = useState<any[] | null>(null);
   const load = useCallback(
     () =>
@@ -78,6 +81,7 @@ function ReportsTab() {
 
   return (
     <SettingsSection title="Reports" description="Reports filed by members, with a snapshot of what was reported.">
+      {reading && <BeaconReader reportId={reading} onClose={() => setReading(null)} />}
       <div role="tablist" aria-label="Report status" className="mb-4 flex gap-1">
         {(['open', 'all'] as const).map((s) => (
           <button
@@ -106,8 +110,15 @@ function ReportsTab() {
                 <span className="text-sm text-fg-muted">· {report.targetType}</span>
                 <span className="ml-auto text-xs text-fg-subtle">{new Date(report.createdAt).toLocaleString()}</span>
               </div>
-              {report.telemetrySnapshot?.transmissionContent && (
-                <blockquote className="mt-3 whitespace-pre-wrap border-l-4 border-line-strong pl-3 text-sm text-fg">{report.telemetrySnapshot.transmissionContent}</blockquote>
+              {report.telemetrySnapshot?.encryptedContext ? (
+                <>
+                  <p className="mt-3 text-xs text-fg-muted">From an end-to-end encrypted conversation: the reporter shared it in plain text.</p>
+                  <EncryptedContext items={report.telemetrySnapshot.encryptedContext} />
+                </>
+              ) : (
+                report.telemetrySnapshot?.transmissionContent && (
+                  <blockquote className="mt-3 whitespace-pre-wrap border-l-4 border-line-strong pl-3 text-sm text-fg">{report.telemetrySnapshot.transmissionContent}</blockquote>
+                )
               )}
               {report.description && <p className="mt-3 text-sm text-fg">{report.description}</p>}
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -116,6 +127,9 @@ function ReportsTab() {
                 </span>
                 {report.status === 'open' && (
                   <span className="ml-auto flex gap-2">
+                    {(report.targetType === 'beacon' || report.telemetrySnapshot?.beaconId || report.telemetrySnapshot?.relayId) && (
+                      <RowButton onClick={() => setReading(report.id)}>Read Beacon</RowButton>
+                    )}
                     <RowButton onClick={() => void resolve(report.id, 'dismissed')}>Dismiss</RowButton>
                     <RowButton danger onClick={() => void resolve(report.id, 'resolved')}>
                       Resolve

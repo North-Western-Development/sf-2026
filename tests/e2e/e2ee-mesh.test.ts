@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { buildApp } from '../../apps/api-service/src/index.js';
 import { signAccessToken, getJwtSecret } from '@subspace/crypto';
 import { transmitters, e2eeDevices, affiliations, subspaceMeshes, subspaceMeshMembers, eq, or } from '@subspace/database';
-import { generateDeviceKeys, publicBundle, startSession, encrypt, decrypt, decodeText, type SessionBundle } from '@subspace/e2ee';
+import { generateDeviceKeys, publicBundle, startSession, encrypt, decrypt, decodeText, frankingCommitment, randomKey, type SessionBundle } from '@subspace/e2ee';
 
 /** End-to-end encrypted group DMs (meshes): ciphertext only, sealed for every member's device. */
 describe('E2EE: encrypted meshes', () => {
@@ -73,14 +73,15 @@ describe('E2EE: encrypted meshes', () => {
     expect((await call('POST', `/api/v1/channels/mesh/${meshId}/transmissions`, ann, { content: 'in the clear' })).json().code).toBe('ENCRYPTION_REQUIRED');
     expect((await call('POST', `/api/v1/meshes/${meshId}/transmissions`, ann, { content: 'in the clear' })).json().code).toBe('ENCRYPTION_REQUIRED');
 
-    // Ann seals the message once per member device.
+    // Ann seals the message once per member device, franked.
+    const fk = randomKey();
     const envelopes: Record<string, unknown> = {};
     for (const u of [ben, cat]) {
       const { bundle } = (await call('POST', `/api/v1/e2ee/devices/${deviceIds[u.username]}/bundle`, ann)).json() as { bundle: SessionBundle };
       const session = await startSession(keys.mesh_ann, bundle);
-      envelopes[deviceIds[u.username]] = await encrypt(session, JSON.stringify({ text: 'meet at dawn' }));
+      envelopes[deviceIds[u.username]] = await encrypt(session, JSON.stringify({ text: 'meet at dawn', fk }));
     }
-    const sent = await call('POST', `/api/v1/channels/mesh/${meshId}/transmissions`, ann, { encrypted: { v: 1, senderDevice: deviceIds.mesh_ann, envelopes } });
+    const sent = await call('POST', `/api/v1/channels/mesh/${meshId}/transmissions`, ann, { encrypted: { v: 1, senderDevice: deviceIds.mesh_ann, envelopes, commitment: await frankingCommitment(fk, 'meet at dawn') } });
     expect(sent.statusCode).toBe(201);
     expect(sent.json().transmission.content).toBe('');
 

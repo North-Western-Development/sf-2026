@@ -31,11 +31,13 @@ import { useGlobalShortcuts } from './shortcuts';
 import { preloadEmojiSheet } from '../lib/emoji';
 import { startAfkWatch } from '../features/voice/afk';
 import { showWhatsNewOnce } from '../features/changelog/WhatsNew';
+import { useScreenProtection } from '../lib/screenProtection';
 
 function Boot({ children }: { children: React.ReactNode }) {
   const ready = useStore((s) => s.ready);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  useScreenProtection();
 
   useEffect(() => {
     setBridgeNavigator(navigate);

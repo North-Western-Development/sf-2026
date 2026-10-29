@@ -3,7 +3,7 @@
     "name": "Subspace Frequency",
     "slug": "subspace-frequency",
     "scheme": "subspace",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -24,7 +24,7 @@
           "remote-notification"
         ]
       },
-      "buildNumber": "1"
+      "buildNumber": "2"
     },
     "android": {
       "package": "click.subspace.mobile",
@@ -38,13 +38,15 @@
         "MODIFY_AUDIO_SETTINGS",
         "POST_NOTIFICATIONS"
       ],
-      "versionCode": 1,
+      "versionCode": 2,
       "blockedPermissions": [
         "com.google.android.c2dm.permission.RECEIVE",
         "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.DETECT_SCREEN_CAPTURE"
       ]
     },
     "plugins": [

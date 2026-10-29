@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BackHandler, Linking, PermissionsAndroid, Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import * as Haptics from 'expo-haptics';
+import * as ScreenCapture from 'expo-screen-capture';
 import { colors, injectedBridge, parseShellMessage, pushUpdateScript, staysInApp, type PushState } from './shell';
 import { onNotificationOpen, showLocal, startPush } from './push';
 
@@ -11,6 +12,9 @@ async function requestPermissions() {
     await PermissionsAndroid.requestMultiple([PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, PermissionsAndroid.PERMISSIONS.CAMERA]).catch(() => {});
   }
 }
+
+/** One key for the page's requests, so turning it off undoes exactly what it turned on. */
+const SECURE_KEY = 'encrypted-conversation';
 
 const WORKING: PushState = { target: null, status: 'waiting', reason: 'Checking push notifications.' };
 
@@ -61,8 +65,14 @@ export function InstanceScreen({ server }: { server: string }) {
     return () => sub.remove();
   }, []);
 
+  // Leaving the instance (changing server, closing) always lifts screenshot protection.
+  useEffect(() => () => void ScreenCapture.allowScreenCaptureAsync(SECURE_KEY).catch(() => {}), []);
+
   const onMessage = (event: WebViewMessageEvent) => {
     const msg = parseShellMessage(event.nativeEvent.data);
+    if (msg?.type === 'secure') {
+      void (msg.on ? ScreenCapture.preventScreenCaptureAsync(SECURE_KEY) : ScreenCapture.allowScreenCaptureAsync(SECURE_KEY)).catch(() => {});
+    }
     if (msg?.type === 'notify') {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       showLocal(msg.title, msg.body);

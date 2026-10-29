@@ -8,7 +8,7 @@ import { PixelStar } from './PixelStar';
 
 export const OPERATOR = 'North Western Development';
 export const CONTACT_EMAIL = 'april.abney@northwesterndevelopment.com';
-const UPDATED = 'October 27, 2026';
+const UPDATED = 'October 28, 2026';
 
 /** The consent wording on the phone number form; /sms shows the same text. */
 export const SMS_CONSENT =
@@ -64,7 +64,11 @@ export function PrivacyPage() {
       <ul>
         <li><strong>Account:</strong> email address, username, display name, password (stored only as a hash), profile details you choose to add.</li>
         <li><strong>Phone number (optional):</strong> only if you add one to your account, to verify it with a one-time code.</li>
-        <li><strong>Content:</strong> messages, files, reactions and other things you post. In end-to-end encrypted conversations we store only ciphertext we cannot read.</li>
+        <li>
+          <strong>Content:</strong> messages, files, reactions and other things you post. In end-to-end encrypted conversations we store only ciphertext we cannot read. If
+          someone in such a conversation reports a message, their device shares it with our staff in plain text, with up to five messages before and after it and any
+          attachments; they are warned of this first.
+        </li>
         <li><strong>Technical:</strong> IP addresses and device information, used for security, rate limiting and abuse prevention. Each IP address is also checked against a country database kept on our server (DB-IP Lite), to refuse access from the EU, the EEA and the UK; the address is not sent anywhere for this. A refused visitor's address is never stored with any account, is logged only with its last part removed, and their browser is told to delete this site's cookies. Web server logs never keep full addresses and are deleted after 7 days.</li>
         <li><strong>Voice and video:</strong> relayed live through our own servers and not recorded by us. Clips are saved only on your own device.</li>
         <li>

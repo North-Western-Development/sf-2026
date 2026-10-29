@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { buildApp } from '../../apps/api-service/src/index.js';
 import { signAccessToken, getJwtSecret } from '@subspace/crypto';
 import { transmitters, pointToPointLinks, e2eeDevices, transmissions, affiliations, eq, or } from '@subspace/database';
-import { generateDeviceKeys, publicBundle, startSession, encrypt, decrypt, decodeText, type SessionBundle } from '@subspace/e2ee';
+import { generateDeviceKeys, publicBundle, startSession, encrypt, decrypt, decodeText, frankingCommitment, randomKey, type SessionBundle } from '@subspace/e2ee';
 
 /** The key server and the ciphertext-only rule for encrypted links. */
 describe('E2EE: key server and encrypted links', () => {
@@ -84,8 +84,12 @@ describe('E2EE: key server and encrypted links', () => {
     if (!db) return;
     const { bundle } = (await call('POST', `/api/v1/e2ee/devices/${deviceIds.bob}/bundle`, alice)).json() as { bundle: SessionBundle };
     const session = await startSession(keys.alice, bundle);
-    const envelope = await encrypt(session, JSON.stringify({ text: 'meet at airlock 7' }));
-    const encrypted = { v: 1, senderDevice: deviceIds.alice, envelopes: { [deviceIds.bob]: envelope } };
+    const fk = randomKey();
+    const envelope = await encrypt(session, JSON.stringify({ text: 'meet at airlock 7', fk }));
+    const encrypted = { v: 1, senderDevice: deviceIds.alice, envelopes: { [deviceIds.bob]: envelope }, commitment: await frankingCommitment(fk, 'meet at airlock 7') };
+    // Every encrypted transmission is franked, so it can be verifiably reported.
+    const { commitment: _c, ...unfranked } = encrypted;
+    expect((await call('POST', `/api/v1/channels/link/${linkId}/transmissions`, alice, { encrypted: unfranked })).statusCode).toBe(400);
 
     expect((await call('POST', `/api/v1/channels/link/${linkId}/transmissions`, alice, { content: 'plain' })).json().code).toBe('ENCRYPTION_REQUIRED');
     expect((await call('POST', `/api/v1/channels/link/${linkId}/transmissions`, alice, { content: 'mixed', encrypted })).json().code).toBe('ENCRYPTION_REQUIRED');
@@ -107,7 +111,7 @@ describe('E2EE: key server and encrypted links', () => {
     if (!db) return;
     const [plainLink] = await db.insert(pointToPointLinks).values({ transmitter1Id: alice.id, transmitter2Id: eve.id }).returning();
     await db.insert(affiliations).values({ transmitterId: alice.id, targetId: eve.id, status: 'accepted' });
-    const res = await call('POST', `/api/v1/channels/link/${plainLink.id}/transmissions`, alice, { encrypted: { v: 1, senderDevice: deviceIds.alice, envelopes: {} } });
+    const res = await call('POST', `/api/v1/channels/link/${plainLink.id}/transmissions`, alice, { encrypted: { v: 1, senderDevice: deviceIds.alice, envelopes: {}, commitment: 'A'.repeat(43) } });
     expect(res.json().code).toBe('NOT_ENCRYPTED');
   });
 

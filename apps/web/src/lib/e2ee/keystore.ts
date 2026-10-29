@@ -20,6 +20,8 @@ export interface DeviceRecord {
 export interface Plain {
   text: string;
   attachments?: EncryptedAttachment[];
+  /** The message-franking key (packages/e2ee): revealed with the text to report it. Absent before franking. */
+  fk?: string;
 }
 
 /** An attachment encrypted on the device: the vault only holds ciphertext. */

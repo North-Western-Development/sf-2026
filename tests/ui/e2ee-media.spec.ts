@@ -24,6 +24,13 @@ test.describe('End-to-end encrypted voice and video', () => {
     const { linkId } = await me.api.openDm(friend, 'secure line?');
     const theirs = await openAs(browser, friend, `/channels/@me/${linkId}`);
     await theirs.context().grantPermissions(['microphone', 'camera']);
+    // As the desktop app: screenshot protection while the encrypted DM is open, but not during the call.
+    const asks: string[] = [];
+    await page.route('https://subspace-desktop.invalid/**', (route) => {
+      asks.push(new URL(route.request().url()).searchParams.get('on')!);
+      return route.abort('aborted');
+    });
+    await page.addInitScript(() => Object.assign(window, { subspaceDesktop: true, subspaceDesktopFeatures: ['content-protection'] }));
     await signIn(page, me, `/channels/@me/${linkId}`);
 
     await page.getByRole('button', { name: 'Turn On Encryption' }).click();
@@ -34,6 +41,7 @@ test.describe('End-to-end encrypted voice and video', () => {
     const call = page.getByRole('region', { name: 'Call' });
     await expect(call).toHaveAttribute('data-e2ee', 'true', { timeout: 20_000 });
     await expect(call).toContainText('End-to-end encrypted');
+    await expect.poll(() => asks).toEqual(['1', '0']);
 
     await theirs.getByRole('alertdialog', { name: /^Incoming call from / }).getByRole('button', { name: 'Accept with Video' }).click();
     const theirCall = theirs.getByRole('region', { name: 'Call' });

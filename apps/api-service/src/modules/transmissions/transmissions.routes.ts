@@ -25,7 +25,7 @@ import { beaconMembers as beaconMembersTable, subspaceMeshMembers as subspaceMes
 import { resolveVaultAttachments } from '../../lib/attachments.js';
 import { runAutomod } from '../../lib/automod.js';
 import { scheduleEmbeds } from '../../lib/embeds.js';
-import { MAX_ENCRYPTED_BYTES } from '../messaging/messaging.routes.js';
+import { MAX_ENCRYPTED_BYTES, isEncryptedPayload } from '../messaging/messaging.routes.js';
 const MAX_TRANSMISSION_LENGTH = 2000;
 
 export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -274,7 +274,7 @@ export const transmissionRoutes: FastifyPluginAsync = async (app: FastifyInstanc
     // Encrypted transmissions are edited by replacing their ciphertext.
     if (existing.encryptedPayload) {
       const encrypted = body?.encrypted;
-      if (!encrypted || typeof encrypted !== 'object' || encrypted.v !== 1 || typeof encrypted.envelopes !== 'object' || content) {
+      if (!isEncryptedPayload(encrypted) || content) {
         return reply.status(400).send({ error: 'This conversation is end-to-end encrypted; send ciphertext only', code: 'ENCRYPTION_REQUIRED' });
       }
       if (JSON.stringify(encrypted).length > MAX_ENCRYPTED_BYTES) return reply.status(413).send({ error: 'Encrypted transmission is too large' });

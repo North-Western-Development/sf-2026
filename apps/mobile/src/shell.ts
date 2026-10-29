@@ -41,7 +41,12 @@ export function staysInApp(server: string, target: string): boolean {
 }
 
 /** Messages the web app sends to the shell (window.ReactNativeWebView.postMessage). */
-export type ShellMessage = { type: 'notify'; title: string; body: string; tag?: string } | { type: 'ready' } | { type: 'signed-out' };
+export type ShellMessage =
+  | { type: 'notify'; title: string; body: string; tag?: string }
+  | { type: 'ready' }
+  | { type: 'signed-out' }
+  /** Block screenshots and screen recording while an encrypted conversation is open. */
+  | { type: 'secure'; on: boolean };
 
 export function parseShellMessage(raw: string): ShellMessage | null {
   try {
@@ -50,6 +55,7 @@ export function parseShellMessage(raw: string): ShellMessage | null {
       return { type: 'notify', title: m.title.slice(0, 120), body: typeof m.body === 'string' ? m.body.slice(0, 240) : '', tag: typeof m.tag === 'string' ? m.tag : undefined };
     }
     if (m?.type === 'ready' || m?.type === 'signed-out') return { type: m.type };
+    if (m?.type === 'secure' && typeof m.on === 'boolean') return { type: 'secure', on: m.on };
     return null;
   } catch {
     return null;

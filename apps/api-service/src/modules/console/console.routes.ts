@@ -22,7 +22,12 @@ import {
   appBots,
   loadDeveloperPolicy,
   saveDeveloperPolicy,
+  relays,
+  transmissions,
+  lt,
+  gt,
 } from '@subspace/database';
+import { formatTransmission } from '../../lib/transmissions.js';
 import { PRIVILEGED_INTENTS, STAFF_RANKS, VERIFICATION_METHODS, isDetectedGame, normalizeDeveloperPolicy, type StaffPermission } from '@subspace/constants';
 import { publishSessionRefresh } from '../../lib/events.js';
 import { revokeSessions } from '../../lib/sessions.js';
@@ -114,6 +119,124 @@ export const consoleRoutes: FastifyPluginAsync = async (app: FastifyInstance) =>
       report: updated,
     });
   });
+
+  /**
+   * The beacon an open report concerns, for staff to read: the reported beacon, or the one the
+   * reported transmission was in (recorded by the server when the report was filed). Closed
+   * reports give no access. Answers the error itself and returns null otherwise.
+   */
+  async function reportBeacon(reportId: string, reply: any) {
+    const [report] = await db.select().from(incidentReports).where(eq(incidentReports.id, reportId)).limit(1);
+    if (!report) {
+      reply.status(404).send({ error: 'Incident report not found' });
+      return null;
+    }
+    if (report.status !== 'open' && report.status !== 'investigating') {
+      reply.status(403).send({ error: 'Only an open report gives access to its beacon', code: 'REPORT_CLOSED' });
+      return null;
+    }
+    const snap = (report.telemetrySnapshot ?? {}) as Record<string, unknown>;
+    let beaconId = report.targetType === 'beacon' ? report.targetId : typeof snap.beaconId === 'string' ? snap.beaconId : null;
+    if (!beaconId && report.targetType === 'transmission' && typeof snap.relayId === 'string') {
+      const [relay] = await db.select({ beaconId: relays.beaconId }).from(relays).where(eq(relays.id, snap.relayId)).limit(1);
+      beaconId = relay?.beaconId ?? null;
+    }
+    const [beacon] = beaconId && /^[1-9][0-9]{0,18}$/.test(beaconId) ? await db.select().from(beacons).where(eq(beacons.id, beaconId)).limit(1) : [];
+    if (!beacon) {
+      reply.status(404).send({ error: 'This report does not concern a beacon', code: 'NO_BEACON' });
+      return null;
+    }
+    return { report, beacon, snap };
+  }
+
+  const SNOWFLAKE = { type: 'string', pattern: '^[1-9][0-9]{0,18}$' };
+
+  /**
+   * GET /api/v1/console/reports/:id/beacon
+   * Read-only access to the beacon an open report concerns: its relays (hidden ones too), and
+   * where the reported transmission is. Staff never join: no membership, presence, typing or
+   * read state, so members cannot see them. Every look is in the staff log.
+   */
+  app.get('/reports/:id/beacon', { schema: { params: { type: 'object', required: ['id'], properties: { id: SNOWFLAKE } } } }, async (request, reply) => {
+    const auth = await requireStaffRank(request, reply, 'VIEW_REPORTS');
+    if (!auth) return;
+    const found = await reportBeacon((request.params as { id: string }).id, reply);
+    if (!found) return;
+    const { report, beacon, snap } = found;
+    const list = await db
+      .select({ id: relays.id, name: relays.name, type: relays.type, parentId: relays.parentId, position: relays.position })
+      .from(relays)
+      .where(eq(relays.beaconId, beacon.id))
+      .orderBy(asc(relays.position));
+    await staffAudit(db, auth, {
+      action: 'report.read_beacon',
+      targetType: 'beacon',
+      targetId: beacon.id,
+      summary: `Opened ${beacon.name} to review a ${report.reason} report`,
+      details: { reportId: report.id },
+    });
+    const focus = report.targetType === 'transmission' && typeof snap.relayId === 'string' ? { relayId: snap.relayId, transmissionId: report.targetId } : null;
+    return reply.send({ beacon: { id: beacon.id, name: beacon.name, iconUrl: beacon.iconUrl ?? null }, relays: list, focus });
+  });
+
+  /**
+   * GET /api/v1/console/reports/:id/beacon/relays/:relayId/transmissions?before=&around=&limit=
+   * One relay of that beacon, read-only, oldest first.
+   */
+  app.get(
+    '/reports/:id/beacon/relays/:relayId/transmissions',
+    {
+      schema: {
+        params: { type: 'object', required: ['id', 'relayId'], properties: { id: SNOWFLAKE, relayId: SNOWFLAKE } },
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { before: SNOWFLAKE, around: SNOWFLAKE, limit: { type: 'integer', minimum: 1, maximum: 100 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const auth = await requireStaffRank(request, reply, 'VIEW_REPORTS');
+      if (!auth) return;
+      const { id, relayId } = request.params as { id: string; relayId: string };
+      const found = await reportBeacon(id, reply);
+      if (!found) return;
+      const { report, beacon } = found;
+      const [relay] = await db.select().from(relays).where(and(eq(relays.id, relayId), eq(relays.beaconId, beacon.id))).limit(1);
+      if (!relay) return reply.status(404).send({ error: 'That relay is not in this beacon' });
+
+      const { before, around, limit = 50 } = request.query as { before?: string; around?: string; limit?: number };
+      const inRelay = and(eq(transmissions.relayId, relay.id), isNull(transmissions.threadId));
+      const anchorOf = async (tid: string) => (await db.select().from(transmissions).where(and(eq(transmissions.id, tid), inRelay)).limit(1))[0] ?? null;
+      let rows: any[] = [];
+      if (around) {
+        const anchor = await anchorOf(around);
+        if (anchor) {
+          const half = Math.max(1, Math.floor(limit / 2));
+          const older = await db.select().from(transmissions).where(and(inRelay, lt(transmissions.id, anchor.id))).orderBy(desc(transmissions.id)).limit(half);
+          const newer = await db.select().from(transmissions).where(and(inRelay, gt(transmissions.id, anchor.id))).orderBy(asc(transmissions.id)).limit(limit - half);
+          rows = [...older.reverse(), anchor, ...newer];
+        }
+      } else if (before) {
+        const anchor = await anchorOf(before);
+        if (anchor) rows = (await db.select().from(transmissions).where(and(inRelay, lt(transmissions.id, anchor.id))).orderBy(desc(transmissions.id)).limit(limit)).reverse();
+      } else {
+        rows = (await db.select().from(transmissions).where(inRelay).orderBy(desc(transmissions.id)).limit(limit)).reverse();
+      }
+      // Opening a relay is logged; paging back through it is not.
+      if (!before) {
+        await staffAudit(db, auth, {
+          action: 'report.read_relay',
+          targetType: 'relay',
+          targetId: relay.id,
+          summary: `Read #${relay.name} in ${beacon.name} to review a ${report.reason} report`,
+          details: { reportId: report.id },
+        });
+      }
+      const formatted = await Promise.all(rows.map((r) => formatTransmission(db, r, auth.staffMember.id, { beaconId: beacon.id })));
+      return reply.send({ transmissions: formatted });
+    }
+  );
 
   /**
    * GET /api/v1/console/transmitters

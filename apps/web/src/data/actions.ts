@@ -330,8 +330,7 @@ export async function sendMessage(key: ChannelKey, content: string, opts: SendOp
     let raw: Raw;
     if (isEncryptedChannel(key)) {
       // Only ciphertext leaves the device; keep the plaintext locally under the new id.
-      const plain = { text: content, attachments: opts.encryptedAttachments };
-      const encrypted = await encryptFor(key, plain);
+      const { payload: encrypted, plain } = await encryptFor(key, { text: content, attachments: opts.encryptedAttachments });
       raw = (await http.post<{ transmission: Raw }>(`/channels/${type}/${id}/transmissions`, { encrypted, nonce, replyToId: opts.replyToId, replyPing: opts.replyPing })).transmission;
       await rememberSent(raw.id, plain);
     } else {
@@ -407,8 +406,8 @@ export async function retryMessage(key: ChannelKey, pendingId: string) {
 export const editMessage = async (key: ChannelKey, id: string, content: string) => {
   if (isEncryptedChannel(key)) {
     const prev = getState().messages[key]?.byId[id];
-    const plain = { text: content, attachments: prev?.encryptedAttachments };
-    const res = await http.patch<{ transmission: Raw }>(`/transmissions/${id}`, { encrypted: await encryptFor(key, plain) });
+    const { payload, plain } = await encryptFor(key, { text: content, attachments: prev?.encryptedAttachments });
+    const res = await http.patch<{ transmission: Raw }>(`/transmissions/${id}`, { encrypted: payload });
     const patch = toEditPatch(res.transmission);
     await rememberSent(id, plain, patch.editedAt ?? '');
     patchMessage(key, id, { ...patch, content, encryptedAttachments: plain.attachments, e2ee: 'ok' });

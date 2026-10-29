@@ -35,6 +35,34 @@ Anyone in a direct link or a group DM (mesh) can turn on encryption (it cannot b
 
 What it does not do: a device added later cannot read earlier messages. Search and link previews do not work in encrypted conversations, because the server cannot read them.
 
+### Screenshot protection
+
+While an encrypted direct link or group DM is open, the apps block screenshots and screen recording of it:
+
+- **Desktop app:** the window is hidden from screenshots and screen capture (Windows and macOS).
+- **Android:** the screen is marked secure.
+- **iPhone and iPad:** screenshots and recordings come out blank.
+
+It is lifted during a voice or video call, so screen sharing still works. Browsers have no way to do this. Protection only stops casual capture, and nothing stops a photo of the screen.
+
+### Reporting an encrypted message
+
+Staff cannot read encrypted conversations, so a report from one comes with the conversation shown to them in plain text. Before sending, the reporter is warned that the reported transmission and up to five on each side go to staff, with any attachments.
+
+Reporters cannot make anything up. This works by **message franking**, after Facebook's design:
+
+1. The sender's device picks a random key for each transmission and puts it inside the encrypted contents.
+2. The server only receives a commitment: HMAC-SHA-256 of that key and the contents. It is stored with the transmission and is required on every encrypted transmission and edit.
+3. A recipient's device checks the commitment against what it decrypted. If they do not match, it refuses the transmission, so everything it shows can be reported.
+4. To report, the device reveals the contents and keys. The server picks the five transmissions on each side itself, in that conversation. It checks every reveal against its stored commitment and refuses the whole report if any does not match.
+
+Staff see each transmission marked **Verified**, **Not verifiable**, or **Not shared**:
+
+- **Not verifiable:** the transmission was sent before verification existed.
+- **Not shared:** the reporter's device could not open it.
+
+Anyone can only report transmissions they can see.
+
 ### Calls and Comm-Links
 
 Calls in encrypted direct links and group DMs, and Comm-Links with **End-to-end encrypt voice and video** turned on (Beacon Settings → the relay), encrypt every audio and video frame in the browser.

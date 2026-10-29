@@ -1,9 +1,13 @@
 import { useState, type FormEvent } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, LockOpen } from 'lucide-react';
 import { Button, Modal } from '@subspace/ui';
 import { http } from '../../lib/http';
 import { term } from '../../lib/strings';
 import { RadioList } from '../settings/SettingsLayout';
+import { getState } from '../../data/store';
+import { isEncryptedChannel } from '../../data/e2ee';
+import { decryptTransmission, type EncryptedPayload } from '../../lib/e2ee/client';
+import { parseChannelKey, type ChannelKey } from '../../lib/types';
 
 type Reason = 'harassment' | 'spam' | 'malware' | 'illicit_content' | 'other';
 type Target = 'transmission' | 'transmitter' | 'beacon';
@@ -22,8 +26,46 @@ const TITLES: Record<Target, string> = {
   beacon: `Report ${term('beacon')}`,
 };
 
-/** Report flow (Discord's "What's the issue?" dialog): pick a reason, add details, submit to instance staff. */
-export function ReportModal({ onClose, targetType, targetId, targetLabel }: { onClose: () => void; targetType: Target; targetId: string; targetLabel: string }) {
+/** Transmissions shared on each side of a reported encrypted one (REPORT_CONTEXT on the API). */
+const CONTEXT = 5;
+
+interface Reveal {
+  id: string;
+  text: string;
+  attachments?: Array<{ url: string; key: string; filename: string; mimeType: string; size: number }>;
+  fk?: string;
+}
+
+/**
+ * What this device can show staff of an encrypted conversation around a reported transmission:
+ * each one it can open, with its franking key, so the server can check it is what was sent.
+ */
+async function revealAround(channel: ChannelKey, targetId: string): Promise<Reveal[]> {
+  const me = getState().me;
+  if (!me) throw new Error('Not signed in');
+  const { type, id } = parseChannelKey(channel);
+  const { transmissions } = await http.get<{ transmissions: Array<{ id: string; author: { id: string }; editedAt?: string | null; encrypted?: EncryptedPayload | null }> }>(
+    `/channels/${type}/${id}/transmissions?around=${targetId}&limit=${2 * CONTEXT}`
+  );
+  const reveals: Reveal[] = [];
+  for (const t of transmissions) {
+    if (!t.encrypted || reveals.some((r) => r.id === t.id)) continue;
+    const opened = await decryptTransmission(me.id, t.id, t.author.id, t.encrypted, t.editedAt ?? '');
+    if (!opened.ok) continue;
+    const { text, attachments, fk } = opened.plain;
+    reveals.push({ id: t.id, text, ...(attachments?.length ? { attachments: attachments.map(({ url, key, filename, mimeType, size }) => ({ url, key, filename, mimeType, size })) } : {}), ...(fk ? { fk } : {}) });
+  }
+  if (!reveals.some((r) => r.id === targetId)) throw new Error('This device cannot open that transmission, so it cannot be reported from here.');
+  return reveals;
+}
+
+/**
+ * Report flow (Discord's "What's the issue?" dialog): pick a reason, add details, submit to instance staff.
+ * In an end-to-end encrypted conversation staff cannot read anything, so the person is told that the
+ * transmission and up to five on each side go to staff in plain text, and the client sends them.
+ */
+export function ReportModal({ onClose, targetType, targetId, targetLabel, channel }: { onClose: () => void; targetType: Target; targetId: string; targetLabel: string; channel?: ChannelKey }) {
+  const encrypted = targetType === 'transmission' && !!channel && isEncryptedChannel(channel);
   const [reason, setReason] = useState<Reason>('harassment');
   const [details, setDetails] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,7 +77,8 @@ export function ReportModal({ onClose, targetType, targetId, targetLabel }: { on
     setBusy(true);
     setError(null);
     try {
-      await http.post('/reports', { targetType, targetId, reason, description: details.trim() || undefined });
+      const reveals = encrypted ? await revealAround(channel!, targetId) : undefined;
+      await http.post('/reports', { targetType, targetId, reason, description: details.trim() || undefined, ...(reveals ? { reveals } : {}) });
       setSent(true);
     } catch (err) {
       setError((err as Error).message || 'The report could not be sent.');
@@ -74,6 +117,15 @@ export function ReportModal({ onClose, targetType, targetId, targetLabel }: { on
             className="w-full resize-none rounded-md bg-void px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-subtle focus:ring-2 focus:ring-brand"
           />
         </label>
+        {encrypted && (
+          <div role="note" aria-label="Encrypted conversation" className="mt-4 flex gap-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-fg">
+            <LockOpen className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden />
+            <p>
+              This conversation is end-to-end encrypted, so instance staff cannot read it. Reporting shares this transmission and up to {CONTEXT} before and {CONTEXT} after it,
+              with any attachments, <span className="font-semibold">in plain text</span> with this instance's staff. The server checks that they are exactly what was sent.
+            </p>
+          </div>
+        )}
         {error && (
           <p role="alert" className="mt-2 text-sm text-danger">
             {error}
@@ -84,7 +136,7 @@ export function ReportModal({ onClose, targetType, targetId, targetLabel }: { on
             Cancel
           </Button>
           <Button type="submit" variant="danger" isLoading={busy}>
-            Submit Report
+            {encrypted ? 'Share and Report' : 'Submit Report'}
           </Button>
         </div>
       </form>

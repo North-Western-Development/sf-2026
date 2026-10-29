@@ -417,6 +417,32 @@ export const decodeText = (bytes: Uint8Array) => dec.decode(bytes);
 
 export const randomKey = () => toB64(randomBytes(32));
 
+// ---------------------------------------------------------------------------
+// Message franking: verifiable reports of encrypted transmissions
+// ---------------------------------------------------------------------------
+//
+// The sender picks a random franking key per transmission, puts it inside the encrypted
+// contents, and gives the server only the commitment HMAC-SHA-256(key, contents). Recipients
+// check the commitment against what they decrypted, so every transmission they display can be
+// reported. To report, a recipient reveals the contents and the key; the server recomputes the
+// commitment and compares it with the one the sender's authenticated request stored. Faking
+// the contents would mean finding a SHA-256 collision. (After Facebook's message franking.)
+
+export const FRANKING_KEY_BYTES = 32;
+
+/** What a commitment covers; apps/api-service/src/lib/franking.ts builds the same bytes. */
+export function frankingInput(text: string, attachments: ReadonlyArray<{ url: string; key: string; filename: string; mimeType: string; size: number }> = []): Uint8Array {
+  return enc.encode(JSON.stringify(['subspace-franking-v1', text, attachments.map((a) => [a.url, a.key, a.filename, a.mimeType, a.size])]));
+}
+
+/** The commitment (base64url) to a transmission's contents under its franking key. */
+export async function frankingCommitment(keyB64: string, text: string, attachments?: Parameters<typeof frankingInput>[1]): Promise<string> {
+  const raw = fromB64(keyB64);
+  if (raw.length !== FRANKING_KEY_BYTES) throw new Error('A franking key is 32 bytes');
+  const key = await subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return toB64(await subtle.sign('HMAC', key, frankingInput(text, attachments) as Uint8Array<ArrayBuffer>));
+}
+
 /** AES-256-GCM with a random nonce; output is nonce || ciphertext. */
 export async function sealWithKey(keyB64: string, data: Uint8Array, ad = new Uint8Array()): Promise<Uint8Array> {
   const iv = randomBytes(12);

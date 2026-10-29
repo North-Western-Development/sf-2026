@@ -131,7 +131,7 @@ export function ModalHost() {
       break;
     case 'report': {
       const label = modal.targetType === 'transmitter' ? users[modal.targetId]?.username ?? 'Transmitter' : modal.targetType === 'beacon' ? 'Beacon' : 'Transmission';
-      content = <ReportModal onClose={closeModal} targetType={modal.targetType} targetId={modal.targetId} targetLabel={label} />;
+      content = <ReportModal onClose={closeModal} targetType={modal.targetType} targetId={modal.targetId} targetLabel={label} channel={modal.context?.channel as ChannelKey | undefined} />;
       break;
     }
     default:

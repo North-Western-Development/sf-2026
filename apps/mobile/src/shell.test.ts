@@ -25,6 +25,11 @@ describe('mobile shell helpers', () => {
     expect(parseShellMessage(JSON.stringify({ type: 'notify', title: 'x'.repeat(500), body: 'y'.repeat(500) }))).toMatchObject({ title: 'x'.repeat(120), body: 'y'.repeat(240) });
     expect(parseShellMessage('{"type":"run","code":"evil()"}')).toBeNull();
     expect(parseShellMessage('not json')).toBeNull();
+    // Screenshot protection: only a real boolean turns it on or off.
+    expect(parseShellMessage('{"type":"secure","on":true}')).toEqual({ type: 'secure', on: true });
+    expect(parseShellMessage('{"type":"secure","on":false}')).toEqual({ type: 'secure', on: false });
+    expect(parseShellMessage('{"type":"secure","on":"yes"}')).toBeNull();
+    expect(parseShellMessage('{"type":"secure"}')).toBeNull();
   });
 
   it('the injected bridge replaces Notification and posts to the shell', () => {

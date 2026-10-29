@@ -12,6 +12,7 @@ import {
   randomKey,
   toB64,
   fromB64,
+  frankingCommitment,
   type Envelope,
   type SessionBundle,
 } from '@subspace/e2ee';
@@ -24,6 +25,8 @@ export interface EncryptedPayload {
   senderDevice: string;
   envelopes: Record<string, Envelope>;
   self?: string;
+  /** Message franking: the commitment to the contents, which the server keeps to verify reports. */
+  commitment?: string;
 }
 
 interface RemoteDevice {
@@ -100,10 +103,16 @@ async function devicesOf(userId: string, fresh = false): Promise<RemoteDevice[]>
   return devices;
 }
 
-/** Encrypt one payload for every device of the recipients and every other device of mine. */
-export async function encryptPayload(myId: string, recipientIds: string[], plain: Plain): Promise<EncryptedPayload> {
+/**
+ * Encrypt one payload for every device of the recipients and every other device of mine. It is
+ * franked: a fresh key goes inside, its commitment outside. Returns the plaintext as sent (with
+ * that key), to keep locally.
+ */
+export async function encryptPayload(myId: string, recipientIds: string[], contents: Plain): Promise<{ payload: EncryptedPayload; plain: Plain }> {
   const rec = await ensureDevice(myId);
   if (!rec) throw new Error('This browser is not set up for encryption');
+  const plain: Plain = { ...contents, fk: randomKey() };
+  const commitment = await frankingCommitment(plain.fk!, plain.text, plain.attachments ?? []);
   return serial(async () => {
     const body = JSON.stringify(plain);
     const theirs = (await Promise.all(recipientIds.map((id) => devicesOf(id, true)))).flat();
@@ -121,7 +130,7 @@ export async function encryptPayload(myId: string, recipientIds: string[], plain
       await putSessions(myId, device.id, sessions);
     }
     const self = toB64(await sealWithKey(rec.selfKey, new TextEncoder().encode(body)));
-    return { v: 1, senderDevice: rec.deviceId, envelopes, self };
+    return { payload: { v: 1, senderDevice: rec.deviceId, envelopes, self, commitment }, plain };
   });
 }
 
@@ -158,6 +167,8 @@ export async function decryptTransmission(myId: string, messageId: string, autho
       return { ok: false as const, reason: 'failed' as const };
     }
     const plain = JSON.parse(body) as Plain;
+    // A franked transmission must open its commitment, or it could never be reported: refuse it.
+    if (payload.commitment && !(await opensCommitment(payload.commitment, plain))) return { ok: false as const, reason: 'failed' as const };
     await putPlain(cacheKey, plain);
     return { ok: true as const, plain };
   });
@@ -201,6 +212,16 @@ export async function openSignal(myId: string, d: { from: string; fromDevice: st
       return null;
     }
   });
+}
+
+/** Whether decrypted contents match the sender's franking commitment. */
+async function opensCommitment(commitment: string, plain: Plain): Promise<boolean> {
+  if (typeof plain.fk !== 'string' || typeof plain.text !== 'string') return false;
+  try {
+    return (await frankingCommitment(plain.fk, plain.text, plain.attachments ?? [])) === commitment;
+  } catch {
+    return false;
+  }
 }
 
 /** Remember what this device sent, under the id the server gave it. */
