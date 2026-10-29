@@ -321,7 +321,7 @@ export function SettingsRow({
   const inner = (
     <>
       {icon && <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-raised text-fg-muted [&>svg]:h-5 [&>svg]:w-5">{icon}</span>}
-      <span className="min-w-0 flex-1">
+      <span className={clsx('min-w-0 flex-1', value !== undefined && !description && 'min-w-max')}>
         <span className="block text-[15px] font-semibold text-fg">{label}</span>
         {description && <span className="mt-0.5 block text-sm text-fg-muted">{description}</span>}
       </span>

@@ -194,4 +194,43 @@ test.describe('Phone gestures and the attach sheet', () => {
     const tabs = page.getByRole('navigation', { name: /filters/ });
     for (const name of ['Online', 'All', 'Pending', 'Blocked', /^Add/]) await expect(tabs.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
   });
+
+  test('the header fits a phone: a More menu, search across the header, and long names that stop before the time', async ({ page }) => {
+    const me = await register('phonehdr', 'Header Pilot');
+    const pal = await register('phonepal', 'Someone With A Really Long Display Name');
+    const { beacon, relays } = await me.api.createBeacon('Header Beacon');
+    const general = relays.find((r) => r.type === 'text')!;
+    await pal.api.join(beacon.id, (await me.api.createInvite(beacon.id)).code);
+    await pal.api.send(general.id, 'long name here');
+    await signIn(page, me, `/channels/${beacon.id}/${general.id}`, { shell: false });
+
+    // The name is cut short; the time stays whole beside it.
+    const message = page.getByRole('log').getByRole('article').filter({ hasText: 'long name here' });
+    const name = message.getByRole('button', { name: /Someone With/ });
+    const time = message.locator('time');
+    const [n, t] = [(await name.boundingBox())!, (await time.boundingBox())!];
+    expect(n.x + n.width).toBeLessThanOrEqual(t.x);
+    await expect(time).toBeInViewport({ ratio: 1 });
+
+    await page.getByRole('button', { name: 'More' }).click();
+    const menu = page.getByRole('menu');
+    for (const item of ['Threads', 'Pinned Transmissions', 'Notification Settings', 'Inbox', 'Help']) await expect(menu.getByRole('menuitem', { name: item })).toBeVisible();
+    await menu.getByRole('menuitem', { name: 'Threads' }).click();
+    await expect(page.getByRole('button', { name: 'Private' })).toBeInViewport({ ratio: 1 });
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('combobox', { name: 'Search' }).click();
+    await expect(page.getByRole('combobox', { name: 'Search' })).toBeInViewport({ ratio: 1 });
+    await expect(page.getByRole('button', { name: 'More' })).toBeInViewport({ ratio: 1 });
+  });
+
+  test('Add Affiliate puts its button under the field', async ({ page }) => {
+    const me = await register('phoneadd', 'Adder');
+    await signIn(page, me, '/channels/@me', { shell: false });
+    await page.getByRole('navigation', { name: /filters/ }).getByRole('button', { name: /^Add/ }).click();
+    await page.getByRole('textbox', { name: 'Transmitter tag' }).fill('nobody#0001');
+    const send = page.getByRole('button', { name: 'Send Affiliation Request' });
+    await expect(send).toBeInViewport({ ratio: 1 });
+    expect((await send.boundingBox())!.width).toBeGreaterThan(300);
+  });
 });

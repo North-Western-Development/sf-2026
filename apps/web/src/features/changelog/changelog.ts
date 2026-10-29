@@ -23,6 +23,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: '2026-10-29',
+    title: 'More in the header',
+    platforms: ['mobile'],
+    added: [
+      {
+        title: 'The ⋮ menu',
+        body: 'The ⋮ at the top of a conversation has Threads, Pinned Transmissions, Notification Settings, your Inbox and Help.',
+      },
+    ],
+    fixed: [
+      {
+        title: 'Long names and narrow screens',
+        body: 'Long names no longer run into the time on a transmission, search opens across the header, and the Add Affiliate button, Pinned and Threads panels and account details fit on screen.',
+      },
+    ],
+  },
+  {
     id: '2026-10-28g',
     title: 'Discover categories',
     added: [

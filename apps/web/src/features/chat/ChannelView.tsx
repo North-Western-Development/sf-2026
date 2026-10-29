@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useInbox } from '../inbox/inboxData';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
-import { Bell, BellOff, Pin, Users, Inbox, CircleHelp, MessagesSquare, Megaphone } from 'lucide-react';
+import { Bell, BellOff, Pin, Users, Inbox, CircleHelp, MessagesSquare, Megaphone, EllipsisVertical } from 'lucide-react';
 import { Tooltip, useContextMenu, type ContextMenuItem } from '@subspace/ui';
 import { setState, useStore } from '../../data/store';
 import { loadPins } from '../../data/actions';
@@ -47,7 +47,7 @@ function PinsPopover({ channelKey: key, beaconId, anchor, onClose }: { channelKe
       role="dialog"
       aria-label="Pinned transmissions"
       data-context-menu
-      className="fixed z-[1200] flex max-h-[70vh] w-[420px] flex-col overflow-hidden rounded-lg bg-overlay shadow-pop"
+      className="fixed z-[1200] flex max-h-[70vh] w-[min(420px,calc(100vw-16px))] flex-col overflow-hidden rounded-lg bg-overlay shadow-pop"
       style={{ top: anchor.bottom + 8, left: Math.max(8, anchor.right - 420) }}
     >
       <h2 className="flex h-12 items-center border-b border-line px-4 font-semibold">Pinned Transmissions</h2>
@@ -84,13 +84,13 @@ const LEVEL_LABELS: Array<{ level: NotificationLevel; label: string }> = [
   { level: 'nothing', label: 'Nothing' },
 ];
 
-function NotificationButton({ channelKey: key }: { channelKey: ChannelKey }) {
+/** Mute and notification level for one conversation: the header bell's menu (and the phone's More menu). */
+function useNotificationMenu(key: ChannelKey) {
   const { type, id } = parseChannelKey(key);
   const scope = type === 'relay' ? 'relay' : type === 'link' ? 'link' : 'mesh';
   const setting = useStore((s) => settingFor(s, scope, id));
   const muted = isMuted(setting);
   const effLevel = useStore((s) => effectiveNotification(s, key).level);
-  const { openContextMenu } = useContextMenu();
   const menu = (): ContextMenuItem[] => [
     muted
       ? { label: 'Unmute', onClick: () => void setNotificationSetting(scope, id, { mutedUntil: null }) }
@@ -105,6 +105,12 @@ function NotificationButton({ channelKey: key }: { channelKey: ChannelKey }) {
         }))
       : []),
   ];
+  return { muted, menu };
+}
+
+function NotificationButton({ channelKey: key }: { channelKey: ChannelKey }) {
+  const { muted, menu } = useNotificationMenu(key);
+  const { openContextMenu } = useContextMenu();
   return (
     <HeaderButton label="Notification Settings" active={muted} onClick={(e) => openContextMenu({ clientX: e.currentTarget.getBoundingClientRect().left, clientY: e.currentTarget.getBoundingClientRect().bottom + 6 }, menu())}>
       {muted ? <BellOff className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
@@ -191,11 +197,27 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
   const asideOpen = mobile ? mobileAside : memberListOpen;
   const toggleAside = () => (mobile ? setMobileAside((v) => !v) : useUi.setState({ memberListOpen: !memberListOpen }));
   // An open thread takes the member list's place, as on Discord.
-  const panel = search ? <SearchResults search={search} /> : sidePanel ?? (showAside ? (aside ?? (beaconId ? <MemberList beaconId={beaconId} /> : null)) : null);
+  // A phone has no room for the header's row of buttons: they live in one More menu.
+  const notifications = useNotificationMenu(key);
+  const { openContextMenu } = useContextMenu();
+  const openMore = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const items: ContextMenuItem[] = [
+      ...(threadsRelay?.isAnnouncement ? [{ label: 'Follow', icon: <Megaphone className="h-4 w-4" />, onClick: () => openModal({ kind: 'followRelay', relayId: threadsRelay.id }) }] : []),
+      ...(threadsRelay ? [{ label: 'Threads', icon: <MessagesSquare className="h-4 w-4" />, onClick: () => setThreadsAnchor(rect) }] : []),
+      { label: 'Pinned Transmissions', icon: <Pin className="h-4 w-4" />, onClick: () => setPinsAnchor(rect) },
+      { label: 'Notification Settings', icon: notifications.muted ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />, children: notifications.menu() },
+      { label: dueReminders ? `Inbox (${dueReminders} due)` : 'Inbox', icon: <Inbox className="h-4 w-4" />, onClick: () => setInboxAnchor(rect) },
+      { separator: true },
+      { label: 'Help', icon: <CircleHelp className="h-4 w-4" />, onClick: () => openModal({ kind: 'help' }) },
+    ];
+    openContextMenu({ clientX: rect.right, clientY: rect.bottom + 6 }, items);
+  };
+  const panel = search ?<SearchResults search={search} /> : sidePanel ?? (showAside ? (aside ?? (beaconId ? <MemberList beaconId={beaconId} /> : null)) : null);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4 shadow-sm">
+      <header className="relative flex h-12 shrink-0 items-center gap-2 border-b border-line px-4 shadow-sm">
         <MobileNavButton />
         <span className="text-fg-subtle">{icon}</span>
         <h1 className="min-w-0 shrink truncate font-semibold text-fg md:shrink-0">{title}</h1>
@@ -233,6 +255,11 @@ export function ChannelView({ channelKey: key, beaconId, icon, title, topic, pla
             </HeaderButton>
           )}
           <SearchBar scope={searchScope} />
+          {mobile && (
+            <HeaderButton label="More" onClick={openMore}>
+              <EllipsisVertical className="h-5 w-5" />
+            </HeaderButton>
+          )}
           {!mobile && (
             <>
               <HeaderButton label={dueReminders ? `Inbox (${dueReminders} reminder${dueReminders === 1 ? '' : 's'} due)` : 'Inbox'} onClick={(e) => setInboxAnchor(e.currentTarget.getBoundingClientRect())}>

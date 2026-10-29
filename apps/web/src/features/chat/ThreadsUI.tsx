@@ -38,7 +38,7 @@ export function ThreadsPopover({ relay, anchor, onClose }: { relay: Relay; ancho
       ref={ref}
       role="dialog"
       aria-label="Threads"
-      className="fixed z-[1200] flex max-h-[70vh] w-[420px] flex-col overflow-hidden rounded-lg bg-overlay shadow-pop"
+      className="fixed z-[1200] flex max-h-[70vh] w-[min(420px,calc(100vw-16px))] flex-col overflow-hidden rounded-lg bg-overlay shadow-pop"
       style={{ top: anchor.bottom + 8, left: Math.max(8, anchor.right - 420) }}
     >
       <header className="flex h-12 items-center gap-2 border-b border-line px-4">
@@ -123,7 +123,7 @@ export function TextThreadPane({ relay, threadId }: { relay: Relay; threadId: st
   };
 
   return (
-    <section aria-label={thread ? `Thread ${thread.title}` : 'Thread'} className="relative flex w-[420px] min-w-0 shrink-0 flex-col border-l border-line bg-base">
+    <section aria-label={thread ? `Thread ${thread.title}` : 'Thread'} className="relative flex w-full min-w-0 shrink-0 md:w-[420px] flex-col border-l border-line bg-base">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-4">
         <MessagesSquare className="h-5 w-5 shrink-0 text-fg-subtle" />
         <h2 className="min-w-0 flex-1 truncate font-semibold text-fg">{thread?.title ?? 'Thread'}</h2>

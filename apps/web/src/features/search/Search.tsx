@@ -117,7 +117,7 @@ export function SearchBar({ scope }: { scope: string }) {
   const expanded = focused || !!value;
 
   return (
-    <div ref={box} className={clsx('relative transition-[width] duration-150', expanded ? 'w-40 md:w-60' : 'w-24 md:w-36')}>
+    <div ref={box} className={clsx('relative transition-[width] duration-150', expanded ? 'md:w-60 max-md:absolute max-md:left-12 max-md:right-12 max-md:top-3 max-md:z-10' : 'w-7 md:w-36')}>
       <input
         ref={input}
         type="search"
@@ -154,7 +154,7 @@ export function SearchBar({ scope }: { scope: string }) {
             input.current?.blur();
           }
         }}
-        className="h-6 w-full rounded-sm bg-void pl-1.5 pr-6 text-sm text-fg placeholder:text-fg-subtle focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+        className={clsx('h-6 w-full rounded-sm bg-void pl-1.5 pr-6 text-sm text-fg placeholder:text-fg-subtle focus:outline-none [&::-webkit-search-cancel-button]:hidden', !expanded && 'max-md:placeholder:text-transparent')}
       />
       {value ? (
         <button type="button" aria-label="Clear search" onClick={clear} className="absolute right-1 top-1 text-fg-muted hover:text-fg">

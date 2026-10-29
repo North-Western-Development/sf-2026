@@ -134,7 +134,7 @@ function AddAffiliate() {
     }
   };
   return (
-    <form onSubmit={submit} className="border-b border-line px-8 py-5">
+    <form onSubmit={submit} className="border-b border-line px-4 py-5 md:px-8">
       <h2 className="font-bold uppercase text-fg">Add {term('affiliate')}</h2>
       <p className="mt-1 text-sm text-fg-muted">You can add {term('affiliate', true).toLowerCase()} with their Subspace tag, like name#0427.</p>
       <div className={clsx('mt-4 flex items-center rounded-lg border bg-void pr-2', state?.tone === 'err' ? 'border-danger' : state?.tone === 'ok' ? 'border-online' : 'border-line focus-within:border-brand')}>
@@ -148,7 +148,7 @@ function AddAffiliate() {
           aria-label="Transmitter tag"
           className="h-12 flex-1 bg-transparent px-3 text-fg outline-none placeholder:text-fg-subtle"
         />
-        <Button type="submit" size="sm" disabled={!valid} isLoading={busy}>
+        <Button type="submit" size="sm" disabled={!valid} isLoading={busy} className="hidden md:inline-flex">
           Send {term('affiliationRequest')}
         </Button>
       </div>
@@ -159,6 +159,10 @@ function AddAffiliate() {
         aria-label="Optional note"
         className="mt-2 h-9 w-full rounded-md border border-line bg-void px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-brand"
       />
+      {/* A phone has no room beside the field: the button goes full width underneath. */}
+      <Button type="submit" disabled={!valid} isLoading={busy} fullWidth className="mt-3 md:hidden">
+        Send {term('affiliationRequest')}
+      </Button>
       {state && <p className={clsx('mt-2 text-sm', state.tone === 'ok' ? 'text-online' : 'text-danger')}>{state.text}</p>}
     </form>
   );

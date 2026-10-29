@@ -345,7 +345,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
             <Avatar user={m.author} size={40} />
           </button>
           <h3 className="flex items-baseline gap-2 leading-[22px]">
-            <button type="button" onClick={openProfile} onPointerEnter={warmProfile} className="min-w-0 font-medium hover:underline">
+            <button type="button" onClick={openProfile} onPointerEnter={warmProfile} className="min-w-0 truncate font-medium hover:underline">
               <UserName user={m.author} beaconId={beaconId} />
             </button>
             <BeaconTag beaconId={authorTag} className="self-center" />
@@ -354,7 +354,7 @@ export const MessageItem = memo(function MessageItem({ message: m, channelKey: k
               <span className="rounded-xs bg-brand px-1 text-[10px] font-bold uppercase leading-4 text-on-brand">Staff</span>
             )}
             <Tooltip content={formatFullDate(m.createdAt)}>
-              <time dateTime={m.createdAt} className="text-xs text-fg-subtle">
+              <time dateTime={m.createdAt} className="shrink-0 whitespace-nowrap text-xs text-fg-subtle">
                 {formatMessageTime(m.createdAt)}
               </time>
             </Tooltip>
