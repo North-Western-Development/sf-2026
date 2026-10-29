@@ -2,6 +2,7 @@
   "name": "@subspace/bot-sdk",
   "version": "0.1.0",
   "description": "Build bots for Subspace Frequency: REST, the real-time gateway, slash commands and interactions. Node 18+, Deno and Bun.",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

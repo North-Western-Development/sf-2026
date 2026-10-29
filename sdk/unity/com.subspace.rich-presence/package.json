@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "displayName": "Subspace Rich Presence",
   "description": "Show what the player is doing in your game on their Subspace Frequency profile, through the Subspace desktop app running on the same computer. Desktop platforms only; WebGL builds compile but do nothing.",
+  "license": "MIT",
   "unity": "2021.3",
   "author": {
-    "name": "Subspace Frequency"
+    "name": "North Western Development"
   },
   "keywords": ["subspace", "rich presence", "activity", "status"],
   "samples": [

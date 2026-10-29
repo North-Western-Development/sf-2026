@@ -12,6 +12,12 @@
   <name>Subspace Bot SDK</name>
   <description>Build bots for Subspace Frequency: REST, the real-time gateway, slash commands and interactions. JDK only, no dependencies.</description>
   <url>https://subspace.click</url>
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+    </license>
+  </licenses>
 
   <properties>
     <maven.compiler.release>17</maven.compiler.release>

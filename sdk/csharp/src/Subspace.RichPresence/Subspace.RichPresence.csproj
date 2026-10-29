@@ -9,6 +9,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <RootNamespace>Subspace.RichPresence</RootNamespace>
     <AssemblyName>Subspace.RichPresence</AssemblyName>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageId>Subspace.RichPresence</PackageId>
     <Version>0.1.0</Version>
     <Description>Rich Presence for Subspace Frequency: show what a player is doing in your game on their Subspace profile, through the Subspace desktop app.</Description>

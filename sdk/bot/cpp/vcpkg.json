@@ -2,6 +2,7 @@
   "name": "subspace-bot",
   "version": "0.1.0",
   "description": "Subspace Frequency bot SDK for C++17",
+  "license": "MIT",
   "dependencies": [
     { "name": "curl", "features": ["ssl", "websockets"] },
     "openssl",

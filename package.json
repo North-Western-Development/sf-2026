@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Subspace Frequency - Space-themed real-time communications platform",
+  "license": "PolyForm-Small-Business-1.0.0",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",

@@ -1,0 +1,28 @@
+# Every pull request needs its author's agreement to the Contributor License Agreement (CLA.md):
+# the checked box from .github/pull_request_template.md in the description. North Western
+# Development's own maintainers are exempt.
+name: Contributor License Agreement
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the agreement box
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          ASSOCIATION: ${{ github.event.pull_request.author_association }}
+        run: |
+          case "$ASSOCIATION" in OWNER | MEMBER) echo "Maintainer: no agreement needed"; exit 0 ;; esac
+          if printf '%s' "$BODY" | grep -Eiq '^\s*-\s*\[[xX]\]\s*I have read the \[Contributor License Agreement\]'; then
+            echo "Agreement checked"
+          else
+            echo "::error::Check the Contributor License Agreement box in the pull request description (see CLA.md)."
+            exit 1
+          fi

@@ -81,6 +81,20 @@ pnpm test:web       # web app unit tests
 
 `deploy/server` installs a hardened, native instance on one Debian server: one system user per service, sandboxed systemd units, nginx with Let's Encrypt, LiveKit with TURN, and self-hosted push. Start with the [deployment guide](apps/docs/operate/deployment.md) and [deploy/server/README.md](deploy/server/README.md).
 
+## License
+
+Subspace Frequency is **free for individuals, communities and small businesses**, and needs a paid license for larger businesses.
+
+- **The platform** is under the [PolyForm Small Business License 1.0.0](LICENSE.md). Use, change and share it for free as an individual, a gaming community or other non-business group, a charity, school or government body, or a business with fewer than 100 people and under US$1M in revenue.
+- **The SDKs** (bots, Activities and Rich Presence, in `packages/` and `sdk/`) are under the [MIT License](https://opensource.org/licenses/MIT), so anyone can build on Subspace, including businesses.
+- **Commercial licenses** for larger businesses: april.abney@northwesterndevelopment.com.
+
+[LICENSING.md](LICENSING.md) has the details.
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and agree to the [Contributor License Agreement](CLA.md) in your pull request; you keep the copyright in your work.
+
 ## Security
 
 Please report vulnerabilities privately to april.abney@northwesterndevelopment.com rather than in a public issue. The security model is described in [Security and encryption](apps/docs/guide/security.md).

@@ -8,6 +8,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <RootNamespace>Subspace.Bot</RootNamespace>
     <AssemblyName>Subspace.Bot</AssemblyName>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageId>Subspace.Bot</PackageId>
     <Version>0.1.0</Version>
     <Authors>Subspace Frequency</Authors>

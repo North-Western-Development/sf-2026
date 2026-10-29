@@ -8,9 +8,11 @@ version = "0.1.0"
 description = "Build bots for Subspace Frequency: REST, the real-time gateway, slash commands and interactions."
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "Subspace Frequency" }]
+license = { text = "MIT" }
+authors = [{ name = "North Western Development" }]
 keywords = ["subspace", "bot", "sdk", "gateway", "slash-commands", "asyncio"]
 classifiers = [
+  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Framework :: AsyncIO",
