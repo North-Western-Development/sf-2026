@@ -416,7 +416,11 @@ export function Composer({
   if (!canSend || disabledReason) {
     return (
       <div className="relative px-3 py-2 md:px-4 md:pb-6 md:pt-0">
-        <TypingIndicator channelKey={key} beaconId={beaconId} above />
+        {mobile && (
+          <div className="mb-1 flex px-1 empty:hidden">
+            <TypingIndicator channelKey={key} beaconId={beaconId} inline />
+          </div>
+        )}
         <div className="flex h-11 items-center rounded-lg bg-raised px-4 text-sm text-fg-subtle">{disabledReason ||
             (timedOutUntil
               ? `You're timed out until ${new Date(timedOutUntil).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}. You can still read along.`
@@ -430,7 +434,6 @@ export function Composer({
   return (
     // A phone: even space above and below the box, which sits on the keyboard.
     <div className="relative px-3 py-2 md:px-4 md:pb-6 md:pt-0">
-      <TypingIndicator channelKey={key} beaconId={beaconId} above />
       {commandList.length > 0 && (
         <div role="listbox" aria-label="Commands" className="absolute inset-x-4 bottom-full mb-2 max-h-80 overflow-y-auto rounded-lg bg-overlay p-2 shadow-pop">
           {commandList.map(({ kind, c }, i) => (
@@ -538,6 +541,17 @@ export function Composer({
               )}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* A phone has no gap under the box: who is typing, slowmode and the count go in a line above it, only when there is something to show. */}
+      {mobile && (
+        <div className="mb-1 flex items-center justify-between gap-3 px-1 empty:hidden">
+          <TypingIndicator channelKey={key} beaconId={beaconId} inline />
+          {type === 'relay' && <SlowmodeNotice channelKey={key} relayId={id} inline />}
+          {text.length > MAX_LENGTH - 200 && (
+            <span className={clsx('ml-auto text-xs tabular-nums', over ? 'text-danger' : 'text-fg-subtle')}>{MAX_LENGTH - text.length}</span>
+          )}
         </div>
       )}
 
@@ -722,9 +736,9 @@ export function Composer({
         />
       )}
 
-      {type === 'relay' && <SlowmodeNotice channelKey={key} relayId={id} />}
+      {!mobile && type === 'relay' && <SlowmodeNotice channelKey={key} relayId={id} />}
 
-      {text.length > MAX_LENGTH - 200 && (
+      {!mobile && text.length > MAX_LENGTH - 200 && (
         <span className={clsx('absolute bottom-1 right-6 text-xs tabular-nums', over ? 'text-danger' : 'text-fg-subtle')}>
           {MAX_LENGTH - text.length}
         </span>
@@ -750,7 +764,7 @@ export function Composer({
 }
 
 /** Under the box in a slowmode relay: that it is on, and how long until I can send again. */
-function SlowmodeNotice({ channelKey: key, relayId }: { channelKey: string; relayId: string }) {
+function SlowmodeNotice({ channelKey: key, relayId, inline }: { channelKey: string; relayId: string; inline?: boolean }) {
   const seconds = useStore((s) => s.relays[relayId]?.slowmodeSeconds ?? 0);
   const bypass = useStore((s) => can(relayPermissions(s, relayId), PERMISSIONS.BYPASS_SLOWMODE));
   const until = useUi((u) => u.slowmodeUntil[key] ?? 0);
@@ -763,7 +777,7 @@ function SlowmodeNotice({ channelKey: key, relayId }: { channelKey: string; rela
   if (!seconds) return null;
   const left = Math.ceil((until - now) / 1000);
   return (
-    <span role="status" aria-label="Slowmode" className="absolute bottom-1 left-6 text-xs text-fg-subtle">
+    <span role="status" aria-label="Slowmode" className={clsx('text-xs text-fg-subtle', !inline && 'absolute bottom-1 left-6')}>
       {bypass ? 'Slowmode is on (you are exempt)' : left > 0 ? `Slowmode: you can send again in ${left}s` : `Slowmode is on: one transmission every ${seconds >= 60 ? `${Math.round(seconds / 60)}m` : `${seconds}s`}`}
     </span>
   );

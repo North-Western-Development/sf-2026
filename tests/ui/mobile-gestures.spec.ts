@@ -280,7 +280,7 @@ test.describe('Phone gestures and the attach sheet', () => {
     await expect(page.getByRole('tooltip')).toHaveCount(0, { timeout: 3000 });
   });
 
-  test('the message box has even space above and below it, and who is typing shows above it', async ({ page }) => {
+  test('the message box has even space above and below it; who is typing shows just above it, only then', async ({ page }) => {
     const { me, beacon, general } = await openRelay(page, 'evenbox', ['hi']);
     const box = page.getByRole('textbox', { name: /^Transmit to #/ }).locator('xpath=ancestor::div[contains(@class,"bg-raised")][1]');
     const wrap = box.locator('xpath=..');
@@ -295,6 +295,10 @@ test.describe('Phone gestures and the attach sheet', () => {
     await pal.api.post(`/channels/relay/${general.id}/typing`);
     const typing = page.getByText('Typing Pal is typing…');
     await expect(typing).toBeVisible();
-    expect((await typing.boundingBox())!.y + 10).toBeLessThanOrEqual((await box.boundingBox())!.y);
+    // Just above the box, close to it.
+    const t = (await typing.boundingBox())!;
+    const gap = (await box.boundingBox())!.y - (t.y + t.height);
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(8);
   });
 });

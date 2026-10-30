@@ -14,9 +14,10 @@ export function typingText(names: string[]): string | null {
 
 /**
  * Who is typing. On a computer it sits in the gap under the message box; a phone has no gap there
- * (the box sits on the keyboard), so the composer shows it just above the box instead (`above`).
+ * (the box sits on the keyboard), so the composer shows it in a line above the box instead (`inline`),
+ * only while someone is typing.
  */
-export function TypingIndicator({ channelKey: key, beaconId, above }: { channelKey: ChannelKey; beaconId?: string; above?: boolean }) {
+export function TypingIndicator({ channelKey: key, beaconId, inline }: { channelKey: ChannelKey; beaconId?: string; inline?: boolean }) {
   const mobile = useIsMobile();
   const names = useStore(
     useShallow((s) =>
@@ -29,10 +30,10 @@ export function TypingIndicator({ channelKey: key, beaconId, above }: { channelK
     )
   );
   const text = typingText(names);
-  if (mobile !== !!above || (above && !text)) return null;
+  if (mobile !== !!inline || (inline && !text)) return null;
   return (
     <div
-      className={above ? 'pointer-events-none absolute bottom-full left-3 flex h-6 items-center gap-1.5 rounded-t-md bg-base/90 px-2 text-xs text-fg-muted' : 'absolute bottom-1 left-4 flex h-5 items-center gap-1.5 text-xs text-fg-muted'}
+      className={inline ? 'flex min-w-0 items-center gap-1.5 text-xs text-fg-muted' : 'absolute bottom-1 left-4 flex h-5 items-center gap-1.5 text-xs text-fg-muted'}
       aria-live="polite"
     >
       {text && (
