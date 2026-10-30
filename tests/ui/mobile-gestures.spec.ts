@@ -279,4 +279,22 @@ test.describe('Phone gestures and the attach sheet', () => {
     await expect(page.getByRole('tooltip')).toHaveText('More themes: Coming soon');
     await expect(page.getByRole('tooltip')).toHaveCount(0, { timeout: 3000 });
   });
+
+  test('the message box has even space above and below it, and who is typing shows above it', async ({ page }) => {
+    const { me, beacon, general } = await openRelay(page, 'evenbox', ['hi']);
+    const box = page.getByRole('textbox', { name: /^Transmit to #/ }).locator('xpath=ancestor::div[contains(@class,"bg-raised")][1]');
+    const wrap = box.locator('xpath=..');
+    const [b, w] = [(await box.boundingBox())!, (await wrap.boundingBox())!];
+    const above = b.y - w.y;
+    const below = w.y + w.height - (b.y + b.height);
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+    expect(below).toBeLessThanOrEqual(10);
+
+    const pal = await register('evenpal', 'Typing Pal');
+    await pal.api.join(beacon.id, (await me.api.createInvite(beacon.id)).code);
+    await pal.api.post(`/channels/relay/${general.id}/typing`);
+    const typing = page.getByText('Typing Pal is typing…');
+    await expect(typing).toBeVisible();
+    expect((await typing.boundingBox())!.y + 10).toBeLessThanOrEqual((await box.boundingBox())!.y);
+  });
 });

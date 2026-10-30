@@ -29,6 +29,7 @@ import { findAppCommand, matchAppCommands, missingRequired, parseOptions, runApp
 import { useNavigate } from 'react-router';
 import { useIsMobile } from '../../app/mobile';
 import { AttachSheet } from './AttachSheet';
+import { TypingIndicator } from './TypingIndicator';
 
 const MAX_LENGTH = 2000;
 
@@ -414,7 +415,8 @@ export function Composer({
 
   if (!canSend || disabledReason) {
     return (
-      <div className="px-4 pb-6">
+      <div className="relative px-3 py-2 md:px-4 md:pb-6 md:pt-0">
+        <TypingIndicator channelKey={key} beaconId={beaconId} above />
         <div className="flex h-11 items-center rounded-lg bg-raised px-4 text-sm text-fg-subtle">{disabledReason ||
             (timedOutUntil
               ? `You're timed out until ${new Date(timedOutUntil).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}. You can still read along.`
@@ -426,7 +428,9 @@ export function Composer({
   const over = text.length > MAX_LENGTH;
 
   return (
-    <div className="relative px-4 pb-6">
+    // A phone: even space above and below the box, which sits on the keyboard.
+    <div className="relative px-3 py-2 md:px-4 md:pb-6 md:pt-0">
+      <TypingIndicator channelKey={key} beaconId={beaconId} above />
       {commandList.length > 0 && (
         <div role="listbox" aria-label="Commands" className="absolute inset-x-4 bottom-full mb-2 max-h-80 overflow-y-auto rounded-lg bg-overlay p-2 shadow-pop">
           {commandList.map(({ kind, c }, i) => (

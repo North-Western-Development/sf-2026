@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../data/store';
 import { resolveName } from '../../lib/normalize';
 import type { ChannelKey } from '../../lib/types';
+import { useIsMobile } from '../../app/mobile';
 
 export function typingText(names: string[]): string | null {
   if (!names.length) return null;
@@ -11,7 +12,12 @@ export function typingText(names: string[]): string | null {
   return 'Several people are typing…';
 }
 
-export function TypingIndicator({ channelKey: key, beaconId }: { channelKey: ChannelKey; beaconId?: string }) {
+/**
+ * Who is typing. On a computer it sits in the gap under the message box; a phone has no gap there
+ * (the box sits on the keyboard), so the composer shows it just above the box instead (`above`).
+ */
+export function TypingIndicator({ channelKey: key, beaconId, above }: { channelKey: ChannelKey; beaconId?: string; above?: boolean }) {
+  const mobile = useIsMobile();
   const names = useStore(
     useShallow((s) =>
       Object.keys(s.typing[key] ?? {})
@@ -23,8 +29,12 @@ export function TypingIndicator({ channelKey: key, beaconId }: { channelKey: Cha
     )
   );
   const text = typingText(names);
+  if (mobile !== !!above || (above && !text)) return null;
   return (
-    <div className="absolute bottom-1 left-4 flex h-5 items-center gap-1.5 text-xs text-fg-muted" aria-live="polite">
+    <div
+      className={above ? 'pointer-events-none absolute bottom-full left-3 flex h-6 items-center gap-1.5 rounded-t-md bg-base/90 px-2 text-xs text-fg-muted' : 'absolute bottom-1 left-4 flex h-5 items-center gap-1.5 text-xs text-fg-muted'}
+      aria-live="polite"
+    >
       {text && (
         <>
           <span className="flex gap-0.5" aria-hidden="true">

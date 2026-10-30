@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { http } from '../../../lib/http';
 import { confirmAction, toast } from '../../../app/ui';
@@ -57,14 +57,19 @@ function signInPopup(url: string): Promise<{ ok: boolean; message: string }> {
 export function ConnectionsTab() {
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [providers, setProviders] = useState<Array<{ provider: ConnectionProvider; name: string; available: boolean }>>([]);
-  const load = () =>
-    http.get<{ connections: Connection[]; providers: typeof providers }>('/users/@me/connections').then(
+  // A reload that started before a change here (disconnecting, say) would put back what it removed.
+  const changes = useRef(0);
+  const load = () => {
+    const at = changes.current;
+    return http.get<{ connections: Connection[]; providers: typeof providers }>('/users/@me/connections').then(
       (r) => {
+        if (at !== changes.current) return;
         setConnections(r.connections);
         setProviders(r.providers);
       },
       (e) => toast((e as Error).message, 'error')
     );
+  };
   useEffect(() => {
     void load();
   }, []);
@@ -80,6 +85,7 @@ export function ConnectionsTab() {
     }
   };
   const setVisible = async (c: Connection, visible: boolean) => {
+    changes.current++;
     setConnections((list) => list?.map((x) => (x.id === c.id ? { ...x, visible } : x)) ?? null);
     await http.patch(`/users/@me/connections/${c.id}`, { visible }).catch((e) => {
       toast((e as Error).message, 'error');
@@ -94,6 +100,7 @@ export function ConnectionsTab() {
       danger: true,
       onConfirm: async () => {
         await http.delete(`/users/@me/connections/${c.id}`);
+        changes.current++;
         setConnections((list) => list?.filter((x) => x.id !== c.id) ?? null);
       },
     });

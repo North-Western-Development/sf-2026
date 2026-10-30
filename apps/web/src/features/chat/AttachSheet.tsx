@@ -42,7 +42,7 @@ export function AttachSheet({ onFiles, onPoll, onDrive, onThread, commands, onCo
   );
 
   return (
-    <div role="dialog" aria-label={view === 'apps' ? 'Apps & Commands' : 'Attach'} data-no-swipe className={clsx('-mx-4 -mb-6 mt-3 flex flex-col rounded-t-2xl bg-raised px-3 pb-3', view === 'apps' && 'h-[min(55vh,440px)]')}>
+    <div role="dialog" aria-label={view === 'apps' ? 'Apps & Commands' : 'Attach'} data-no-swipe className={clsx('-mx-3 -mb-2 mt-3 flex flex-col rounded-t-2xl bg-raised px-3 pb-3', view === 'apps' && 'h-[min(55vh,440px)]')}>
       <div className="mx-auto mb-3 mt-2 h-1 w-10 shrink-0 rounded-full bg-line-strong" aria-hidden />
       {view === 'attach' ? (
         <div className="grid grid-cols-4 gap-2">
