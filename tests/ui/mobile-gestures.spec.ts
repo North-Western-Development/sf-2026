@@ -233,4 +233,50 @@ test.describe('Phone gestures and the attach sheet', () => {
     await expect(send).toBeInViewport({ ratio: 1 });
     expect((await send.boundingBox())!.width).toBeGreaterThan(300);
   });
+
+  test('a long press opens the menu as a sheet from the bottom, with submenus inside it', async ({ page }) => {
+    await openRelay(page, 'longpress', ['hold me down']);
+    const message = page.getByRole('log').getByRole('article').filter({ hasText: 'hold me down' });
+    await expect(message).toBeVisible();
+    const at = await centre(message);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+    await page.waitForTimeout(700);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+
+    const sheet = page.getByRole('menu', { name: 'Actions' });
+    await expect(sheet).toBeVisible();
+    const box = (await sheet.boundingBox())!;
+    expect(box.x).toBe(0);
+    expect(box.width).toBe(390);
+    expect(Math.round(box.y + box.height)).toBe(844);
+    // Lifting the finger did not also pick something.
+    await expect(page.getByText('Replying to')).toHaveCount(0);
+
+    await sheet.getByRole('menuitem', { name: 'Remind Me' }).click();
+    await expect(page.getByRole('menu', { name: 'Remind Me' })).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+    await sheet.getByRole('menuitem', { name: 'Reply' }).click();
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await expect(page.getByText('Replying to')).toBeVisible();
+
+    // Tapping outside closes it.
+    await message.click({ button: 'right' });
+    await expect(page.getByRole('menu', { name: 'Actions' })).toBeVisible();
+    await page.mouse.click(195, 100);
+    await expect(page.getByRole('menu')).toHaveCount(0);
+  });
+
+  test('tapping a Coming soon placeholder says so', async ({ page }) => {
+    const me = await register('soontap', 'Soon Tapper');
+    await signIn(page, me, '/channels/@me', { shell: false });
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('button', { name: 'User Settings' }).click();
+    await page.getByRole('dialog').getByRole('navigation', { name: /sections/ }).getByRole('button', { name: 'Appearance', exact: true }).click();
+    // Labelled like the themes beside it; a tap says it is coming.
+    await page.locator('[data-coming-soon]').filter({ hasText: 'More soon' }).tap();
+    await expect(page.getByRole('tooltip')).toHaveText('More themes: Coming soon');
+    await expect(page.getByRole('tooltip')).toHaveCount(0, { timeout: 3000 });
+  });
 });

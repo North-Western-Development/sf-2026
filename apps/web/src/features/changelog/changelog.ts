@@ -24,9 +24,17 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     id: '2026-10-29',
-    title: 'More in the header',
+    title: 'Hold for more',
     platforms: ['mobile'],
     added: [
+      {
+        title: 'Press and hold',
+        body: 'Hold a finger on a transmission, a beacon, a relay or a person to open what you can do with it, in a sheet from the bottom of the screen.',
+      },
+      {
+        title: 'Coming soon, said out loud',
+        body: 'Tapping something greyed out tells you it is on its way.',
+      },
       {
         title: 'The ⋮ menu',
         body: 'The ⋮ at the top of a conversation has Threads, Pinned Transmissions, Notification Settings, your Inbox and Help.',

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export interface ContextMenuItem {
@@ -192,6 +192,121 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ items, x, y, onClose, 
 };
 
 // ---------------------------------------------------------------------------
+// Phones: the same menu as a sheet from the bottom (Discord's app). Groups between
+// separators become rounded cards; a submenu replaces the sheet's contents, with Back.
+// ---------------------------------------------------------------------------
+
+/** A phone: touch first and too narrow for a floating menu. */
+export const prefersSheet = () => !!window.matchMedia?.('(pointer: coarse) and (max-width: 767px)').matches;
+
+export const ContextSheet: React.FC<{ items: ContextMenuItem[]; onClose: () => void }> = ({ items, onClose }) => {
+  const [stack, setStack] = useState<{ title: string; items: ContextMenuItem[] }[]>([]);
+  const [drag, setDrag] = useState(0);
+  const start = useRef<number | null>(null);
+  const current = stack.length ? stack[stack.length - 1] : null;
+  const shown = current?.items ?? items;
+
+  const groups = useMemo(() => {
+    const out: ContextMenuItem[][] = [[]];
+    for (const item of shown) {
+      if (item.separator) out.push([]);
+      else out[out.length - 1].push(item);
+    }
+    return out.filter((g) => g.length);
+  }, [shown]);
+
+  const pick = (item: ContextMenuItem) => {
+    if (item.disabled) return;
+    if (item.children?.length) return setStack((s) => [...s, { title: item.label ?? '', items: item.children! }]);
+    item.onClick?.();
+    onClose();
+  };
+
+  // Drag the handle down to dismiss.
+  const handle = {
+    onTouchStart: (e: React.TouchEvent) => (start.current = e.touches[0].clientY),
+    onTouchMove: (e: React.TouchEvent) => start.current !== null && setDrag(Math.max(0, e.touches[0].clientY - start.current)),
+    onTouchEnd: () => {
+      start.current = null;
+      if (drag > 80) onClose();
+      else setDrag(0);
+    },
+  };
+
+  return (
+    <>
+      <div aria-hidden className="fixed inset-0 z-[1990] bg-black/60 animate-[fade-in_120ms_ease-out]" />
+      <div
+        role="menu"
+        aria-label={current?.title || 'Actions'}
+        data-context-menu
+        data-no-swipe
+        className="fixed inset-x-0 bottom-0 z-[2000] flex max-h-[80dvh] flex-col rounded-t-2xl bg-base pb-[max(12px,env(safe-area-inset-bottom))] text-left shadow-pop select-none outline-none animate-[sheet-up_180ms_ease-out]"
+        style={{ transform: drag ? `translateY(${drag}px)` : undefined }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
+        <div {...handle} className="flex shrink-0 flex-col items-center px-4 pt-2 pb-1">
+          <span className="h-1 w-10 rounded-full bg-line-strong" />
+          {current && (
+            <div className="relative mt-2 flex h-9 w-full items-center justify-center">
+              <button type="button" aria-label="Back" onClick={() => setStack((s) => s.slice(0, -1))} className="absolute left-0 flex h-9 w-9 items-center justify-center rounded-full text-fg-muted">
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="truncate px-10 text-[15px] font-semibold text-fg">{current.title}</span>
+            </div>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 pt-2">
+          {groups.map((group, g) => (
+            <div key={g} className="overflow-hidden rounded-xl bg-raised">
+              {group.map((item, i) =>
+                item.heading ? (
+                  <div key={item.id || `h-${i}`} className="px-4 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
+                    {item.label}
+                  </div>
+                ) : (
+                  <div
+                    key={item.id || item.label || i}
+                    role="menuitem"
+                    aria-disabled={item.disabled || undefined}
+                    aria-haspopup={item.children?.length ? true : undefined}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      pick(item);
+                    }}
+                    className={clsx(
+                      'flex min-h-[52px] items-center gap-3 px-4 text-[15px] font-medium active:bg-active',
+                      i > 0 && !group[i - 1].heading && 'border-t border-line',
+                      item.disabled && 'opacity-40',
+                      item.danger ? 'text-danger' : 'text-fg'
+                    )}
+                  >
+                    {item.icon && <span className="flex h-5 w-5 shrink-0 items-center justify-center text-fg-muted [&>svg]:h-5 [&>svg]:w-5">{item.icon}</span>}
+                    <span className="min-w-0 flex-1 py-2">
+                      <span className="block truncate">{item.label}</span>
+                      {item.sublabel && <span className="block truncate text-xs font-normal text-fg-muted">{item.sublabel}</span>}
+                    </span>
+                    {item.checked !== undefined && (
+                      <span className={clsx('flex h-5 w-5 items-center justify-center rounded-full border', item.checked ? 'border-brand bg-brand text-on-brand' : 'border-line-strong')}>
+                        {item.checked && <Check className="h-3.5 w-3.5" />}
+                      </span>
+                    )}
+                    {item.children?.length ? <ChevronRight className="h-5 w-5 shrink-0 text-fg-muted" /> : null}
+                  </div>
+                )
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Provider: the only context menu that ever appears in Subspace.
 // ---------------------------------------------------------------------------
 
@@ -304,7 +419,7 @@ function textActions(target: EventTarget | null, clipboard: ClipboardHooks): Con
 const defaultRead = () => navigator.clipboard.readText();
 
 export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ children, fallbackItems, readClipboard, onPasteBlocked }) => {
-  const [menu, setMenu] = useState<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ items: ContextMenuItem[]; x: number; y: number; sheet?: boolean } | null>(null);
   const handledRef = useRef(false);
   const clipboardRef = useRef<ClipboardHooks>({ read: defaultRead });
   clipboardRef.current = { read: readClipboard ?? defaultRead, blocked: onPasteBlocked };
@@ -331,7 +446,10 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ childr
       clientX = rect.left;
       clientY = rect.bottom;
     }
-    setMenu({ items: merged, x: clientX, y: clientY });
+    const sheet = prefersSheet();
+    // The keyboard goes away under a sheet, as in Discord's app.
+    if (sheet) (document.activeElement as HTMLElement | null)?.blur?.();
+    setMenu({ items: merged, x: clientX, y: clientY, sheet });
   }, []);
 
   // The browser menu never appears. Unhandled right-clicks get text actions or the fallback.
@@ -342,7 +460,7 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ childr
       if ((e.target as HTMLElement | null)?.closest?.('[data-context-menu]')) return;
       const text = textActions(e.target, clipboardRef.current);
       const items = text.length ? text : fallbackItems ?? [];
-      if (items.length) setMenu({ items, x: e.clientX, y: e.clientY });
+      if (items.length) setMenu({ items, x: e.clientX, y: e.clientY, sheet: prefersSheet() });
       else setMenu(null);
     };
     const onPointerDown = (e: PointerEvent) => {
@@ -352,17 +470,19 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ childr
       if (e.key === 'Escape') setMenu(null);
     };
     const onBlur = () => setMenu(null);
+    // The keyboard closing resizes a phone's window: a sheet stays open through that.
+    const onResize = () => setMenu((m) => (m?.sheet ? m : null));
     window.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('keydown', onKey);
     window.addEventListener('blur', onBlur);
-    window.addEventListener('resize', onBlur);
+    window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('blur', onBlur);
-      window.removeEventListener('resize', onBlur);
+      window.removeEventListener('resize', onResize);
     };
   }, [fallbackItems]);
 
@@ -373,7 +493,7 @@ export const ContextMenuProvider: React.FC<ContextMenuProviderProps> = ({ childr
       {children}
       {menu &&
         createPortal(
-          <ContextMenu items={menu.items} x={menu.x} y={menu.y} onClose={closeContextMenu} />,
+          menu.sheet ? <ContextSheet items={menu.items} onClose={closeContextMenu} /> : <ContextMenu items={menu.items} x={menu.x} y={menu.y} onClose={closeContextMenu} />,
           document.body
         )}
     </ContextMenuContext.Provider>

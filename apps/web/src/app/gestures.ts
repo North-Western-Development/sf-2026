@@ -94,3 +94,67 @@ export const tick = () => {
     /* not allowed here */
   }
 };
+
+const LONG_PRESS_MS = 450;
+/** Text fields keep the system's own long-press (select, paste). */
+const NATIVE_PRESS = 'input, textarea, select, [contenteditable="true"], [data-context-menu]';
+
+/**
+ * Touch screens: holding a finger still opens the same menu a right-click does (iOS never sends
+ * one; Android sends its own, which this replaces so it opens once and without text selection).
+ */
+export function startLongPress() {
+  if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let x0 = 0;
+  let y0 = 0;
+  let byTouch = false;
+  let fired = false;
+
+  const cancel = () => clearTimeout(timer);
+  // What started the latest press: a mouse's right-click still opens its menu as usual.
+  window.addEventListener('pointerdown', (e) => (byTouch = e.pointerType === 'touch'), { capture: true });
+  window.addEventListener(
+    'touchstart',
+    (e) => {
+      cancel();
+      fired = false;
+      const target = e.target as HTMLElement;
+      if (e.touches.length !== 1 || target.closest?.(NATIVE_PRESS)) return;
+      x0 = e.touches[0].clientX;
+      y0 = e.touches[0].clientY;
+      timer = setTimeout(() => {
+        fired = true;
+        tick();
+        target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x0, clientY: y0, button: 2 }));
+      }, LONG_PRESS_MS);
+    },
+    { passive: true, capture: true }
+  );
+  window.addEventListener(
+    'touchmove',
+    (e) => {
+      if (Math.abs(e.touches[0].clientX - x0) > 10 || Math.abs(e.touches[0].clientY - y0) > 10) cancel();
+    },
+    { passive: true, capture: true }
+  );
+  const end = (e: TouchEvent) => {
+    cancel();
+    if (!fired) return;
+    // The finger lifting is not also a tap on whatever the menu put under it.
+    fired = false;
+    if (e.cancelable) e.preventDefault();
+  };
+  window.addEventListener('touchend', end, { capture: true, passive: false });
+  window.addEventListener('touchcancel', end, { capture: true });
+  // The browser's own long-press menu event: ours stands in for it.
+  window.addEventListener(
+    'contextmenu',
+    (e) => {
+      if (!e.isTrusted || !byTouch || (e.target as HTMLElement).closest?.(NATIVE_PRESS)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    },
+    { capture: true }
+  );
+}

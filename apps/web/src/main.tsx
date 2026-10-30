@@ -10,6 +10,7 @@ import { applyA11yPrefs } from './lib/a11yPrefs';
 import { applyTheme } from './lib/theme';
 import { trackVisualViewport } from './lib/viewport';
 import { startTouchScrollIndicator } from './lib/scrollIndicator';
+import { startLongPress } from './app/gestures';
 import { toast } from './app/ui';
 import './index.css';
 
@@ -18,6 +19,7 @@ applyTheme();
 applyA11yPrefs();
 trackVisualViewport();
 startTouchScrollIndicator();
+startLongPress();
 
 const widgetId = /^\/widget\/([1-9][0-9]{0,18})\/?$/i.exec(window.location.pathname)?.[1];
 

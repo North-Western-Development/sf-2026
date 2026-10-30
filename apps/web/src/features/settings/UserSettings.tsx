@@ -1464,8 +1464,9 @@ function AppearanceTab() {
               <span className={clsx(theme === t.id && 'font-semibold text-fg')}>{t.name}</span>
             </button>
           ))}
-          <ComingSoon label="More themes">
+          <ComingSoon label="More themes" className="flex-col items-center gap-1.5 text-xs text-fg-muted">
             <span className="h-14 w-14 rounded-full bg-[#1E2140]" />
+            <span>More soon</span>
           </ComingSoon>
         </div>
       </SettingsSection>

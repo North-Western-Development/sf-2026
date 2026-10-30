@@ -10,20 +10,25 @@ export interface TooltipProps {
   delay?: number;
   /** Render nothing extra when false (content still labels the child for a11y). */
   disabled?: boolean;
+  /** Touch screens: a tap shows it for a moment (tooltips otherwise never show there). */
+  tap?: boolean;
   children: React.ReactElement;
 }
 
 const GAP = 8;
 
-export function Tooltip({ content, placement = 'top', delay = 250, disabled, children }: TooltipProps) {
+export function Tooltip({ content, placement = 'top', delay = 250, disabled, tap, children }: TooltipProps) {
   const id = useId();
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const tipRef = useRef<HTMLDivElement>(null);
+  /** Shown by a tap: stays up for its moment whatever focus and the emulated mouse do. */
+  const tapped = useRef(false);
 
   const show = useCallback(
     (el: HTMLElement) => {
+      if (tapped.current) return;
       clearTimeout(timer.current);
       // Touch screens: a tap would leave it stuck on (the tapped control keeps focus); the label is still read out.
       if (window.matchMedia?.('(hover: none)').matches) return;
@@ -73,7 +78,7 @@ export function Tooltip({ content, placement = 'top', delay = 250, disabled, chi
     },
     onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
       child.props.onMouseLeave?.(e);
-      hide();
+      if (!tapped.current) hide();
     },
     onFocus: (e: React.FocusEvent<HTMLElement>) => {
       child.props.onFocus?.(e);
@@ -81,11 +86,23 @@ export function Tooltip({ content, placement = 'top', delay = 250, disabled, chi
     },
     onBlur: (e: React.FocusEvent<HTMLElement>) => {
       child.props.onBlur?.(e);
-      hide();
+      if (!tapped.current) hide();
+    },
+    onClickCapture: (e: React.MouseEvent<HTMLElement>) => {
+      if (tap && !disabled && window.matchMedia?.('(hover: none)').matches) {
+        clearTimeout(timer.current);
+        setAnchor(e.currentTarget.getBoundingClientRect());
+        tapped.current = true;
+        timer.current = setTimeout(() => {
+          tapped.current = false;
+          hide();
+        }, 1500);
+      }
+      child.props.onClickCapture?.(e);
     },
     onMouseDown: (e: React.MouseEvent<HTMLElement>) => {
       child.props.onMouseDown?.(e);
-      hide();
+      if (!tapped.current) hide();
     },
   });
 
@@ -130,7 +147,7 @@ export function ComingSoon({
   className?: string;
 }) {
   return (
-    <Tooltip placement={placement} content={<span>{label ? `${label}: ` : ''}Coming soon</span>}>
+    <Tooltip tap placement={placement} content={<span>{label ? `${label}: ` : ''}Coming soon</span>}>
       <span
         aria-disabled="true"
         data-coming-soon
